@@ -100,9 +100,12 @@ _io = [
     ("wifi_wup", 0, Pins("38"), IOStandard("LVCMOS18")),
 ]
 
+_connectors = []
+
 class Platform(LatticePlatform):
-    def __init__(self, toolchain="icestorm"):
-        LatticePlatform.__init__(self, "ice40-up5k-sg48", _io_betrusted, _connectors, toolchain="icestorm")
+    def __init__(self, revision=None, toolchain="icestorm"):
+        self.revision = revision
+        LatticePlatform.__init__(self, "ice40-up5k-sg48", _io, _connectors, toolchain="icestorm")
 
     def create_programmer(self):
         raise ValueError("programming is not supported")
@@ -588,6 +591,15 @@ class BaseSoC(SoCCore):
         if placer is not None:
             platform.toolchain.nextpnr_build_template[1] += " --placer {}".format(placer)
 
+    def copy_memory_file(self, src):
+        import os
+        from shutil import copyfile
+        if not os.path.exists(self.output_dir):
+            os.mkdir(self.output_dir)
+        if not os.path.exists(os.path.join(self.output_dir, "gateware")):
+            os.mkdir(os.path.join(self.output_dir, "gateware"))
+        copyfile(os.path.join("rtl", src), os.path.join(self.output_dir, "gateware", src))
+
 
 def make_multiboot_header(filename, boot_offsets=[160]):
     """
@@ -650,7 +662,14 @@ def main():
         help="where to have the CPU obtain its executable code from"
     )
     parser.add_argument(
+        "--bios", help="use specified file as a BIOS, rather than building one"
+    )
+    parser.add_argument(
         "--with-debug", help="enable debug support", choices=["usb", "uart", None]
+    )
+    parser.add_argument(
+        "--revision", choices=["evt"], default="evt",
+        help="build EC for a particular hardware revision"
     )
     parser.add_argument(
         "-D", "--document-only", default=False, action="store_true", help="Build docs only"
@@ -714,7 +733,7 @@ def main():
         cpu_type = None
         cpu_variant = None
 
-    platform = Platform()
+    platform = Platform(revision=args.revision)
 
     soc = BaseSoC(platform, cpu_type=cpu_type, cpu_variant=cpu_variant,
                             debug=args.with_debug, boot_source=args.boot_source,
