@@ -1,0 +1,10 @@
+*~
+/build/*
+__pycache__/
+/.Xil/*
+/.idea/*
+*.d
+*.o
+pycharm.env
+*.bin
+*.elf
