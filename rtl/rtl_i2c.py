@@ -7,7 +7,7 @@ from migen.genlib.cdc import MultiReg
 from litex.soc.interconnect.csr_eventmanager import *
 
 
-class Rtl_I2C(Module, AutoCSR):
+class RtlI2C(Module, AutoCSR):
     def __init__(self, platform, pads):
         self.sda = TSTriple(1)
         self.scl = TSTriple(1)
