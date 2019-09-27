@@ -479,7 +479,7 @@ class BaseSoC(SoCCore):
     }
 
     SoCCore.mem_map = {
-#        "rom":      0x00000000,  # (default shadow @0x80000000)
+        "rom":      0x00000000,  # (default shadow @0x80000000)
         "sram":     0x10000000,  # (default shadow @0xa0000000)
         "spiflash": 0x20000000,  # (default shadow @0xa0000000)
         "main_ram": 0x40000000,  # (default shadow @0xc0000000)
@@ -499,7 +499,7 @@ class BaseSoC(SoCCore):
         clk_freq = int(12e6)
         self.submodules.crg = _CRG(platform)
 
-        SoCCore.__init__(self, platform, clk_freq, integrated_sram_size=0, with_uart=True, **kwargs)
+        SoCCore.__init__(self, platform, clk_freq, integrated_sram_size=0, **kwargs)
 
         if debug is not None:
             if debug == "uart":
@@ -709,7 +709,7 @@ def main():
         return 0
 
     compile_gateware = True
-    compile_software = True
+    compile_software = False
 
     if args.document_only:
         compile_gateware = False
@@ -732,6 +732,9 @@ def main():
                             pnr_seed=args.seed,
                             output_dir=output_dir)
     builder = Builder(soc, output_dir=output_dir, csr_csv="build/csr.csv", compile_software=compile_software, compile_gateware=compile_gateware)
+    # If we comile software, pull the code from somewhere other than
+    # the built-in litex "bios" binary, which makes assumptions about
+    # what peripherals are available.
     if compile_software:
         builder.software_packages = [
             ("bios", os.path.abspath(os.path.join(os.path.dirname(__file__), "bios")))
