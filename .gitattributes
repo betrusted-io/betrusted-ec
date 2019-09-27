@@ -1,0 +1,37 @@
+# Text for humans
+LICENSE text eol=lf
+README.* text eol=lf
+
+# Exclave files
+*.interface text eol=lf
+*.jig text eol=lf
+*.logger text eol=lf
+*.scenario text eol=lf
+*.test text eol=lf
+*.trigger text eol=lf
+*.service text eol=lf
+
+# Source code
+Makefile text eol=lf
+*.mk text eol=lf
+*.mak text eol=lf
+*.py text eol=lf
+*.sh text eol=lf
+*.c text eol=lf
+*.S text eol=lf
+*.s text eol=lf
+*.h text eol=lf
+*.rs
+*.ld text eol=lf
+
+# Windows source code uses CRLF
+*.vcxproj text eol=crlf
+*.props text eol=crlf
+*.bat text eol=crlf
+
+# Other binary files
+*.png binary
+*.jpg binary
+*.bin binary
+*.elf binary
+*.bin binary

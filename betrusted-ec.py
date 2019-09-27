@@ -19,6 +19,7 @@ from migen.fhdl.structure import ClockSignal, ResetSignal, Replicate, Cat
 
 from litex.build.lattice.platform import LatticePlatform
 from litex.build.generic_platform import Pins, IOStandard, Misc, Subsignal
+from litex.soc.cores import up5kspram
 from litex.soc.integration import SoCCore
 from litex.soc.integration.builder import Builder
 from litex.soc.integration.soc_core import csr_map_update
@@ -27,9 +28,13 @@ from litex.soc.interconnect.csr import AutoCSR, CSRStatus, CSRStorage
 
 from rtl.rtl_i2c import RtlI2C
 
-from lxsocsupport import up5kspram, spi_flash
-
 import lxsocdoc
+
+# Ish. It's actually slightly smaller, but this is divisible by 4.
+GATEWARE_SIZE = 0x1a000
+
+# 1 MB (8 Mb)
+SPI_FLASH_SIZE = 1 * 1024 * 1024
 
 _io = [
     ("serial", 0,
@@ -103,11 +108,8 @@ _io = [
 _connectors = []
 
 class Platform(LatticePlatform):
-    def __init__(self, revision=None, toolchain="icestorm"):
-        self.revision = revision
-        self.gateware_size=0x20000
-        self.spiflash_total_size = 0x100000
-        LatticePlatform.__init__(self, "ice40-up5k-sg48", _io, _connectors, toolchain="icestorm")
+    def __init__(self, toolchain="icestorm", revision="evt"):
+        LatticePlatform.__init__(self, "ice40-up5k-sg48", _io, toolchain="icestorm")
 
     def create_programmer(self):
         raise ValueError("programming is not supported")
@@ -484,9 +486,9 @@ class BaseSoC(SoCCore):
         "csr":      0x60000000,  # (default shadow @0xe0000000)
     }
 
-    def __init__(self, platform, boot_source="bios",
+    def __init__(self, platform, boot_source="spi",
                  debug=None, bios_file=None,
-                 use_dsp=False, placer=None, output_dir="build",
+                 use_dsp=False, placer="heap", output_dir="build",
                  pnr_seed=0,
                  **kwargs):
         # Disable integrated RAM as we'll add it later
@@ -505,14 +507,12 @@ class BaseSoC(SoCCore):
                 self.submodules.uart_bridge = UARTWishboneBridge(platform.request("serial"), clk_freq, baudrate=115200)
                 self.add_wb_master(self.uart_bridge.wishbone)
             if hasattr(self, "cpu"):
-                self.cpu.use_external_variant("rtl/2-stage-1024-cache-debug.v")
-                self.copy_memory_file("2-stage-1024-cache-debug.v_toplevel_RegFilePlugin_regFile.bin")
+                self.cpu.use_external_variant("rtl/VexRiscv_Fomu_Debug.v")
                 os.path.join(output_dir, "gateware")
                 self.register_mem("vexriscv_debug", 0xf00f0000, self.cpu.debug_bus, 0x100)
         else:
             if hasattr(self, "cpu"):
-                self.cpu.use_external_variant("rtl/2-stage-1024-cache.v")
-                self.copy_memory_file("2-stage-1024-cache.v_toplevel_RegFilePlugin_regFile.bin")
+                self.cpu.use_external_variant("rtl/VexRiscv_Fomu.v")
 
         # SPRAM- UP5K has single port RAM, might as well use it as SRAM to
         # free up scarce block RAM.
@@ -520,22 +520,37 @@ class BaseSoC(SoCCore):
         self.submodules.spram = up5kspram.Up5kSPRAM(size=spram_size)
         self.register_mem("sram", self.mem_map["sram"], self.spram.bus, spram_size)
 
-        bios_size = 0x8000
-        kwargs['cpu_reset_address']=self.mem_map["spiflash"]+platform.gateware_size
-#        self.add_memory_region("rom", kwargs['cpu_reset_address'], bios_size)
-#        self.add_constant("ROM_DISABLE", 1)
-        self.flash_boot_address = self.mem_map["spiflash"]+platform.gateware_size+bios_size
-#        self.add_memory_region("user_flash",
-#            self.flash_boot_address,
-            # Leave a grace area- possible one-by-off bug in add_memory_region?
-            # Possible fix: addr < origin + length - 1
-#            platform.spiflash_total_size - (self.flash_boot_address - self.mem_map["spiflash"]) - 0x100)
+        if boot_source == "rand":
+            kwargs['cpu_reset_address']=0
+            bios_size = 0x2000
+            self.submodules.random_rom = RandomFirmwareROM(bios_size)
+            self.add_constant("ROM_DISABLE", 1)
+            self.register_rom(self.random_rom.bus, bios_size)
+        elif boot_source == "bios":
+            kwargs['cpu_reset_address'] = 0
+            if bios_file is None:
+                self.integrated_rom_size = bios_size = 0x2000
+                self.submodules.rom = wishbone.SRAM(bios_size, read_only=True, init=[])
+                self.register_rom(self.rom.bus, bios_size)
+            else:
+                bios_size = 0x2000
+                self.submodules.firmware_rom = FirmwareROM(bios_size, bios_file)
+                self.add_constant("ROM_DISABLE", 1)
+                self.register_rom(self.firmware_rom.bus, bios_size)
+
+        elif boot_source == "spi":
+            bios_size = 0x8000
+            kwargs['cpu_reset_address']=self.mem_map["spiflash"]+GATEWARE_SIZE
+            self.flash_boot_address = self.mem_map["spiflash"]+GATEWARE_SIZE+bios_size
+            self.add_memory_region("rom", 0, 0) # Required to keep litex happy
+        else:
+            raise ValueError("unrecognized boot_source: {}".format(boot_source))
 
         # Add a simple bit-banged SPI Flash module
         spi_pads = platform.request("spiflash")
         self.submodules.picorvspi = PicoRVSpi(platform, spi_pads)
-        self.register_mem("rom", self.mem_map["spiflash"],
-            self.picorvspi.bus, size=self.picorvspi.size)
+        self.register_mem("spiflash", self.mem_map["spiflash"],
+            self.picorvspi.bus, size=SPI_FLASH_SIZE)
 
         self.submodules.reboot = SBWarmBoot(self)
         if hasattr(self, "cpu"):
@@ -543,7 +558,7 @@ class BaseSoC(SoCCore):
                 i_externalResetVector=self.reboot.addr.storage,
             )
 
-        self.submodules.version = Version(platform.revision)
+        # self.submodules.version = Version(platform.revision)
 
         # add I2C interface
         self.submodules.i2c = RtlI2C(platform, platform.request("i2c", 0))
@@ -639,7 +654,8 @@ def main():
 
     parser = argparse.ArgumentParser(description="Build the Betrusted Embedded Controller")
     parser.add_argument(
-        "--bios", help="use specified file as a BIOS, rather than building one"
+        "--boot-source", choices=["spi", "rand", "bios"], default="spi",
+        help="where to have the CPU obtain its executable code from"
     )
     parser.add_argument(
         "--with-debug", help="enable debug support", choices=["usb", "uart", None]
@@ -658,7 +674,7 @@ def main():
         "--no-cpu", help="disable cpu generation for debugging purposes", action="store_true"
     )
     parser.add_argument(
-        "--placer", choices=["sa", "heap"], help="which placer to use in nextpnr"
+        "--placer", choices=["sa", "heap"], help="which placer to use in nextpnr", default="heap",
     )
     parser.add_argument(
         "--seed", default=0, help="seed to use in nextpnr"
@@ -711,12 +727,11 @@ def main():
     platform = Platform(revision=args.revision)
 
     soc = BaseSoC(platform, cpu_type=cpu_type, cpu_variant=cpu_variant,
-                            debug=args.with_debug,
-                            bios_file=args.bios,
+                            debug=args.with_debug, boot_source=args.boot_source,
                             use_dsp=args.with_dsp, placer=args.placer,
                             pnr_seed=args.seed,
                             output_dir=output_dir)
-    builder = Builder(soc, output_dir=output_dir, csr_csv="test/csr.csv", compile_software=compile_software, compile_gateware=compile_gateware)
+    builder = Builder(soc, output_dir=output_dir, csr_csv="build/csr.csv", compile_software=compile_software, compile_gateware=compile_gateware)
     if compile_software:
         builder.software_packages = [
             ("bios", os.path.abspath(os.path.join(os.path.dirname(__file__), "bios")))
