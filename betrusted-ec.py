@@ -501,7 +501,7 @@ class BaseSoC(SoCCore):
 
         SoCCore.__init__(self, platform, clk_freq, integrated_sram_size=0, with_uart=False, **kwargs)
 
-        if debug is not None:
+        if debug is not None and debug != "none":
             if debug == "uart":
                 from litex.soc.cores.uart import UARTWishboneBridge
                 self.submodules.uart_bridge = UARTWishboneBridge(platform.request("serial"), clk_freq, baudrate=115200)
@@ -646,6 +646,12 @@ def make_multiboot_header(filename, boot_offsets=[160]):
             for x in range(17, 32):
                 output.write(bytes([0]))
 
+def pad_file(pad_src, pad_dest, length):
+    with open(pad_dest, "wb") as output:
+        with open(pad_src, "rb") as b:
+            output.write(b.read())
+        output.truncate(length)
+
 
 def main():
     if os.environ['PYTHONHASHSEED'] != "1":
@@ -658,7 +664,7 @@ def main():
         help="where to have the CPU obtain its executable code from"
     )
     parser.add_argument(
-        "--with-debug", help="enable debug support", choices=["usb", "uart", None]
+        "--with-debug", help="enable debug support", choices=["usb", "uart", "none"], default="uart",
     )
     parser.add_argument(
         "--revision", choices=["evt"], default="evt",
@@ -717,7 +723,7 @@ def main():
 
     cpu_type = "vexriscv"
     cpu_variant = "min"
-    if args.with_debug:
+    if args.with_debug and args.with_debug is not "none":
         cpu_variant = cpu_variant + "+debug"
 
     if args.no_cpu:
@@ -742,21 +748,24 @@ def main():
     vns = builder.build()
     soc.do_exit(vns)
 
-    make_multiboot_header(os.path.join(output_dir, "gateware", "multiboot-header.bin"), [
-        160,
-        160,
-        157696,
-        262144,
-        262144 + 32768,
-    ])
+    if not args.document_only:
+        make_multiboot_header(os.path.join(output_dir, "gateware", "multiboot-header.bin"), [
+            160,
+            160,
+            157696,
+            262144,
+            262144 + 32768,
+        ])
 
-    with open(os.path.join(output_dir, 'gateware', 'multiboot-header.bin'), 'rb') as multiboot_header_file:
-        multiboot_header = multiboot_header_file.read()
-        with open(os.path.join(output_dir, 'gateware', 'top.bin'), 'rb') as top_file:
-            top = top_file.read()
-            with open(os.path.join(output_dir, 'gateware', 'top-multiboot.bin'), 'wb') as top_multiboot_file:
-                top_multiboot_file.write(multiboot_header)
-                top_multiboot_file.write(top)
+        with open(os.path.join(output_dir, 'gateware', 'multiboot-header.bin'), 'rb') as multiboot_header_file:
+            multiboot_header = multiboot_header_file.read()
+            with open(os.path.join(output_dir, 'gateware', 'top.bin'), 'rb') as top_file:
+                top = top_file.read()
+                with open(os.path.join(output_dir, 'gateware', 'top-multiboot.bin'), 'wb') as top_multiboot_file:
+                    top_multiboot_file.write(multiboot_header)
+                    top_multiboot_file.write(top)
+        pad_file(os.path.join(output_dir, 'gateware', 'top.bin'), os.path.join(output_dir, 'gateware', 'top.bin'), 0x1a000)
+        pad_file(os.path.join(output_dir, 'gateware', 'top-multiboot.bin'), os.path.join(output_dir, 'gateware', 'top-multiboot.bin'), 0x1a000)
 
     lxsocdoc.generate_docs(soc, "build/documentation", note_pulses=True)
     lxsocdoc.generate_svd(soc, "build/software")
