@@ -13,6 +13,12 @@
 [submodule "deps/lxsocdoc"]
 	path = deps/lxsocdoc
 	url = https://github.com/xobs/lxsocdoc.git
-[submodule "deps/lxsocsupport"]
-	path = deps/lxsocsupport
-	url = https://github.com/xobs/lxsocsupport.git
+[submodule "deps/litex_boards"]
+	path = deps/litex_boards
+	url = https://github.com/litex-hub/litex-boards.git
+[submodule "deps/valentyusb"]
+	path = deps/valentyusb
+	url = https://github.com/im-tomu/valentyusb.git
+[submodule "deps/spibone"]
+	path = deps/spibone
+	url = https://github.com/xobs/spibone.git
