@@ -499,7 +499,7 @@ class BaseSoC(SoCCore):
         clk_freq = int(12e6)
         self.submodules.crg = _CRG(platform)
 
-        SoCCore.__init__(self, platform, clk_freq, integrated_sram_size=0, **kwargs)
+        SoCCore.__init__(self, platform, clk_freq, integrated_sram_size=0, with_uart=False, **kwargs)
 
         if debug is not None:
             if debug == "uart":
