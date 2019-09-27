@@ -105,6 +105,8 @@ _connectors = []
 class Platform(LatticePlatform):
     def __init__(self, revision=None, toolchain="icestorm"):
         self.revision = revision
+        self.gateware_size=0x20000
+        self.spiflash_total_size = 0x100000
         LatticePlatform.__init__(self, "ice40-up5k-sg48", _io, _connectors, toolchain="icestorm")
 
     def create_programmer(self):
@@ -475,7 +477,7 @@ class BaseSoC(SoCCore):
     }
 
     SoCCore.mem_map = {
-        "rom":      0x00000000,  # (default shadow @0x80000000)
+#        "rom":      0x00000000,  # (default shadow @0x80000000)
         "sram":     0x10000000,  # (default shadow @0xa0000000)
         "spiflash": 0x20000000,  # (default shadow @0xa0000000)
         "main_ram": 0x40000000,  # (default shadow @0xc0000000)
@@ -518,42 +520,21 @@ class BaseSoC(SoCCore):
         self.submodules.spram = up5kspram.Up5kSPRAM(size=spram_size)
         self.register_mem("sram", self.mem_map["sram"], self.spram.bus, spram_size)
 
-        if boot_source == "rand":
-            kwargs['cpu_reset_address']=0
-            bios_size = 0x2000
-            self.submodules.random_rom = RandomFirmwareROM(bios_size)
-            self.add_constant("ROM_DISABLE", 1)
-            self.register_rom(self.random_rom.bus, bios_size)
-        elif boot_source == "bios":
-            kwargs['cpu_reset_address'] = 0
-            if bios_file is None:
-                self.integrated_rom_size = bios_size = 0x2000
-                self.submodules.rom = wishbone.SRAM(bios_size, read_only=True, init=[])
-                self.register_rom(self.rom.bus, bios_size)
-            else:
-                bios_size = 0x2000
-                self.submodules.firmware_rom = FirmwareROM(bios_size, bios_file)
-                self.add_constant("ROM_DISABLE", 1)
-                self.register_rom(self.firmware_rom.bus, bios_size)
-
-        elif boot_source == "spi":
-            bios_size = 0x8000
-            kwargs['cpu_reset_address']=self.mem_map["spiflash"]+platform.gateware_size
-            self.add_memory_region("rom", kwargs['cpu_reset_address'], bios_size)
-            self.add_constant("ROM_DISABLE", 1)
-            self.flash_boot_address = self.mem_map["spiflash"]+platform.gateware_size+bios_size
-            self.add_memory_region("user_flash",
-                self.flash_boot_address,
-                # Leave a grace area- possible one-by-off bug in add_memory_region?
-                # Possible fix: addr < origin + length - 1
-                platform.spiflash_total_size - (self.flash_boot_address - self.mem_map["spiflash"]) - 0x100)
-        else:
-            raise ValueError("unrecognized boot_source: {}".format(boot_source))
+        bios_size = 0x8000
+        kwargs['cpu_reset_address']=self.mem_map["spiflash"]+platform.gateware_size
+#        self.add_memory_region("rom", kwargs['cpu_reset_address'], bios_size)
+#        self.add_constant("ROM_DISABLE", 1)
+        self.flash_boot_address = self.mem_map["spiflash"]+platform.gateware_size+bios_size
+#        self.add_memory_region("user_flash",
+#            self.flash_boot_address,
+            # Leave a grace area- possible one-by-off bug in add_memory_region?
+            # Possible fix: addr < origin + length - 1
+#            platform.spiflash_total_size - (self.flash_boot_address - self.mem_map["spiflash"]) - 0x100)
 
         # Add a simple bit-banged SPI Flash module
         spi_pads = platform.request("spiflash")
         self.submodules.picorvspi = PicoRVSpi(platform, spi_pads)
-        self.register_mem("spiflash", self.mem_map["spiflash"],
+        self.register_mem("rom", self.mem_map["spiflash"],
             self.picorvspi.bus, size=self.picorvspi.size)
 
         self.submodules.reboot = SBWarmBoot(self)
@@ -658,10 +639,6 @@ def main():
 
     parser = argparse.ArgumentParser(description="Build the Betrusted Embedded Controller")
     parser.add_argument(
-        "--boot-source", choices=["spi", "rand", "bios"], default="bios",
-        help="where to have the CPU obtain its executable code from"
-    )
-    parser.add_argument(
         "--bios", help="use specified file as a BIOS, rather than building one"
     )
     parser.add_argument(
@@ -716,9 +693,7 @@ def main():
         return 0
 
     compile_gateware = True
-    compile_software = False
-    if args.boot_source == "bios" and args.bios is None:
-        compile_software = True
+    compile_software = True
 
     if args.document_only:
         compile_gateware = False
@@ -736,7 +711,7 @@ def main():
     platform = Platform(revision=args.revision)
 
     soc = BaseSoC(platform, cpu_type=cpu_type, cpu_variant=cpu_variant,
-                            debug=args.with_debug, boot_source=args.boot_source,
+                            debug=args.with_debug,
                             bios_file=args.bios,
                             use_dsp=args.with_dsp, placer=args.placer,
                             pnr_seed=args.seed,
@@ -744,7 +719,7 @@ def main():
     builder = Builder(soc, output_dir=output_dir, csr_csv="test/csr.csv", compile_software=compile_software, compile_gateware=compile_gateware)
     if compile_software:
         builder.software_packages = [
-            ("bios", os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "sw")))
+            ("bios", os.path.abspath(os.path.join(os.path.dirname(__file__), "bios")))
         ]
     vns = builder.build()
     soc.do_exit(vns)
