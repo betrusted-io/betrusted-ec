@@ -3,7 +3,7 @@ BETRUSTED_EC_DIR=../..
 include $(BETRUSTED_EC_DIR)/software/include/generated/variables.mak
 include $(SOC_DIRECTORY)/software/common.mak
 
-OBJECTS=isr.o sdram.o main.o boot-helper-$(CPU).o boot.o
+OBJECTS=main.o isr.o boot-helper-$(CPU).o 
 
 # prepend our local files to override system ones
 CFLAGS := -I. $(CFLAGS) -fdata-sections -ffunction-sections
