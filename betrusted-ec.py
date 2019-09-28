@@ -258,9 +258,9 @@ class SBLED(Module, AutoCSR):
         )
 
 class SBWarmBoot(Module, AutoCSR):
-    def __init__(self, parent):
+    def __init__(self, parent, reset_vector=0):
         self.ctrl = CSRStorage(size=8)
-        self.addr = CSRStorage(size=32)
+        self.addr = CSRStorage(size=32, reset=reset_vector)
         do_reset = Signal()
         self.comb += [
             # "Reset Key" is 0xac (0b101011xx)
@@ -537,7 +537,7 @@ class BaseSoC(SoCCore):
         self.register_mem("spiflash", self.mem_map["spiflash"],
             self.picorvspi.bus, size=SPI_FLASH_SIZE)
 
-        self.submodules.reboot = SBWarmBoot(self)
+        self.submodules.reboot = SBWarmBoot(self, reset_vector=kwargs['cpu_reset_address'])
         if hasattr(self, "cpu"):
             self.cpu.cpu_params.update(
                 i_externalResetVector=self.reboot.addr.storage,
