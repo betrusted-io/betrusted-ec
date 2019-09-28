@@ -1,5 +1,5 @@
 INCLUDE generated/output_format.ld
-ENTRY(_start)
+ENTRY(main)
 
 INCLUDE generated/regions.ld
 

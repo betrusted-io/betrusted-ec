@@ -30,7 +30,7 @@
 int main(int i, char **c)
 {
   int j = 23;
-  rgb_raw_write(0x7);
+  rgb_raw_write(0x1);
   while(1) {
     messible_in_write(j);
     j++;
