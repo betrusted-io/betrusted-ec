@@ -18,6 +18,7 @@ from migen.fhdl.bitcontainer import bits_for
 from migen.fhdl.structure import ClockSignal, ResetSignal, Replicate, Cat
 
 from litex.build.lattice.platform import LatticePlatform
+from litex.build.sim.platform import SimPlatform
 from litex.build.generic_platform import Pins, IOStandard, Misc, Subsignal
 from litex.soc.cores import up5kspram
 from litex.soc.integration import SoCCore
@@ -104,11 +105,27 @@ _io = [
     ("wifi_sclk", 0, Pins("36"), IOStandard("LVCMOS18")),
     ("wifi_wirq", 0, Pins("31"), IOStandard("LVCMOS18")),
     ("wifi_wup", 0, Pins("38"), IOStandard("LVCMOS18")),
+
+    # Only used for simulation
+    ("wishbone", 0,
+        Subsignal("adr",   Pins(30)),
+        Subsignal("dat_r", Pins(32)),
+        Subsignal("dat_w", Pins(32)),
+        Subsignal("sel",   Pins(4)),
+        Subsignal("cyc",   Pins(1)),
+        Subsignal("stb",   Pins(1)),
+        Subsignal("ack",   Pins(1)),
+        Subsignal("we",    Pins(1)),
+        Subsignal("cti",   Pins(3)),
+        Subsignal("bte",   Pins(2)),
+        Subsignal("err",   Pins(1))
+    ),
+    ("clk12", 0, Pins(1), IOStandard("LVCMOS18")),
 ]
 
 _connectors = []
 
-class Platform(LatticePlatform):
+class BetrustedPlatform(LatticePlatform):
     def __init__(self, toolchain="icestorm", revision="evt"):
         self.revision = revision
         LatticePlatform.__init__(self, "ice40-up5k-sg48", _io, toolchain="icestorm")
@@ -116,40 +133,81 @@ class Platform(LatticePlatform):
     def create_programmer(self):
         raise ValueError("programming is not supported")
 
+    class _CRG(Module):
+        def __init__(self, platform):
+            clk12_raw = platform.request("clk12")
+            clk12 = Signal()
 
-class _CRG(Module):
-    def __init__(self, platform):
-        clk12_raw = platform.request("clk12")
-        clk12 = Signal()
+            reset_delay = Signal(12, reset=4095)
+            self.clock_domains.cd_por = ClockDomain()
+            self.reset = Signal()
 
-        reset_delay = Signal(12, reset=4095)
-        self.clock_domains.cd_por = ClockDomain()
-        self.reset = Signal()
+            self.clock_domains.cd_sys = ClockDomain()
 
-        self.clock_domains.cd_sys = ClockDomain()
+            platform.add_period_constraint(self.cd_sys.clk, 1e9/12e6)
 
-        platform.add_period_constraint(self.cd_sys.clk, 1e9/12e6)
+            # POR reset logic- POR generated from sys clk, POR logic feeds sys clk
+            # reset.
+            self.comb += [
+                self.cd_por.clk.eq(self.cd_sys.clk),
+                self.cd_sys.rst.eq(reset_delay != 0),
+            ]
 
-        # POR reset logic- POR generated from sys clk, POR logic feeds sys clk
-        # reset.
-        self.comb += [
-            self.cd_por.clk.eq(self.cd_sys.clk),
-            self.cd_sys.rst.eq(reset_delay != 0),
-        ]
-
-        self.specials += Instance(
-            "SB_GB",
-            i_USER_SIGNAL_TO_GLOBAL_BUFFER=clk12_raw,
-            o_GLOBAL_BUFFER_OUTPUT=clk12,
-        )
-
-        self.comb += self.cd_sys.clk.eq(clk12)
-
-        self.sync.por += \
-            If(reset_delay != 0,
-                reset_delay.eq(reset_delay - 1)
+            self.specials += Instance(
+                "SB_GB",
+                i_USER_SIGNAL_TO_GLOBAL_BUFFER=clk12_raw,
+                o_GLOBAL_BUFFER_OUTPUT=clk12,
             )
-        self.specials += AsyncResetSynchronizer(self.cd_por, self.reset)
+
+            self.comb += self.cd_sys.clk.eq(clk12)
+
+            self.sync.por += \
+                If(reset_delay != 0,
+                    reset_delay.eq(reset_delay - 1)
+                )
+            self.specials += AsyncResetSynchronizer(self.cd_por, self.reset)
+
+class CocotbPlatform(SimPlatform):
+    def __init__(self, toolchain="verilator"):
+        SimPlatform.__init__(self, "sim", _io, _connectors, toolchain="verilator")
+
+    def create_programmer(self):
+        raise ValueError("programming is not supported")
+
+    class _CRG(Module):
+        def __init__(self, platform):
+            clk = platform.request("clk12")
+            rst = platform.request("reset")
+
+            clk12 = Signal()
+
+            self.clock_domains.cd_sys = ClockDomain()
+            self.clock_domains.cd_usb_12 = ClockDomain()
+            self.clock_domains.cd_usb_48 = ClockDomain()
+            self.clock_domains.cd_usb_48_to_12 = ClockDomain()
+
+            clk48 = clk.clk48
+            self.comb += clk.clk12.eq(clk12)
+
+            self.comb += self.cd_usb_48.clk.eq(clk48)
+            self.comb += self.cd_usb_48_to_12.clk.eq(clk48)
+
+            clk12_counter = Signal(2)
+            self.sync.usb_48_to_12 += clk12_counter.eq(clk12_counter + 1)
+
+            self.comb += clk12.eq(clk12_counter[1])
+
+            self.comb += self.cd_sys.clk.eq(clk12)
+            self.comb += self.cd_usb_12.clk.eq(clk12)
+
+            self.comb += [
+                ResetSignal("sys").eq(rst),
+                ResetSignal("usb_12").eq(rst),
+                ResetSignal("usb_48").eq(rst),
+            ]
+
+
+
 
 boot_offset = 0x1000000
 bios_size = 0x8000
@@ -500,7 +558,7 @@ class BaseSoC(SoCCore):
 
     def __init__(self, platform,
                  use_dsp=False, placer="heap", output_dir="build",
-                 pnr_seed=0,
+                 pnr_seed=0, sim=False,
                  **kwargs):
         # Disable integrated RAM as we'll add it later
         self.integrated_sram_size = 0
@@ -508,7 +566,7 @@ class BaseSoC(SoCCore):
         self.output_dir = output_dir
 
         clk_freq = int(12e6)
-        self.submodules.crg = _CRG(platform)
+        self.submodules.crg = platform._CRG(platform)
 
         SoCCore.__init__(self, platform, clk_freq, integrated_sram_size=0, with_uart=False, **kwargs)
 
@@ -574,6 +632,14 @@ class BaseSoC(SoCCore):
 
         if placer is not None:
             platform.toolchain.nextpnr_build_template[1] += " --placer {}".format(placer)
+
+        if sim:
+            class _WishboneBridge(Module):
+                def __init__(self, interface):
+                    self.wishbone = interface
+            self.add_cpu(_WishboneBridge(self.platform.request("wishbone")))
+            self.add_wb_master(self.cpu.wishbone)
+
 
     def copy_memory_file(self, src):
         import os
@@ -658,6 +724,9 @@ def main():
         "--with-dsp", help="use dsp inference in yosys (not all yosys builds have -dsp)", action="store_true"
     )
     parser.add_argument(
+        "--sim", help="generate files for simulation", action="store_true"
+    )
+    parser.add_argument(
         "--no-cpu", help="disable cpu generation for debugging purposes", action="store_true"
     )
     parser.add_argument(
@@ -698,7 +767,7 @@ def main():
     compile_gateware = True
     compile_software = True
 
-    if args.document_only:
+    if args.document_only or args.sim:
         compile_gateware = False
         compile_software = False
 
@@ -706,18 +775,21 @@ def main():
     cpu_variant = "min"
     cpu_variant = cpu_variant + "+debug"
 
-    if args.no_cpu:
+    if args.no_cpu or args.sim:
         cpu_type = None
         cpu_variant = None
 
-    platform = Platform(revision=args.revision)
+    if args.sim:
+        platform = CocotbPlatform()
+    else:
+        platform = BetrustedPlatform(revision=args.revision)
 
     soc = BaseSoC(platform, cpu_type=cpu_type, cpu_variant=cpu_variant,
-                  use_dsp=args.with_dsp, placer=args.placer,
-                  pnr_seed=args.seed,
-                  output_dir=output_dir)
-    builder = Builder(soc, output_dir=output_dir, csr_csv="build/csr.csv", compile_software=compile_software,
-                      compile_gateware=compile_gateware)
+                            debug=args.with_debug, boot_source=args.boot_source,
+                            use_dsp=args.with_dsp, placer=args.placer,
+                            pnr_seed=args.seed, sim=args.sim,
+                            output_dir=output_dir)
+    builder = Builder(soc, output_dir=output_dir, csr_csv="build/csr.csv", compile_software=compile_software, compile_gateware=compile_gateware)
     # If we comile software, pull the code from somewhere other than
     # the built-in litex "bios" binary, which makes assumptions about
     # what peripherals are available.
@@ -739,7 +811,7 @@ def main():
 
     soc.do_exit(vns)
 
-    if not args.document_only:
+    if not args.document_only and not args.sim:
         make_multiboot_header(os.path.join(output_dir, "gateware", "multiboot-header.bin"), [
             160,
             160,
