@@ -207,48 +207,10 @@ class CocotbPlatform(SimPlatform):
             ]
 
 
-
-
-boot_offset = 0x1000000
-bios_size = 0x8000
-
-
-class RandomFirmwareROM(wishbone.SRAM):
-    """
-    Seed the random data with a fixed number, so different bitstreams
-    can all share firmware.
-    """
-    def __init__(self, size, seed=2373):
-        def xorshift32(x):
-            x = x ^ (x << 13) & 0xffffffff
-            x = x ^ (x >> 17) & 0xffffffff
-            x = x ^ (x << 5)  & 0xffffffff
-            return x & 0xffffffff
-
-        def get_rand(x):
-            out = 0
-            for i in range(32):
-                x = xorshift32(x)
-                if (x & 1) == 1:
-                    out = out | (1 << i)
-            return out & 0xffffffff
-        data = []
-        seed = 1
-        for d in range(int(size / 4)):
-            seed = get_rand(seed)
-            data.append(seed)
-        wishbone.SRAM.__init__(self, size, read_only=True, init=data)
-
-class FirmwareROM(wishbone.SRAM):
-    def __init__(self, size, filename):
-        data = []
-        with open(filename, 'rb') as inp:
-            data = inp.read()
-        wishbone.SRAM.__init__(self, size, read_only=True, init=data)
-
-
 class SBLED(Module, AutoCSR):
     def __init__(self, revision, pads):
+        bringup_debug = True   # used only for early bringup debugging, delete once Rust runtime is stable and we don't need a single-word write test of CPU execution
+
         rgba_pwm = Signal(3)
 
         self.dat = CSRStorage(8)
@@ -270,25 +232,36 @@ class SBLED(Module, AutoCSR):
                 If(self.ctrl.storage[5], rgba_pwm[2].eq(self.raw.storage[2])).Else(rgba_pwm[2].eq(ledd_value[2])),
             ]
 
-        self.specials += Instance("SB_RGBA_DRV",
-#            i_CURREN = self.ctrl.storage[1],
-#            i_RGBLEDEN = self.ctrl.storage[2],
-#            i_RGB0PWM = rgba_pwm[0],
-#            i_RGB1PWM = rgba_pwm[1],
-#            i_RGB2PWM = rgba_pwm[2],
-            i_CURREN = 1,
-            i_RGBLEDEN = 1,
-            i_RGB0PWM = self.raw.storage[0],
-            i_RGB1PWM = self.raw.storage[1],
-            i_RGB2PWM = self.raw.storage[2],
-            o_RGB0 = pads.rgb0,
-            o_RGB1 = pads.rgb1,
-            o_RGB2 = pads.rgb2,
-            p_CURRENT_MODE = "0b1",
-            p_RGB0_CURRENT = "0b000011",
-            p_RGB1_CURRENT = "0b000011",
-            p_RGB2_CURRENT = "0b000011",
-        )
+        if bringup_debug:
+            self.specials += Instance("SB_RGBA_DRV",
+                  i_CURREN=1,
+                  i_RGBLEDEN=1,
+                  i_RGB0PWM=self.raw.storage[0],
+                  i_RGB1PWM=self.raw.storage[1],
+                  i_RGB2PWM=self.raw.storage[2],
+                  o_RGB0=pads.rgb0,
+                  o_RGB1=pads.rgb1,
+                  o_RGB2=pads.rgb2,
+                  p_CURRENT_MODE="0b1",
+                  p_RGB0_CURRENT="0b000011",
+                  p_RGB1_CURRENT="0b000011",
+                  p_RGB2_CURRENT="0b000011",
+              )
+        else:
+            self.specials += Instance("SB_RGBA_DRV",
+                i_CURREN = self.ctrl.storage[1],
+                i_RGBLEDEN = self.ctrl.storage[2],
+                i_RGB0PWM = rgba_pwm[0],
+                i_RGB1PWM = rgba_pwm[1],
+                i_RGB2PWM = rgba_pwm[2],
+                o_RGB0 = pads.rgb0,
+                o_RGB1 = pads.rgb1,
+                o_RGB2 = pads.rgb2,
+                p_CURRENT_MODE = "0b1",
+                p_RGB0_CURRENT = "0b000011",
+                p_RGB1_CURRENT = "0b000011",
+                p_RGB2_CURRENT = "0b000011",
+            )
 
         self.specials += Instance("SB_LEDDA_IP",
             i_LEDDCS = self.dat.re,
@@ -560,8 +533,6 @@ class BaseSoC(SoCCore):
                  use_dsp=False, placer="heap", output_dir="build",
                  pnr_seed=0, sim=False,
                  **kwargs):
-        # Disable integrated RAM as we'll add it later
-        self.integrated_sram_size = 0
 
         self.output_dir = output_dir
 
@@ -584,9 +555,7 @@ class BaseSoC(SoCCore):
         self.submodules.spram = up5kspram.Up5kSPRAM(size=spram_size)
         self.register_mem("sram", self.mem_map["sram"], self.spram.bus, spram_size)
 
-        bios_size = 0x8000
         kwargs['cpu_reset_address']=self.mem_map["spiflash"]+GATEWARE_SIZE
-        self.flash_boot_address = self.mem_map["spiflash"]+bios_size+GATEWARE_SIZE
         self.add_memory_region("rom", 0, 0) # Required to keep litex happy
 
         # Add a simple bit-banged SPI Flash module
@@ -607,11 +576,16 @@ class BaseSoC(SoCCore):
         self.submodules.i2c = RtlI2C(platform, platform.request("i2c", 0))
         self.add_interrupt("i2c")
 
-        self.comb += platform.request("fpga_dis", 0).eq(0)
-
+        # Messible for debug
         self.submodules.messible = Messible()
-
+        # RGB for debug
         self.submodules.rgb = SBLED(platform.revision, platform.request("led"))
+
+        # Betrusted GPIO platform signals
+        self.comb += platform.request("fpga_dis", 0).eq(0)
+        # more to come
+
+        #### Platform config & build below
 
         # Add "-relut -dffe_min_ce_use 4" to the synth_ice40 command.
         # The "-reult" adds an additional LUT pass to pack more stuff in,
@@ -706,6 +680,16 @@ def pad_file(pad_src, pad_dest, length):
             output.write(b.read())
         output.truncate(length)
 
+def merge_file(bios, gateware, dest):
+    with open(dest, "wb") as output:
+        count = 0
+        with open(gateware, "rb") as gw:
+            count = count + output.write(gw.read())
+        with open(bios, "rb") as b:
+            b.seek(count)
+            output.write(b.read())
+
+
 
 def main():
     if os.environ['PYTHONHASHSEED'] != "1":
@@ -735,34 +719,9 @@ def main():
     parser.add_argument(
         "--seed", default=0, help="seed to use in nextpnr"
     )
-    parser.add_argument(
-        "--export-random-rom-file", help="Generate a random ROM file and save it to a file"
-    )
     args = parser.parse_args()
 
     output_dir = 'build'
-
-    if args.export_random_rom_file is not None:
-        size = 0x2000
-        def xorshift32(x):
-            x = x ^ (x << 13) & 0xffffffff
-            x = x ^ (x >> 17) & 0xffffffff
-            x = x ^ (x << 5)  & 0xffffffff
-            return x & 0xffffffff
-
-        def get_rand(x):
-            out = 0
-            for i in range(32):
-                x = xorshift32(x)
-                if (x & 1) == 1:
-                    out = out | (1 << i)
-            return out & 0xffffffff
-        seed = 1
-        with open(args.export_random_rom_file, "w", newline="\n") as output:
-            for d in range(int(size / 4)):
-                seed = get_rand(seed)
-                print("{:08x}".format(seed), file=output)
-        return 0
 
     compile_gateware = True
     compile_software = True
@@ -785,12 +744,11 @@ def main():
         platform = BetrustedPlatform(revision=args.revision)
 
     soc = BaseSoC(platform, cpu_type=cpu_type, cpu_variant=cpu_variant,
-                            debug=args.with_debug, boot_source=args.boot_source,
                             use_dsp=args.with_dsp, placer=args.placer,
                             pnr_seed=args.seed, sim=args.sim,
                             output_dir=output_dir)
     builder = Builder(soc, output_dir=output_dir, csr_csv="build/csr.csv", compile_software=compile_software, compile_gateware=compile_gateware)
-    # If we comile software, pull the code from somewhere other than
+    # If we compile software, pull the code from somewhere other than
     # the built-in litex "bios" binary, which makes assumptions about
     # what peripherals are available.
     if compile_software:
@@ -802,12 +760,6 @@ def main():
         vns = builder.build()
     except OSError:
         exit(1)
-
-#            args.seed = str(int(args.seed) + 1)
-#            print("Timing may have failed. Setting seed to " + str(args.seed) + " and trying build again.\n")
-#            platform.toolchain.nextpnr_build_template[1] = 'nextpnr-ice40 {pnr_pkg_opts} --pcf {build_name}.pcf --json {build_name}.json --asc {build_name}.txt --pre-pack {build_name}_pre_pack.py'
-#            platform.toolchain.nextpnr_build_template[1] += " --seed " + str(args.seed)
-#            platform.toolchain.nextpnr_build_template[1] += ' --placer heap'
 
     soc.do_exit(vns)
 
@@ -829,6 +781,7 @@ def main():
                     top_multiboot_file.write(top)
         pad_file(os.path.join(output_dir, 'gateware', 'top.bin'), os.path.join(output_dir, 'gateware', 'top_pad.bin'), 0x1a000)
         pad_file(os.path.join(output_dir, 'gateware', 'top-multiboot.bin'), os.path.join(output_dir, 'gateware', 'top-multiboot_pad.bin'), 0x1a000)
+        merge_file(os.path.join(output_dir, 'software', 'bios', 'bios.bin'), os.path.join(output_dir, 'gateware', 'top_pad.bin'), os.path.join(output_dir, 'gateware', 'bt-ec.bin'))
 
     lxsocdoc.generate_docs(soc, "build/documentation", note_pulses=True)
     lxsocdoc.generate_svd(soc, "build/software")
