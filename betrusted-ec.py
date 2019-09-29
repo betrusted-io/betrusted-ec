@@ -27,6 +27,7 @@ from litex.soc.interconnect import wishbone
 from litex.soc.interconnect.csr import AutoCSR, CSRStatus, CSRStorage
 
 from rtl.rtl_i2c import RtlI2C
+from rtl.messible import Messible
 
 import lxsocdoc
 
@@ -109,6 +110,7 @@ _connectors = []
 
 class Platform(LatticePlatform):
     def __init__(self, toolchain="icestorm", revision="evt"):
+        self.revision = revision
         LatticePlatform.__init__(self, "ice40-up5k-sg48", _io, toolchain="icestorm")
 
     def create_programmer(self):
@@ -186,6 +188,7 @@ class FirmwareROM(wishbone.SRAM):
             data = inp.read()
         wishbone.SRAM.__init__(self, size, read_only=True, init=data)
 
+
 class SBLED(Module, AutoCSR):
     def __init__(self, revision, pads):
         rgba_pwm = Signal(3)
@@ -196,18 +199,30 @@ class SBLED(Module, AutoCSR):
         self.raw = CSRStorage(3)
 
         ledd_value = Signal(3)
-        self.comb += [
-            If(self.ctrl.storage[3], rgba_pwm[0].eq(self.raw.storage[0])).Else(rgba_pwm[0].eq(ledd_value[0])),
-            If(self.ctrl.storage[4], rgba_pwm[1].eq(self.raw.storage[1])).Else(rgba_pwm[1].eq(ledd_value[1])),
-            If(self.ctrl.storage[5], rgba_pwm[2].eq(self.raw.storage[2])).Else(rgba_pwm[2].eq(ledd_value[2])),
-        ]
+        if revision == "pvt" or revision == "evt" or revision == "dvt":
+            self.comb += [
+                If(self.ctrl.storage[3], rgba_pwm[1].eq(self.raw.storage[0])).Else(rgba_pwm[1].eq(ledd_value[0])),
+                If(self.ctrl.storage[4], rgba_pwm[0].eq(self.raw.storage[1])).Else(rgba_pwm[0].eq(ledd_value[1])),
+                If(self.ctrl.storage[5], rgba_pwm[2].eq(self.raw.storage[2])).Else(rgba_pwm[2].eq(ledd_value[2])),
+            ]
+        else:
+            self.comb += [
+                If(self.ctrl.storage[3], rgba_pwm[0].eq(self.raw.storage[0])).Else(rgba_pwm[0].eq(ledd_value[0])),
+                If(self.ctrl.storage[4], rgba_pwm[1].eq(self.raw.storage[1])).Else(rgba_pwm[1].eq(ledd_value[1])),
+                If(self.ctrl.storage[5], rgba_pwm[2].eq(self.raw.storage[2])).Else(rgba_pwm[2].eq(ledd_value[2])),
+            ]
 
         self.specials += Instance("SB_RGBA_DRV",
-            i_CURREN = self.ctrl.storage[1],
-            i_RGBLEDEN = self.ctrl.storage[2],
-            i_RGB0PWM = rgba_pwm[0],
-            i_RGB1PWM = rgba_pwm[1],
-            i_RGB2PWM = rgba_pwm[2],
+#            i_CURREN = self.ctrl.storage[1],
+#            i_RGBLEDEN = self.ctrl.storage[2],
+#            i_RGB0PWM = rgba_pwm[0],
+#            i_RGB1PWM = rgba_pwm[1],
+#            i_RGB2PWM = rgba_pwm[2],
+            i_CURREN = 1,
+            i_RGBLEDEN = 1,
+            i_RGB0PWM = self.raw.storage[0],
+            i_RGB1PWM = self.raw.storage[1],
+            i_RGB2PWM = self.raw.storage[2],
             o_RGB0 = pads.rgb0,
             o_RGB1 = pads.rgb1,
             o_RGB2 = pads.rgb2,
@@ -242,11 +257,10 @@ class SBLED(Module, AutoCSR):
             o_LEDDON = Signal(),
         )
 
-
 class SBWarmBoot(Module, AutoCSR):
-    def __init__(self, parent):
+    def __init__(self, parent, reset_vector=0):
         self.ctrl = CSRStorage(size=8)
-        self.addr = CSRStorage(size=32)
+        self.addr = CSRStorage(size=32, reset=reset_vector)
         do_reset = Signal()
         self.comb += [
             # "Reset Key" is 0xac (0b101011xx)
@@ -467,14 +481,13 @@ class Version(Module, AutoCSR):
 class BaseSoC(SoCCore):
     SoCCore.csr_map = {
         "ctrl":           0,  # provided by default (optional)
-        "crg":            1,  # user
-        "uart_phy":       2,  # provided by default (optional)
-        "uart":           3,  # provided by default (optional)
-        "identifier_mem": 4,  # provided by default (optional)
         "timer0":         5,  # provided by default (optional)
         "cpu_or_bridge":  8,
+        "i2c":            9,
         "picorvspi":      10,
+        "messible":       11,
         "reboot":         12,
+        "rgb":            13,
         "version":        14,
     }
 
@@ -482,12 +495,10 @@ class BaseSoC(SoCCore):
         "rom":      0x00000000,  # (default shadow @0x80000000)
         "sram":     0x10000000,  # (default shadow @0xa0000000)
         "spiflash": 0x20000000,  # (default shadow @0xa0000000)
-        "main_ram": 0x40000000,  # (default shadow @0xc0000000)
         "csr":      0x60000000,  # (default shadow @0xe0000000)
     }
 
-    def __init__(self, platform, boot_source="spi",
-                 debug=None, bios_file=None,
+    def __init__(self, platform,
                  use_dsp=False, placer="heap", output_dir="build",
                  pnr_seed=0,
                  **kwargs):
@@ -501,18 +512,13 @@ class BaseSoC(SoCCore):
 
         SoCCore.__init__(self, platform, clk_freq, integrated_sram_size=0, with_uart=False, **kwargs)
 
-        if debug is not None and debug != "none":
-            if debug == "uart":
-                from litex.soc.cores.uart import UARTWishboneBridge
-                self.submodules.uart_bridge = UARTWishboneBridge(platform.request("serial"), clk_freq, baudrate=115200)
-                self.add_wb_master(self.uart_bridge.wishbone)
-            if hasattr(self, "cpu"):
-                self.cpu.use_external_variant("rtl/VexRiscv_Fomu_Debug.v")
-                os.path.join(output_dir, "gateware")
-                self.register_mem("vexriscv_debug", 0xf00f0000, self.cpu.debug_bus, 0x100)
-        else:
-            if hasattr(self, "cpu"):
-                self.cpu.use_external_variant("rtl/VexRiscv_Fomu.v")
+        from litex.soc.cores.uart import UARTWishboneBridge
+        self.submodules.uart_bridge = UARTWishboneBridge(platform.request("serial"), clk_freq, baudrate=115200)
+        self.add_wb_master(self.uart_bridge.wishbone)
+        if hasattr(self, "cpu"):
+            self.cpu.use_external_variant("rtl/VexRiscv_Fomu_Debug.v")
+            os.path.join(output_dir, "gateware")
+            self.register_mem("vexriscv_debug", 0xf00f0000, self.cpu.debug_bus, 0x100)
 
         # SPRAM- UP5K has single port RAM, might as well use it as SRAM to
         # free up scarce block RAM.
@@ -520,31 +526,10 @@ class BaseSoC(SoCCore):
         self.submodules.spram = up5kspram.Up5kSPRAM(size=spram_size)
         self.register_mem("sram", self.mem_map["sram"], self.spram.bus, spram_size)
 
-        if boot_source == "rand":
-            kwargs['cpu_reset_address']=0
-            bios_size = 0x2000
-            self.submodules.random_rom = RandomFirmwareROM(bios_size)
-            self.add_constant("ROM_DISABLE", 1)
-            self.register_rom(self.random_rom.bus, bios_size)
-        elif boot_source == "bios":
-            kwargs['cpu_reset_address'] = 0
-            if bios_file is None:
-                self.integrated_rom_size = bios_size = 0x2000
-                self.submodules.rom = wishbone.SRAM(bios_size, read_only=True, init=[])
-                self.register_rom(self.rom.bus, bios_size)
-            else:
-                bios_size = 0x2000
-                self.submodules.firmware_rom = FirmwareROM(bios_size, bios_file)
-                self.add_constant("ROM_DISABLE", 1)
-                self.register_rom(self.firmware_rom.bus, bios_size)
-
-        elif boot_source == "spi":
-            bios_size = 0x8000
-            kwargs['cpu_reset_address']=self.mem_map["spiflash"]+GATEWARE_SIZE
-            self.flash_boot_address = self.mem_map["spiflash"]+GATEWARE_SIZE+bios_size
-            self.add_memory_region("rom", 0, 0) # Required to keep litex happy
-        else:
-            raise ValueError("unrecognized boot_source: {}".format(boot_source))
+        bios_size = 0x8000
+        kwargs['cpu_reset_address']=self.mem_map["spiflash"]+GATEWARE_SIZE
+        self.flash_boot_address = self.mem_map["spiflash"]+bios_size+GATEWARE_SIZE
+        self.add_memory_region("rom", 0, 0) # Required to keep litex happy
 
         # Add a simple bit-banged SPI Flash module
         spi_pads = platform.request("spiflash")
@@ -552,20 +537,23 @@ class BaseSoC(SoCCore):
         self.register_mem("spiflash", self.mem_map["spiflash"],
             self.picorvspi.bus, size=SPI_FLASH_SIZE)
 
-        self.submodules.reboot = SBWarmBoot(self)
+        self.submodules.reboot = SBWarmBoot(self, reset_vector=kwargs['cpu_reset_address'])
         if hasattr(self, "cpu"):
             self.cpu.cpu_params.update(
                 i_externalResetVector=self.reboot.addr.storage,
             )
 
-        # self.submodules.version = Version(platform.revision)
+        self.submodules.version = Version(platform.revision)
 
         # add I2C interface
         self.submodules.i2c = RtlI2C(platform, platform.request("i2c", 0))
-        self.add_csr("i2c")
         self.add_interrupt("i2c")
 
         self.comb += platform.request("fpga_dis", 0).eq(0)
+
+        self.submodules.messible = Messible()
+
+        self.submodules.rgb = SBLED(platform.revision, platform.request("led"))
 
         # Add "-relut -dffe_min_ce_use 4" to the synth_ice40 command.
         # The "-reult" adds an additional LUT pass to pack more stuff in,
@@ -660,13 +648,6 @@ def main():
 
     parser = argparse.ArgumentParser(description="Build the Betrusted Embedded Controller")
     parser.add_argument(
-        "--boot-source", choices=["spi", "rand", "bios"], default="spi",
-        help="where to have the CPU obtain its executable code from"
-    )
-    parser.add_argument(
-        "--with-debug", help="enable debug support", choices=["usb", "uart", "none"], default="uart",
-    )
-    parser.add_argument(
         "--revision", choices=["evt"], default="evt",
         help="build EC for a particular hardware revision"
     )
@@ -715,7 +696,7 @@ def main():
         return 0
 
     compile_gateware = True
-    compile_software = False
+    compile_software = True
 
     if args.document_only:
         compile_gateware = False
@@ -723,8 +704,7 @@ def main():
 
     cpu_type = "vexriscv"
     cpu_variant = "min"
-    if args.with_debug and args.with_debug is not "none":
-        cpu_variant = cpu_variant + "+debug"
+    cpu_variant = cpu_variant + "+debug"
 
     if args.no_cpu:
         cpu_type = None
@@ -733,11 +713,11 @@ def main():
     platform = Platform(revision=args.revision)
 
     soc = BaseSoC(platform, cpu_type=cpu_type, cpu_variant=cpu_variant,
-                            debug=args.with_debug, boot_source=args.boot_source,
-                            use_dsp=args.with_dsp, placer=args.placer,
-                            pnr_seed=args.seed,
-                            output_dir=output_dir)
-    builder = Builder(soc, output_dir=output_dir, csr_csv="build/csr.csv", compile_software=compile_software, compile_gateware=compile_gateware)
+                  use_dsp=args.with_dsp, placer=args.placer,
+                  pnr_seed=args.seed,
+                  output_dir=output_dir)
+    builder = Builder(soc, output_dir=output_dir, csr_csv="build/csr.csv", compile_software=compile_software,
+                      compile_gateware=compile_gateware)
     # If we comile software, pull the code from somewhere other than
     # the built-in litex "bios" binary, which makes assumptions about
     # what peripherals are available.
@@ -745,7 +725,18 @@ def main():
         builder.software_packages = [
             ("bios", os.path.abspath(os.path.join(os.path.dirname(__file__), "bios")))
         ]
-    vns = builder.build()
+
+    try:
+        vns = builder.build()
+    except OSError:
+        exit(1)
+
+#            args.seed = str(int(args.seed) + 1)
+#            print("Timing may have failed. Setting seed to " + str(args.seed) + " and trying build again.\n")
+#            platform.toolchain.nextpnr_build_template[1] = 'nextpnr-ice40 {pnr_pkg_opts} --pcf {build_name}.pcf --json {build_name}.json --asc {build_name}.txt --pre-pack {build_name}_pre_pack.py'
+#            platform.toolchain.nextpnr_build_template[1] += " --seed " + str(args.seed)
+#            platform.toolchain.nextpnr_build_template[1] += ' --placer heap'
+
     soc.do_exit(vns)
 
     if not args.document_only:
@@ -764,8 +755,8 @@ def main():
                 with open(os.path.join(output_dir, 'gateware', 'top-multiboot.bin'), 'wb') as top_multiboot_file:
                     top_multiboot_file.write(multiboot_header)
                     top_multiboot_file.write(top)
-        pad_file(os.path.join(output_dir, 'gateware', 'top.bin'), os.path.join(output_dir, 'gateware', 'top.bin'), 0x1a000)
-        pad_file(os.path.join(output_dir, 'gateware', 'top-multiboot.bin'), os.path.join(output_dir, 'gateware', 'top-multiboot.bin'), 0x1a000)
+        pad_file(os.path.join(output_dir, 'gateware', 'top.bin'), os.path.join(output_dir, 'gateware', 'top_pad.bin'), 0x1a000)
+        pad_file(os.path.join(output_dir, 'gateware', 'top-multiboot.bin'), os.path.join(output_dir, 'gateware', 'top-multiboot_pad.bin'), 0x1a000)
 
     lxsocdoc.generate_docs(soc, "build/documentation", note_pulses=True)
     lxsocdoc.generate_svd(soc, "build/software")

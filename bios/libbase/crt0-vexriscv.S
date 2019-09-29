@@ -2,6 +2,9 @@
 .global isr
 .global _start
 
+.equ RGB_RAW_ADDR, 0xe000680c
+.equ RGB_VAL, 1
+	
 _start:
   j crt_init
   nop
@@ -54,6 +57,9 @@ trap_entry:
 
 
 crt_init:
+//  li a0, RGB_VAL
+//  li a1, RGB_RAW_ADDR	
+//  sw a0, 0(a1)
   la sp, _fstack + 4
   la a0, trap_entry
   csrw mtvec, a0
