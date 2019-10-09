@@ -21,10 +21,6 @@ class RtlI2C(Module, AutoCSR, AutoDoc):
             self.sda.get_tristate(pads.sda),
         ]
 
-        self.submodules.ev = EventManager()
-        self.ev.i2c_int = EventSourcePulse()  # rising edge triggered
-        self.ev.finalize()
-
         platform.add_source(os.path.join("rtl", "timescale.v"))
         platform.add_source(os.path.join("rtl", "i2c_master_defines.v"))
         platform.add_source(os.path.join("rtl", "i2c_master_bit_ctrl.v"))
@@ -61,6 +57,10 @@ class RtlI2C(Module, AutoCSR, AutoDoc):
             CSRField("Busy", description="I2C block is busy processing the latest command"),
             CSRField("RxACK", description="Received acknowledge from slave. 1 = no ack received, 0 = ack received"),
         ])
+
+        self.submodules.ev = EventManager()
+        self.ev.i2c_int = EventSourcePulse()  # rising edge triggered
+        self.ev.finalize()
 
         # control register
         ena = Signal()
