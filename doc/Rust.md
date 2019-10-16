@@ -48,3 +48,28 @@ You are now ready to use the crate.
 ```rust
     let mut peripherals = betrusted_pac::Peripherals::take().unwrap();
 ```
+
+## Notes
+
+Upon recompiling the gateware, the PAC needs to be regenreated by runnig the following in betrusted-pac:
+
+1. Generate `lib.rs`, which contains the entirety of the PAC in one file: `svd2rust --target riscv -i ../../build/software/soc.svd`
+2. Expand the resulting `lib.rs` into component files: `rm -rf src; form -i lib.rs -o src/; rm lib.rs`
+
+To build the binary image, do `cargo build` anywhere in the betrusted-rust Rust build subdirectory.
+
+The resulting ELF is located in betrusted-rust/target/riscv32i-unknown-none-elf/debug/betrusted-ec
+
+You can inspect this with riscv64-unknown-elf-gdb, and run commands like `disassemble main` and `x _start` to confirm things
+like the boot address and the correct compilation of the code.
+
+There is a script that can copy the ELF to a bin and merge it with the gateware located in bin/rust-rom.sh. This puts
+a flashable binary file in /tmp/bt-ec.bin, which can be written to the ROM using fomu-flash on the host Raspberry Pi.
+
+You can find docs on how to use the SVD API at https://docs.rs/svd2rust/0.16.1/svd2rust/#peripheral-api
+
+You can build local docs on the gateware's API by going to betrusted-pac and running `cargo doc` and then `cargo doc --open`
+
+`rustup doc` will pull up offline documentation about Rust.
+
+To start visual studio code, just run `code .` in the betrusted-rust subdirectory.
