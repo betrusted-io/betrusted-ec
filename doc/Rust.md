@@ -28,9 +28,9 @@ To set up your system for Rust development, perform the following steps.  Note t
 
 Create a Cargo crate by starting from the build template:
 
-cargo generate --git https://github.com/betrusted-io/betrusted-rs-quickstart.git
-
-Chang
+```sh
+$ cargo generate --git https://github.com/betrusted-io/betrusted-rs-quickstart.git
+```
 
 At this point, you're ready to generate the Peripheral Access Crate.
 
