@@ -167,6 +167,25 @@ class BetrustedPlatform(LatticePlatform):
                 )
             self.specials += AsyncResetSynchronizer(self.cd_por, self.reset)
 
+            # generate a >1us-wide pulse once every second based on clk12 for display extcomm signal
+            # count down from 12e6 to 0 so that first extcomm pulse comes after lcd_disp is high
+            extcomm = platform.request("extcommin", 0)
+            extcomm_div = Signal(24, reset=int(12e6))
+            self.sync += [
+                If(extcomm_div == 0,
+                   extcomm_div.eq(int(12e6))
+                ).Else(
+                   extcomm_div.eq(extcomm_div - 1)
+                ),
+
+                If(extcomm_div < 13,
+                   extcomm.eq(1)
+                ).Else(
+                   extcomm.eq(0)
+                )
+            ]
+            self.comb += platform.request("lcd_disp", 0).eq(1)  # force display on for now
+
 class CocotbPlatform(SimPlatform):
     def __init__(self, toolchain="verilator"):
         SimPlatform.__init__(self, "sim", _io, _connectors, toolchain="verilator")
@@ -182,28 +201,12 @@ class CocotbPlatform(SimPlatform):
             clk12 = Signal()
 
             self.clock_domains.cd_sys = ClockDomain()
-            self.clock_domains.cd_usb_12 = ClockDomain()
-            self.clock_domains.cd_usb_48 = ClockDomain()
-            self.clock_domains.cd_usb_48_to_12 = ClockDomain()
 
-            clk48 = clk.clk48
             self.comb += clk.clk12.eq(clk12)
-
-            self.comb += self.cd_usb_48.clk.eq(clk48)
-            self.comb += self.cd_usb_48_to_12.clk.eq(clk48)
-
-            clk12_counter = Signal(2)
-            self.sync.usb_48_to_12 += clk12_counter.eq(clk12_counter + 1)
-
-            self.comb += clk12.eq(clk12_counter[1])
-
             self.comb += self.cd_sys.clk.eq(clk12)
-            self.comb += self.cd_usb_12.clk.eq(clk12)
 
             self.comb += [
                 ResetSignal("sys").eq(rst),
-                ResetSignal("usb_12").eq(rst),
-                ResetSignal("usb_48").eq(rst),
             ]
 
 

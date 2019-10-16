@@ -5,10 +5,15 @@ from migen import *
 from litex.soc.interconnect.csr import *
 from migen.genlib.cdc import MultiReg
 from litex.soc.interconnect.csr_eventmanager import *
+from litex.soc.integration.doc import AutoDoc, ModuleDoc
 
 
-class RtlI2C(Module, AutoCSR):
+class RtlI2C(Module, AutoCSR, AutoDoc):
+    """Verilog RTL-based Portable I2C Core"""
     def __init__(self, platform, pads):
+        self.intro = ModuleDoc("""RtlI2C: A verilog RTL-based I2C core
+        RtlI2C is an RTL-based I2C core derived from the OpenCores I2C master IP. 
+        """)
         self.sda = TSTriple(1)
         self.scl = TSTriple(1)
         self.specials += [
@@ -16,28 +21,53 @@ class RtlI2C(Module, AutoCSR):
             self.sda.get_tristate(pads.sda),
         ]
 
-        self.submodules.ev = EventManager()
-        self.ev.i2c_int = EventSourcePulse()  # rising edge triggered
-        self.ev.finalize()
-
         platform.add_source(os.path.join("rtl", "timescale.v"))
         platform.add_source(os.path.join("rtl", "i2c_master_defines.v"))
         platform.add_source(os.path.join("rtl", "i2c_master_bit_ctrl.v"))
         platform.add_source(os.path.join("rtl", "i2c_master_byte_ctrl.v"))
 
-        self.prescale = CSRStorage(16, reset=0xFFFF)
-        self.control = CSRStorage(8)
-        self.txr = CSRStorage(8)  # output to devices
-        self.rxr = CSRStatus(8)   # input from devices
-        self.command = CSRStorage(8, write_from_dev=True)
-        self.status = CSRStatus(8)
+        self.prescale = CSRStorage(16, reset=0xFFFF, name="prescale", description="""
+        Prescaler value. Set to (module clock / (5 * I2C freq) - 1). Example: if module clock
+        is equal to sysclk; syclk is 100MHz; and I2C freq is 100kHz, then prescaler 
+        is (100MHz / (5 * 100kHz) - 1) = 199. Reset value: 0xFFFF""")
+        self.control = CSRStorage(fields=[
+            CSRField("Resvd", size=6, description="Reserved (for cross-compatibility with OpenCores drivers)"),
+            CSRField("IEN", description="When set to `1`, interrupts are enabled."),
+            CSRField("EN", description="When set to `1`, the core is enabled."),
+        ])
+        self.txr = CSRStorage(8, name="txr", description="""
+        Next byte to transmit to slave devices. LSB indicates R/W during address phases, 
+        `1` for reading from slaves, `0` for writing to slaves""")
+        self.rxr = CSRStatus(8, name="rxr", description="""
+        Data being read from slaved devices""")
+        self.command = CSRStorage(write_from_dev=True, fields=[
+            CSRField("IACK", description="Interrupt acknowledge; when set, clears a pending interrupt"),
+            CSRField("Resvd", size=2, description="reserved for cross-compatibility with OpenCores drivers"),
+            CSRField("ACK", description="when a receiver, sent ack (`ACK=0`) or nack (`ACK=1`)"),
+            CSRField("WR", description="write to slave"),
+            CSRField("RD", description="read from slave"),
+            CSRField("STO", description="generate stop condition"),
+            CSRField("STA", description="generate (repeated) start condition"),
+        ])
+        self.status = CSRStatus(8, fields=[
+            CSRField("IF", description="Interrupt flag, This bit is set when an interrupt is pending, which will cause a processor interrupt request if the IEN bit is set. The Interrupt Flag is set upon the completion of one byte of data transfer."),
+            CSRField("TIP", description="transfer in progress"),
+            CSRField("Resvd", size=3, description="reserved for cross-compatibility with OpenCores drivers"),
+            CSRField("ArbLost", description="Set when arbitration for the bus is lost"),
+            CSRField("Busy", description="I2C block is busy processing the latest command"),
+            CSRField("RxACK", description="Received acknowledge from slave. 1 = no ack received, 0 = ack received"),
+        ])
+
+        self.submodules.ev = EventManager()
+        self.ev.i2c_int = EventSourcePulse()  # rising edge triggered
+        self.ev.finalize()
 
         # control register
         ena = Signal()
         int_ena = Signal()
         self.comb += [
-            ena.eq(self.control.storage[7]),
-            int_ena.eq(self.control.storage[6]),
+            ena.eq(self.control.fields.EN),
+            int_ena.eq(self.control.fields.IEN),
         ]
 
         # command register
@@ -48,12 +78,12 @@ class RtlI2C(Module, AutoCSR):
         read = Signal()
         write = Signal()
         self.comb += [
-            start.eq(self.command.storage[7]),
-            stop.eq(self.command.storage[6]),
-            read.eq(self.command.storage[5]),
-            write.eq(self.command.storage[4]),
-            ack.eq(self.command.storage[3]),
-            iack.eq(self.command.storage[0]),
+            start.eq(self.command.fields.STA),
+            stop.eq(self.command.fields.STO),
+            read.eq(self.command.fields.RD),
+            write.eq(self.command.fields.WR),
+            ack.eq(self.command.fields.ACK),
+            iack.eq(self.command.fields.IACK),
         ],
 
         # status register
@@ -63,11 +93,11 @@ class RtlI2C(Module, AutoCSR):
         tip = Signal()
         intflag = Signal()
         self.comb += [
-            self.status.status[7].eq(rxack),
-            self.status.status[6].eq(busy),
-            self.status.status[5].eq(arb_lost),
-            self.status.status[1].eq(tip),
-            self.status.status[0].eq(intflag)
+            self.status.fields.RxACK.eq(rxack),
+            self.status.fields.Busy.eq(busy),
+            self.status.fields.ArbLost.eq(arb_lost),
+            self.status.fields.TIP.eq(tip),
+            self.status.fields.IF.eq(intflag)
         ]
 
 
