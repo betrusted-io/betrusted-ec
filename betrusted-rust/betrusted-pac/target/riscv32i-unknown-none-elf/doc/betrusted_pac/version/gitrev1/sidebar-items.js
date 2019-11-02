@@ -1,0 +1,1 @@
+initSidebarItems({"type":[["R","Reader of register GITREV1"],["W","Writer for register GITREV1"]]});

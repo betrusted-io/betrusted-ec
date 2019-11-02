@@ -1,0 +1,1 @@
+initSidebarItems({"type":[["R","Reader of register REVISION"],["W","Writer for register REVISION"]]});

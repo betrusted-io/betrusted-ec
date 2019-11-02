@@ -1,0 +1,12 @@
+[package]
+name = "betrusted-pac"
+authors = ["bunnie <bunnie@kosagi.com>"]
+description = "Peripheral Access Crate for Betrusted"
+license = "Apache"
+version = "0.0.1"
+
+[dependencies]
+bare-metal = "0.2.0"
+riscv = { git = "https://github.com/betrusted-io/riscv.git", tag = "v0.5.5" }
+riscv-rt = { git = "https://github.com/betrusted-io/riscv-rt.git", tag = "v0.6.2" }
+vcell = "0.1.0"

@@ -1,0 +1,1 @@
+initSidebarItems({"fn":[["read","Reads the CSR"]],"struct":[["Mip","mip register"]]});

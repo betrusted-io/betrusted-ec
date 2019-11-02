@@ -1,0 +1,1 @@
+initSidebarItems({"type":[["R","Reader of register EV_ENABLE"],["W","Writer for register EV_ENABLE"]]});
