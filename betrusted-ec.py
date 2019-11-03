@@ -21,14 +21,14 @@ from litex.build.lattice.platform import LatticePlatform
 from litex.build.sim.platform import SimPlatform
 from litex.build.generic_platform import Pins, IOStandard, Misc, Subsignal
 from litex.soc.cores import up5kspram
-from litex.soc.integration import SoCCore
+from litex.soc.integration.soc_core import SoCCore
 from litex.soc.integration.builder import Builder
-from litex.soc.integration.soc_core import csr_map_update
 from litex.soc.interconnect import wishbone
 from litex.soc.interconnect.csr import AutoCSR, CSRStatus, CSRStorage
 
 from rtl.rtl_i2c import RtlI2C
 from rtl.messible import Messible
+from rtl.ticktimer import TickTimer
 
 import lxsocdoc
 
@@ -167,7 +167,7 @@ class BetrustedPlatform(LatticePlatform):
                 )
             self.specials += AsyncResetSynchronizer(self.cd_por, self.reset)
 
-            # generate a >1us-wide pulse once every second based on clk12 for display extcomm signal
+            # generate a >1us-wide pulse at 1Hz based on clk12 for display extcomm signal
             # count down from 12e6 to 0 so that first extcomm pulse comes after lcd_disp is high
             extcomm = platform.request("extcommin", 0)
             extcomm_div = Signal(24, reset=int(12e6))
@@ -523,13 +523,14 @@ class BaseSoC(SoCCore):
         "reboot":         12,
         "rgb":            13,
         "version":        14,
+        "ticktimer":      15,
     }
 
     SoCCore.mem_map = {
         "rom":      0x00000000,  # (default shadow @0x80000000)
         "sram":     0x10000000,  # (default shadow @0xa0000000)
         "spiflash": 0x20000000,  # (default shadow @0xa0000000)
-        "csr":      0x60000000,  # (default shadow @0xe0000000)
+        "csr":      0x80000000,  # (default shadow @0xe0000000)
     }
 
     def __init__(self, platform,
@@ -548,7 +549,7 @@ class BaseSoC(SoCCore):
         self.submodules.uart_bridge = UARTWishboneBridge(platform.request("serial"), clk_freq, baudrate=115200)
         self.add_wb_master(self.uart_bridge.wishbone)
         if hasattr(self, "cpu"):
-            self.cpu.use_external_variant("rtl/VexRiscv_Fomu_Debug.v")
+            self.cpu.use_external_variant("rtl/VexRiscv_Fomu_Debug.v")   # comment this out for smaller build
             os.path.join(output_dir, "gateware")
             self.register_mem("vexriscv_debug", 0xf00f0000, self.cpu.debug_bus, 0x100)
 
@@ -586,7 +587,11 @@ class BaseSoC(SoCCore):
 
         # Betrusted GPIO platform signals
         self.comb += platform.request("fpga_dis", 0).eq(0)
-        # more to come
+
+        # Tick timer
+        self.submodules.ticktimer = TickTimer(clk_freq / 1000)
+
+        ########### more to come  ##########
 
         #### Platform config & build below
 

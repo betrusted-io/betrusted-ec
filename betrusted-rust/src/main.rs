@@ -17,33 +17,34 @@ fn panic(_panic: &PanicInfo<'_>) -> ! {
     loop {}
 }
 
+// allow myself to inspect a single u32 variable in a way that's not optimized out by the compiler
+fn debug(peripherals: &betrusted_pac::Peripherals, d: u32) -> u32 {
+    unsafe{peripherals.RGB.raw.write( |w| {w.bits(d as u32)}); }
+    d
+}
+
 #[entry]
 fn main() -> ! {
     use betrusted_hal::hal_i2c::hal_i2c::*;
-
-    i2c_init(CONFIG_CLOCK_FREQUENCY / 1_000_000);
+    use betrusted_hal::hal_time::hal_time::*;
 
     let peripherals = betrusted_pac::Peripherals::take().unwrap();
 
+    i2c_init(&peripherals, CONFIG_CLOCK_FREQUENCY / 1_000_000);
+    time_init(&peripherals);
+
     // flash an LED!
-    let mut delay: u32 = 0;
-    let mut counter: u32 = 42;
     loop { 
         let txbuf: [u8; 1] = [BQ24157_ID_ADR];
         let mut rxbuf: [u8; 1] = [0];
 
-        i2c_master( BQ24157_ADDR, &txbuf, &mut rxbuf, I2C_TRANS_TIMEOUT);
-        
         unsafe{peripherals.RGB.raw.write( |w| {w.bits(5)}); }
-        while delay < 500_000 {
-            delay = delay + 1;
-        }
+        delay_ms(&peripherals, 500);
 
-        counter = counter + 1;
-
+        i2c_master(&peripherals, BQ24157_ADDR, &txbuf, &mut rxbuf, I2C_TRANS_TIMEOUT);
+        debug(&peripherals, rxbuf[0] as u32);
+        
         unsafe{peripherals.RGB.raw.write( |w| {w.bits(0)}); }
-        while delay > 1 {
-            delay = delay - 1;
-        }
+        delay_ms(&peripherals, 500);
     }
 }
