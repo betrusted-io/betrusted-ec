@@ -20,7 +20,8 @@ fn panic(_panic: &PanicInfo<'_>) -> ! {
     loop {}
 }
 
-fn debug(peripherals: &betrusted_pac::Peripherals) {
+// debug simply forces DBGSTR to be committed to an unsafe 
+fn debugcommit(peripherals: &betrusted_pac::Peripherals) {
     for i in 0..4 {
         unsafe{&peripherals.RGB.raw.write( |w| {w.bits(DBGSTR[i] as u32)}); }
     }
@@ -46,7 +47,7 @@ fn main() -> ! {
 
         i2c_master(&peripherals, BQ24157_ADDR, &txbuf, &mut rxbuf, I2C_TRANS_TIMEOUT);
         unsafe{ DBGSTR[0] = rxbuf[0] as u32;}
-        debug(&peripherals);
+        debugcommit(&peripherals);
         
         unsafe{peripherals.RGB.raw.write( |w| {w.bits(0)}); }
         delay_ms(&peripherals, 500);
