@@ -1,8 +1,8 @@
 pub mod hal_i2c {
     use crate::hal_time::hal_time::get_time_ms;
 
-    pub fn i2c_init(p: &betrusted_pac::Peripherals, clockmhz: u32) {
-        let clkcode: u32 = (clockmhz * 1_000_000) / (5 * 100_000) - 1;
+    pub fn i2c_init(p: &betrusted_pac::Peripherals, clock_mhz: u32) {
+        let clkcode: u32 = (clock_mhz * 1_000_000) / (5 * 100_000) - 1;
 
         // set the prescale assuming 100MHz cpu operation: 100MHz / ( 5 * 100kHz ) - 1 = 199
         unsafe{p.I2C.prescale0.write( |w| {w.bits(clkcode & 0xFF)}); }
@@ -12,6 +12,8 @@ pub mod hal_i2c {
         p.I2C.control.write( |w| {w.en().bit(true)});
     }
 
+    // this is a stupid polled implementation of I2C transmission. Once we have
+    // threads and interurpts, this should be refactored to be asynchronous
     fn i2c_tip_wait(p: &betrusted_pac::Peripherals, timeout_ms: u32) -> u32 {
         let starttime: u32 = get_time_ms(p);
 
@@ -41,11 +43,12 @@ pub mod hal_i2c {
         0
     }
 
-    pub fn i2c_master(p: &betrusted_pac::Peripherals, addr: u8, txbuf: &[u8], rxbuf: &mut [u8], timeout_ms: u32) -> u32 {
+    pub fn i2c_master(p: &betrusted_pac::Peripherals, addr: u8, txbuf: Option<&[u8]>, rxbuf: Option<&mut [u8]>, timeout_ms: u32) -> u32 {
         let mut ret: u32 = 0;
 
         // write half
-        if txbuf.len() > 0 {
+        if txbuf.is_some() {
+            let txbuf_checked : &[u8] = txbuf.unwrap();
             unsafe{ p.I2C.txr.write( |w| {w.bits( (addr << 1 | 0) as u32 )}); }
             p.I2C.command.write( |w| {w.sta().bit(true).wr().bit(true)});
 
@@ -53,14 +56,14 @@ pub mod hal_i2c {
 
             let mut i: usize = 0;
             loop {
-                if i == txbuf.len() as usize {
+                if i == txbuf_checked.len() as usize {
                     break;
                 }
                 if p.I2C.status.read().rx_ack().bit() {
                     ret += 1;
                 }
-                unsafe{ p.I2C.txr.write( |w| {w.bits( (txbuf[i]) as u32 )}); }
-                if i == txbuf.len() - 1 && rxbuf.len() == 0 {
+                unsafe{ p.I2C.txr.write( |w| {w.bits( (txbuf_checked[i]) as u32 )}); }
+                if i == txbuf_checked.len() - 1 && rxbuf.is_none() {
                     p.I2C.command.write( |w| {w.wr().bit(true).sto().bit(true)});
                 } else {
                     p.I2C.command.write( |w| {w.wr().bit(true)});
@@ -74,7 +77,8 @@ pub mod hal_i2c {
         }
 
         // read half
-        if rxbuf.len() > 0 {
+        if rxbuf.is_some() {
+            let rxbuf_checked : &mut [u8] = rxbuf.unwrap();
             unsafe{ p.I2C.txr.write( |w| {w.bits( (addr << 1 | 1) as u32 )}); }
             p.I2C.command.write( |w| {w.sta().bit(true).wr().bit(true)});
 
@@ -82,16 +86,16 @@ pub mod hal_i2c {
 
             let mut i: usize = 0;
             loop {
-                if i == rxbuf.len() as usize {
+                if i == rxbuf_checked.len() as usize {
                     break;
                 }
-                if i == rxbuf.len() - 1 {
+                if i == rxbuf_checked.len() - 1 {
                     p.I2C.command.write( |w| {w.rd().bit(true).ack().bit(true).sto().bit(true)});
                 } else {
                     p.I2C.command.write( |w| {w.rd().bit(true)});
                 }
                 ret += i2c_tip_wait(p, timeout_ms);
-                rxbuf[i] = p.I2C.rxr.read().bits() as u8;
+                rxbuf_checked[i] = p.I2C.rxr.read().bits() as u8;
                 i += 1;
             }
         }

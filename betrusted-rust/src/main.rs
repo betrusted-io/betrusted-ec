@@ -46,7 +46,7 @@ fn main() -> ! {
         unsafe{p.RGB.raw.write( |w| {w.bits(5)}); }
         delay_ms(&p, 500);
 
-        i2c_master(&p, BQ24157_ADDR, &txbuf, &mut rxbuf, I2C_TRANS_TIMEOUT);
+        i2c_master(&p, BQ24157_ADDR, Some(&txbuf), Some(&mut rxbuf), I2C_TRANS_TIMEOUT);
         unsafe{ DBGSTR[0] = rxbuf[0] as u32;}
         debugcommit(&p);
         
