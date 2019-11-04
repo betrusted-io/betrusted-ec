@@ -12,15 +12,18 @@ const I2C_TRANS_TIMEOUT: u32 = 10;
 const BQ24157_ADDR: u8 = 0x6a;
 const BQ24157_ID_ADR: u8 = 3;
 
+// allocate a global, unsafe static string for debug output
+static mut DBGSTR: [u32; 4] = [0, 0, 0, 0];
+
 #[panic_handler]
 fn panic(_panic: &PanicInfo<'_>) -> ! {
     loop {}
 }
 
-// allow myself to inspect a single u32 variable in a way that's not optimized out by the compiler
-fn debug(peripherals: &betrusted_pac::Peripherals, d: u32) -> u32 {
-    unsafe{peripherals.RGB.raw.write( |w| {w.bits(d as u32)}); }
-    d
+fn debug(peripherals: &betrusted_pac::Peripherals) {
+    for i in 0..4 {
+        unsafe{&peripherals.RGB.raw.write( |w| {w.bits(DBGSTR[i] as u32)}); }
+    }
 }
 
 #[entry]
@@ -42,7 +45,8 @@ fn main() -> ! {
         delay_ms(&peripherals, 500);
 
         i2c_master(&peripherals, BQ24157_ADDR, &txbuf, &mut rxbuf, I2C_TRANS_TIMEOUT);
-        debug(&peripherals, rxbuf[0] as u32);
+        unsafe{ DBGSTR[0] = rxbuf[0] as u32;}
+        debug(&peripherals);
         
         unsafe{peripherals.RGB.raw.write( |w| {w.bits(0)}); }
         delay_ms(&peripherals, 500);

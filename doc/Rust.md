@@ -73,3 +73,25 @@ You can build local docs on the gateware's API by going to betrusted-pac and run
 `rustup doc` will pull up offline documentation about Rust.
 
 To start visual studio code, just run `code .` in the betrusted-rust subdirectory.
+
+
+Using GDB:
+
+there's a script in betrusted-scripts called "start-gdb.sh". It basically does this:
+  wishbone-tool --uart /dev/ttyS0 -b 115200 -s gdb --bind-addr 0.0.0.0
+
+This was tested with wishbone tool version 0.4.7. Earlier versions definitely do not work.
+
+Run this on the raspberry pi that is connected to the serial port of betrusted. Be sure
+the serial port mux is set to the CPU that you intend to debug.
+
+This allows one to run gdb on a remote machine. Be sure to use the risc version of gdb, eg.:
+  riscv64-unknown-elf-gdb
+
+Once connected, do a
+  target remote <ip address of pi>:1234
+  set riscv use_compressed_breakpoints off
+  file <ELF file to debug to pull in symbols>
+
+breakpoints don't work unless you turn off use compressed breakpoints.
+
