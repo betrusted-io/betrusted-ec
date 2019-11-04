@@ -1,4 +1,4 @@
-const BQ24157_ADDR : u8 = 0x55;
+const BQ27421_ADDR : u8 = 0x55;
 
 // word-width commands                                                                                               |
 const GG_CMD_CNTL     :  u8 = 0x00;
@@ -42,20 +42,20 @@ pub mod api_gasgauge {
     fn gg_set(p: &betrusted_pac::Peripherals, cmd_code: u8, val: u16) {
         let txbuf: [u8; 3] = [cmd_code, (val & 0xff) as u8, ((val >> 8) & 0xff) as u8];
 
-        hal_i2c::hal_i2c::i2c_master(p, BQ24157_ADDR, Some(&txbuf), None, GG_TIMEOUT_MS);
+        hal_i2c::hal_i2c::i2c_master(p, BQ27421_ADDR, Some(&txbuf), None, GG_TIMEOUT_MS);
     }
 
     fn gg_set_byte(p: &betrusted_pac::Peripherals, cmd_code: u8, val: u16) {
         let txbuf: [u8; 2] = [cmd_code, (val & 0xff) as u8];
 
-        hal_i2c::hal_i2c::i2c_master(p, BQ24157_ADDR, Some(&txbuf), None, GG_TIMEOUT_MS);
+        hal_i2c::hal_i2c::i2c_master(p, BQ27421_ADDR, Some(&txbuf), None, GG_TIMEOUT_MS);
     }
 
     fn gg_get(p: &betrusted_pac::Peripherals, cmd_code: u8) -> u16 {
         let txbuf: [u8; 1] = [cmd_code];
         let rxbuf: [u8; 2] = [0, 0];
 
-        hal_i2c::hal_i2c::i2c_master(p, BQ24157_ADDR, Some(&txbuf), Some(&mut rxbuf), GG_TIMEOUT_MS);
+        hal_i2c::hal_i2c::i2c_master(p, BQ27421_ADDR, Some(&txbuf), Some(&mut rxbuf), GG_TIMEOUT_MS);
 
         rxbuf[0] as u16 | (rx[1] as u16 << 8)
     }   
@@ -64,7 +64,7 @@ pub mod api_gasgauge {
         let txbuf: [u8; 1] = [cmd_code];
         let rxbuf: [u8; 1] = [0];
 
-        hal_i2c::hal_i2c::i2c_master(p, BQ24157_ADDR, Some(&txbuf), Some(&mut rxbuf), GG_TIMEOUT_MS);
+        hal_i2c::hal_i2c::i2c_master(p, BQ27421_ADDR, Some(&txbuf), Some(&mut rxbuf), GG_TIMEOUT_MS);
 
         rxbuf[0]
     }   
