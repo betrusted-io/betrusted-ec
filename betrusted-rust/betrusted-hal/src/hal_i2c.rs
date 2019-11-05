@@ -14,6 +14,7 @@ pub mod hal_i2c {
 
     // [FIXME] this is a stupid polled implementation of I2C transmission. Once we have
     // threads and interurpts, this should be refactored to be asynchronous
+    #[doc = "Wait until a transaction in progress ends. [FIXME] would be good to yield here once threading is enabled."]
     fn i2c_tip_wait(p: &betrusted_pac::Peripherals, timeout_ms: u32) -> u32 {
         let starttime: u32 = get_time_ms(p);
 
