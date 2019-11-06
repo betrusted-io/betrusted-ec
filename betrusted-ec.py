@@ -24,7 +24,7 @@ from litex.soc.cores import up5kspram
 from litex.soc.integration.soc_core import SoCCore
 from litex.soc.integration.builder import Builder
 from litex.soc.interconnect import wishbone
-from litex.soc.interconnect.csr import AutoCSR, CSRStatus, CSRStorage
+from litex.soc.interconnect.csr import *
 
 from rtl.rtl_i2c import RtlI2C
 from rtl.messible import Messible
@@ -185,6 +185,33 @@ class BetrustedPlatform(LatticePlatform):
                 )
             ]
             self.comb += platform.request("lcd_disp", 0).eq(1)  # force display on for now
+
+            # make a 24 MHz clock for the SPI bus master
+            clkspi = Signal()
+            self._clock_domains.cd_spi = ClockDomain()
+            self.comb += self.cd_spi.clk.eq(clkspi)
+            self.specials += Instance(
+                "SB_PLL40_CORE",
+                # Parameters
+                p_DIVR = 0,
+                p_DIVF = 63,
+                p_DIVQ = 5,
+                p_FILTER_RANGE = 1,
+                p_FEEDBACK_PATH = "SIMPLE",
+                p_DELAY_ADJUSTMENT_MODE_FEEDBACK = "FIXED",
+                p_FDA_FEEDBACK = 0,
+                p_DELAY_ADJUSTMENT_MODE_RELATIVE = "FIXED",
+                p_FDA_RELATIVE = 0,
+                p_SHIFTREG_DIV_MODE = 1,
+                p_PLLOUT_SELECT = "GENCLK",
+                p_ENABLE_ICEGATE = 0,
+                # IO
+                i_REFERENCECLK = clk12,
+                #o_PLLOUTCORE = clkspi,
+                o_PLLOUTGLOBAL = clkspi,
+                i_BYPASS = 0,
+                i_RESETB = 1,
+            )
 
 class CocotbPlatform(SimPlatform):
     def __init__(self, toolchain="verilator"):
@@ -549,7 +576,7 @@ class BaseSoC(SoCCore):
         self.submodules.uart_bridge = UARTWishboneBridge(platform.request("serial"), clk_freq, baudrate=115200)
         self.add_wb_master(self.uart_bridge.wishbone)
         if hasattr(self, "cpu"):
-            self.cpu.use_external_variant("rtl/VexRiscv_Fomu_Debug.v")   # comment this out for smaller build
+#            self.cpu.use_external_variant("rtl/VexRiscv_Fomu_Debug.v")   # comment this out for smaller build
             os.path.join(output_dir, "gateware")
             self.register_mem("vexriscv_debug", 0xf00f0000, self.cpu.debug_bus, 0x100)
 
