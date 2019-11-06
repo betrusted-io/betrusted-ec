@@ -1,1 +1,0 @@
-initSidebarItems({"fn":[["start_rust","Rust entry point (_start_rust)"],["start_trap_rust","Trap entry point rust (_start_trap_rust)"]]});

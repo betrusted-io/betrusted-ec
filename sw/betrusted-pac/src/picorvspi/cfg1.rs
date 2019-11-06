@@ -1,1 +1,0 @@
-# [ doc = "Reader of register CFG1" ] pub type R = crate :: R < u32 , super :: CFG1 > ; # [ doc = "Writer for register CFG1" ] pub type W = crate :: W < u32 , super :: CFG1 > ; # [ doc = "Register CFG1 `reset()`'s with value 0" ] impl crate :: ResetValue for super :: CFG1 { type Type = u32 ; # [ inline ( always ) ] fn reset_value ( ) -> Self :: Type { 0 } } impl R { } impl W { }

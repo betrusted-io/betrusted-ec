@@ -1,1 +1,0 @@
-initSidebarItems({"type":[["R","Reader of register RAW"],["W","Writer for register RAW"]]});

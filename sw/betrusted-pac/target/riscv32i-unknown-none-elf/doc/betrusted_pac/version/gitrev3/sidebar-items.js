@@ -1,1 +1,0 @@
-initSidebarItems({"type":[["R","Reader of register GITREV3"],["W","Writer for register GITREV3"]]});

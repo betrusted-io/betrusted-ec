@@ -1,1 +1,0 @@
-# [ doc = "Reader of register RAW" ] pub type R = crate :: R < u32 , super :: RAW > ; # [ doc = "Writer for register RAW" ] pub type W = crate :: W < u32 , super :: RAW > ; # [ doc = "Register RAW `reset()`'s with value 0" ] impl crate :: ResetValue for super :: RAW { type Type = u32 ; # [ inline ( always ) ] fn reset_value ( ) -> Self :: Type { 0 } } impl R { } impl W { }

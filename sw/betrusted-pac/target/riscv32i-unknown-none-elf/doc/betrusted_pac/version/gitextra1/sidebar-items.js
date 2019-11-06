@@ -1,1 +1,0 @@
-initSidebarItems({"type":[["R","Reader of register GITEXTRA1"],["W","Writer for register GITEXTRA1"]]});

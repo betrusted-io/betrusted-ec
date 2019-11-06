@@ -1,1 +1,0 @@
-initSidebarItems({"type":[["R","Reader of register PRESCALE0"],["W","Writer for register PRESCALE0"]]});

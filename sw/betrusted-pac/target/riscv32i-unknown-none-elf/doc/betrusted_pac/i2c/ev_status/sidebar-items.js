@@ -1,1 +1,0 @@
-initSidebarItems({"type":[["R","Reader of register EV_STATUS"],["W","Writer for register EV_STATUS"]]});

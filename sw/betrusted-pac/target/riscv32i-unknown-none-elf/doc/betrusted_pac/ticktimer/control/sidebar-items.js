@@ -1,1 +1,0 @@
-initSidebarItems({"struct":[["PAUSE_W","Write proxy for field `pause`"],["RESET_W","Write proxy for field `reset`"]],"type":[["PAUSE_R","Reader of field `pause`"],["R","Reader of register CONTROL"],["RESET_R","Reader of field `reset`"],["W","Writer for register CONTROL"]]});
