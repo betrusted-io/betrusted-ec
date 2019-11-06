@@ -56,9 +56,9 @@ Upon recompiling the gateware, the PAC needs to be regenreated by runnig the fol
 1. Generate `lib.rs`, which contains the entirety of the PAC in one file: `svd2rust --target riscv -i ../../build/software/soc.svd`
 2. Expand the resulting `lib.rs` into component files: `rm -rf src; form -i lib.rs -o src/; rm lib.rs`
 
-To build the binary image, do `cargo build` anywhere in the betrusted-rust Rust build subdirectory.
+To build the binary image, do `cargo build` anywhere in the `sw` Rust build subdirectory.
 
-The resulting ELF is located in betrusted-rust/target/riscv32i-unknown-none-elf/debug/betrusted-ec
+The resulting ELF is located in sw/target/riscv32i-unknown-none-elf/debug/betrusted-ec
 
 You can inspect this with riscv64-unknown-elf-gdb, and run commands like `disassemble main` and `x _start` to confirm things
 like the boot address and the correct compilation of the code.
@@ -72,7 +72,7 @@ You can build local docs on the gateware's API by going to betrusted-pac and run
 
 `rustup doc` will pull up offline documentation about Rust.
 
-To start visual studio code, just run `code .` in the betrusted-rust subdirectory.
+To start visual studio code, just run `code .` in the sw subdirectory.
 
 
 Using GDB:
