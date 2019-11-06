@@ -8,3 +8,4 @@ __pycache__/
 pycharm.env
 *.bin
 *.elf
+sw/betrusted-pac/
