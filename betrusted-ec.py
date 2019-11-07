@@ -29,6 +29,7 @@ from litex.soc.interconnect.csr import *
 from rtl.rtl_i2c import RtlI2C
 from rtl.messible import Messible
 from rtl.ticktimer import TickTimer
+from rtl.spi import *
 
 import lxsocdoc
 
@@ -76,11 +77,13 @@ _io = [
 
     ("clk12", 0, Pins("35"), IOStandard("LVCMOS18")),
 
-    ("com_cs", 0, Pins("11"), IOStandard("LVCMOS18")),
-    ("com_irq", 0, Pins("6"), IOStandard("LVCMOS18")),
-    ("com_miso", 0, Pins("10"), IOStandard("LVCMOS18")),
-    ("com_mosi", 0, Pins("9"), IOStandard("LVCMOS18")),
+    ("com", 0,
+        Subsignal("csn", Pins("11"), IOStandard("LVCMOS18")),
+        Subsignal("miso", Pins("10"), IOStandard("LVCMOS18")),
+        Subsignal("mosi", Pins("9"), IOStandard("LVCMOS18")),
+     ),
     ("com_sclk", 0, Pins("20"), IOStandard("LVCMOS18")),
+    ("com_irq", 0, Pins("6"), IOStandard("LVCMOS18")),
 
     ("extcommin", 0, Pins("45"), IOStandard("LVCMOS33")),
     ("lcd_disp", 0, Pins("44"), IOStandard("LVCMOS33")),
@@ -96,13 +99,15 @@ _io = [
          Subsignal("rgb2", Pins("41"), IOStandard("LVCMOS33")),
      ),
 
-    ("wifi_cs", 0, Pins("28"), IOStandard("LVCMOS18")),
+    ("wifi", 0,
+         Subsignal("miso", Pins("32"), IOStandard("LVCMOS18")),
+         Subsignal("mosi", Pins("34"), IOStandard("LVCMOS18")),
+         Subsignal("csn", Pins("28"), IOStandard("LVCMOS18")),
+         Subsignal("sclk", Pins("36"), IOStandard("LVCMOS18")),
+     ),
     ("wifi_lpclk", 0, Pins("37"), IOStandard("LVCMOS18")),
-    ("wifi_miso", 0, Pins("32"), IOStandard("LVCMOS18")),
-    ("wifi_mosi", 0, Pins("34"), IOStandard("LVCMOS18")),
     ("wifi_pa_enable", 0, Pins("27"), IOStandard("LVCMOS18")),
     ("wifi_res_n", 0, Pins("26"), IOStandard("LVCMOS18")),
-    ("wifi_sclk", 0, Pins("36"), IOStandard("LVCMOS18")),
     ("wifi_wirq", 0, Pins("31"), IOStandard("LVCMOS18")),
     ("wifi_wup", 0, Pins("38"), IOStandard("LVCMOS18")),
 
@@ -153,11 +158,11 @@ class BetrustedPlatform(LatticePlatform):
                 self.cd_sys.rst.eq(reset_delay != 0),
             ]
 
-            self.specials += Instance(
-                "SB_GB",
-                i_USER_SIGNAL_TO_GLOBAL_BUFFER=clk12_raw,
-                o_GLOBAL_BUFFER_OUTPUT=clk12,
-            )
+#            self.specials += Instance(
+#                "SB_GB",
+#                i_USER_SIGNAL_TO_GLOBAL_BUFFER=clk12_raw,
+#                o_GLOBAL_BUFFER_OUTPUT=clk12,
+#            )
 
             self.comb += self.cd_sys.clk.eq(clk12)
 
@@ -188,10 +193,10 @@ class BetrustedPlatform(LatticePlatform):
 
             # make a 24 MHz clock for the SPI bus master
             clkspi = Signal()
-            self._clock_domains.cd_spi = ClockDomain()
+            self.clock_domains.cd_spi = ClockDomain()
             self.comb += self.cd_spi.clk.eq(clkspi)
             self.specials += Instance(
-                "SB_PLL40_CORE",
+                "SB_PLL40_PAD",
                 # Parameters
                 p_DIVR = 0,
                 p_DIVF = 63,
@@ -206,12 +211,23 @@ class BetrustedPlatform(LatticePlatform):
                 p_PLLOUT_SELECT = "GENCLK",
                 p_ENABLE_ICEGATE = 0,
                 # IO
-                i_REFERENCECLK = clk12,
-                #o_PLLOUTCORE = clkspi,
-                o_PLLOUTGLOBAL = clkspi,
-                i_BYPASS = 0,
+                i_PACKAGEPIN = clk12_raw,
+                o_PLLOUTCORE = clkspi,
+                o_PLLOUTGLOBAL = clk12,
+                i_BYPASS = 1,  # bypass connects clk12 to PLLOUTGLOBAL
                 i_RESETB = 1,
             )
+            # global buffer for input SPI clock
+            self.clock_domains.cd_spislave = ClockDomain()
+            clk_spislave = Signal()
+            self.comb += self.cd_spislave.clk.eq(clk_spislave)
+            self.specials += Instance(
+                "SB_GB",
+                i_USER_SIGNAL_TO_GLOBAL_BUFFER=platform.request("com_sclk"),
+                o_GLOBAL_BUFFER_OUTPUT=clk_spislave,
+            )
+            platform.add_period_constraint(self.cd_spislave.clk, 1e9/24e6)  # 24 MHz according to Artix betrusted-soc config
+
 
 class CocotbPlatform(SimPlatform):
     def __init__(self, toolchain="verilator"):
@@ -543,6 +559,8 @@ class BaseSoC(SoCCore):
     SoCCore.csr_map = {
         "ctrl":           0,  # provided by default (optional)
         "timer0":         5,  # provided by default (optional)
+        "com":            6,
+        "wifi":           7,
         "cpu_or_bridge":  8,
         "i2c":            9,
         "picorvspi":      10,
@@ -618,7 +636,13 @@ class BaseSoC(SoCCore):
         # Tick timer
         self.submodules.ticktimer = TickTimer(clk_freq / 1000)
 
-        ########### more to come  ##########
+        # COM port (spi slave to Artix)
+        self.submodules.com = SpiSlave(platform.request("com"))
+
+        # SPI port to wifi (master)
+        self.submodules.wifi = SpiMaster(platform.request("wifi"))
+
+        ########### more to come?? ##########
 
         #### Platform config & build below
 
@@ -759,7 +783,7 @@ def main():
     output_dir = 'build'
 
     compile_gateware = True
-    compile_software = True
+    compile_software = False # this is now done with Rust
 
     if args.document_only or args.sim:
         compile_gateware = False
