@@ -221,6 +221,7 @@ class BetrustedPlatform(LatticePlatform):
             self.clock_domains.cd_spislave = ClockDomain()
             clk_spislave = Signal()
             self.comb += self.cd_spislave.clk.eq(clk_spislave)
+
             self.specials += Instance(
                 "SB_GB",
                 i_USER_SIGNAL_TO_GLOBAL_BUFFER=platform.request("com_sclk"),
