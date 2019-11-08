@@ -230,6 +230,15 @@ class BetrustedPlatform(LatticePlatform):
             )
             platform.add_period_constraint(clk_spislave_pin, 1e9/24e6)  # 24 MHz according to Artix betrusted-soc config
 
+            # Add a period constraint for each clock wire.
+            # NextPNR picks the clock domain's name randomly from one of the wires
+            # that it finds in the domain.  Migen passes the information on timing
+            # to NextPNR in a file called `top_pre_pack.py`.  In order to ensure
+            # it chooses the timing for this net, annotate period constraints for
+            # all wires.
+            platform.add_period_constraint(clk_spislave, 1e9/24e6)
+            platform.add_period_constraint(clkspi, 1e9/24e6)
+
 
 class CocotbPlatform(SimPlatform):
     def __init__(self, toolchain="verilator"):
