@@ -149,7 +149,7 @@ class BetrustedPlatform(LatticePlatform):
 
             self.clock_domains.cd_sys = ClockDomain()
 
-            platform.add_period_constraint(self.cd_sys.clk, 1e9/12e6)
+            platform.add_period_constraint(clk12_raw, 1e9/12e6)
 
             # POR reset logic- POR generated from sys clk, POR logic feeds sys clk
             # reset.
@@ -221,13 +221,14 @@ class BetrustedPlatform(LatticePlatform):
             self.clock_domains.cd_spislave = ClockDomain()
             clk_spislave = Signal()
             self.comb += self.cd_spislave.clk.eq(clk_spislave)
+            clk_spislave_pin = platform.request("com_sclk")
 
             self.specials += Instance(
                 "SB_GB",
-                i_USER_SIGNAL_TO_GLOBAL_BUFFER=platform.request("com_sclk"),
+                i_USER_SIGNAL_TO_GLOBAL_BUFFER=clk_spislave_pin,
                 o_GLOBAL_BUFFER_OUTPUT=clk_spislave,
             )
-            platform.add_period_constraint(self.cd_spislave.clk, 1e9/24e6)  # 24 MHz according to Artix betrusted-soc config
+            platform.add_period_constraint(clk_spislave_pin, 1e9/24e6)  # 24 MHz according to Artix betrusted-soc config
 
 
 class CocotbPlatform(SimPlatform):
