@@ -99,3 +99,5 @@ Once connected, do a
 breakpoints don't work unless you turn off use compressed breakpoints.
 
 Local docs are available with `rustup doc --book` and `rustup doc`
+
+Using vscode, you'll want the Rust(rls) extension, and Better TOML extensions. emacs user may enjoy the "emacs friendly keymap"
