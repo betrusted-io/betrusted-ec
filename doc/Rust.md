@@ -21,7 +21,7 @@ To set up your system for Rust development, perform the following steps.  Note t
 3. Install `svd2rust`, so we can convert lxsocdoc svd output to rust: `cargo install svd2rust`
 4. Install `form`, which will expand the resulting file into its component parts: `cargo install form`
 5. Install `rustfmt` which we'll use to beautify the automatically-generated files: `rustup component add rustfmt`
-6. Install `cargo-generate` which will let you use project templates: `cargo install cargo-generate`
+6. Install `cargo-generate` which will let you use project templates: `cargo install cargo-generate`. This will require libssl-dev as a system dependency.
 7. (Optional) install `cargo-binutils`, which will let you do things like `cargo size` and `cargo objdump`: `cargo install cargo-binutils`
 
 ## Creating a Cargo crate
@@ -57,6 +57,9 @@ Upon recompiling the gateware, the PAC needs to be regenreated by runnig the fol
 2. Expand the resulting `lib.rs` into component files: `rm -rf src; form -i lib.rs -o src/; rm lib.rs`
 
 To build the binary image, do `cargo build` anywhere in the `sw` Rust build subdirectory.
+
+On an initial build from clean, you need to do a cargo build in the "main" directory before trying rebuild the PAC stuff with form.
+
 
 The resulting ELF is located in sw/target/riscv32i-unknown-none-elf/debug/betrusted-ec
 
@@ -95,3 +98,4 @@ Once connected, do a
 
 breakpoints don't work unless you turn off use compressed breakpoints.
 
+Local docs are available with `rustup doc --book` and `rustup doc`
