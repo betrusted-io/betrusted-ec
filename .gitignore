@@ -8,4 +8,11 @@ __pycache__/
 pycharm.env
 *.bin
 *.elf
+*.jou
+*.log
+*.map
 sw/betrusted-pac/
+run/
+target/
+/venv/*
+test/
