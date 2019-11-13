@@ -3,6 +3,7 @@
 rustflags = [
   "-C", "link-arg=-Tmemory.x",
   "-C", "link-arg=-Tlink.x",
+  "-C", "link-arg=-Map=betrusted-ec.map",
 ]
 
 [build]
