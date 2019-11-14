@@ -19,10 +19,10 @@ fn panic(_panic: &PanicInfo<'_>) -> ! {
 
 #[entry]
 fn main() -> ! {
-    use betrusted_hal::hal_i2c::hal_i2c::*;
-    use betrusted_hal::hal_time::hal_time::*;
-    use betrusted_hal::api_gasgauge::api_gasgauge::*;
-    use betrusted_hal::api_charger::api_charger::*;
+    use betrusted_hal::hal_i2c::*;
+    use betrusted_hal::hal_time::*;
+    use betrusted_hal::api_gasgauge::*;
+    use betrusted_hal::api_charger::*;
 
     let p = betrusted_pac::Peripherals::take().unwrap();
 
