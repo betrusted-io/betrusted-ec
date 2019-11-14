@@ -55,22 +55,17 @@ pub fn i2c_master(p: &betrusted_pac::Peripherals, addr: u8, txbuf: Option<&[u8]>
 
         ret += i2c_tip_wait(p, timeout_ms);
 
-        let mut i: usize = 0;
-        loop {
-            if i == txbuf_checked.len() as usize {
-                break;
-            }
+        for i in 0..txbuf_checked.len() {
             if p.I2C.status.read().rx_ack().bit() {
                 ret += 1;
             }
             unsafe{ p.I2C.txr.write( |w| {w.bits( (txbuf_checked[i]) as u32 )}); }
-            if i == txbuf_checked.len() - 1 && rxbuf.is_none() {
-                p.I2C.command.write( |w| {w.wr().bit(true).sto().bit(true)});
+            if (i == (txbuf_checked.len() - 1)) && rxbuf.is_none() {
+                p.I2C.command.write( |w| {w.sto().bit(true).wr().bit(true)});
             } else {
                 p.I2C.command.write( |w| {w.wr().bit(true)});
             }
             ret += i2c_tip_wait(p, timeout_ms);
-            i += 1;
         }
         if p.I2C.status.read().rx_ack().bit() {
             ret += 1;
@@ -85,19 +80,14 @@ pub fn i2c_master(p: &betrusted_pac::Peripherals, addr: u8, txbuf: Option<&[u8]>
 
         ret += i2c_tip_wait(p, timeout_ms);
 
-        let mut i: usize = 0;
-        loop {
-            if i == rxbuf_checked.len() as usize {
-                break;
-            }
-            if i == rxbuf_checked.len() - 1 {
+        for i in 0..rxbuf_checked.len() {
+            if i == (rxbuf_checked.len() - 1) {
                 p.I2C.command.write( |w| {w.rd().bit(true).ack().bit(true).sto().bit(true)});
             } else {
                 p.I2C.command.write( |w| {w.rd().bit(true)});
             }
             ret += i2c_tip_wait(p, timeout_ms);
             rxbuf_checked[i] = p.I2C.rxr.read().bits() as u8;
-            i += 1;
         }
     }
 
