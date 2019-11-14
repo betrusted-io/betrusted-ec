@@ -15,8 +15,31 @@ pub mod api_charger {
 
     const CHG_TIMEOUT_MS: u32 = 5;
 
+    pub struct BtCharger {
+        pub registers: [u8; 7],
+    }
+
+    impl BtCharger {
+        pub fn new() -> Self {
+            BtCharger { registers: [0; 7] }
+        }
+
+        pub fn update_regs(&mut self, p: &betrusted_pac::Peripherals) -> &mut Self {
+            let mut rxbuf: [u8; 1] = [0];
+            let mut txbuf: [u8; 1] = [0];
+
+            for i in 0..7 {
+                txbuf[0] = i as u8;
+                i2c_master(p, BQ24157_ADDR, Some(&txbuf), Some(&mut rxbuf), CHG_TIMEOUT_MS);
+                self.registers[i] = rxbuf[0];
+            }
+
+            self
+        }
+    }
+
     pub fn chg_is_charging(p: &betrusted_pac::Peripherals) -> bool {
-        let txbuf: [u8; 1] = [BQ24157_ADDR];
+        let txbuf: [u8; 1] = [BQ24157_STAT_ADR];
         let mut rxbuf: [u8; 1] = [0];
 
         i2c_master(p, BQ24157_ADDR, Some(&txbuf), Some(&mut rxbuf), CHG_TIMEOUT_MS);
@@ -62,7 +85,7 @@ pub mod api_charger {
         }
     }
 
-    #[doc = "This forces the start of charging. It's a bit of a hammer, maybe refine it down the road. [FIXME]"]
+    /// This forces the start of charging. It's a bit of a hammer, maybe refine it down the road. [FIXME]
     pub fn chg_start(p: &betrusted_pac::Peripherals) {
         let txbuf: [u8; 2] = [BQ24157_CTRL_ADR, 0x3 << 6 | 0x3 << 4 | 0x8];
         // charge mode, not hiZ, charger enabled, enable charge current termination, weak battery==3.7V, Iin limit = no limit
