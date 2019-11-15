@@ -32,32 +32,39 @@ fn main() -> ! {
     // this needs to be one of the first things called after I2C comes up
     chg_set_safety(&p);
 
-    chg_set_autoparams(&p);
-
-    chg_start(&p);
     gg_start(&p);
+
+    chg_set_autoparams(&p);
+    chg_start(&p);
 
     // flash an LED!
     let mut last_time : u32 = get_time_ms(&p);
     let mut last_state : bool = false;
     let mut charger : BtCharger = BtCharger::new();
     let mut voltage : i16 = 0;
+    let mut current: i16 = 0;
     let mut linkindex : usize = 0;
     loop { 
-        if get_time_ms(&p) - last_time > 500 {
+        if get_time_ms(&p) - last_time > 1000 {
             last_time = get_time_ms(&p);
             if last_state {
                 unsafe{p.RGB.raw.write( |w| {w.bits(5)}); }
+                chg_keepalive_ping(&p);
+                charger.update_regs(&p);
             } else {
                 // once every second run these routines
                 voltage = gg_voltage(&p);
+                current = gg_avg_current(&p);
+
                 if chg_is_charging(&p) {
                     unsafe{p.RGB.raw.write( |w| {w.bits(2)}); }
                 } else {
                     unsafe{p.RGB.raw.write( |w| {w.bits(0)}); }
                 }
-                chg_keepalive_ping(&p);
-                charger.update_regs(&p);
+//                if charger.registers[1] != 0x78 {
+//                    chg_start(&p);  
+//                }
+                chg_set_autoparams(&p);
             }
             last_state = ! last_state;
         }
@@ -66,6 +73,8 @@ fn main() -> ! {
         if p.COM.status.read().rxfull().bit_is_set() { 
             // read the rx data, then add a constant to it and fold it back into the tx register
             let rx: u16 = (p.COM.rx0.read().bits() as u16) | ((p.COM.rx1.read().bits() as u16) << 8);
+            while p.COM.status.read().rxfull().bit_is_set() {} // this should clear before going on
+
             let mut tx: u16 = 0;
             match rx {
                 0x8000 => linkindex = 0,
@@ -74,11 +83,15 @@ fn main() -> ! {
 
             if linkindex < 7 {
                 tx = charger.registers[linkindex] as u16;
+            } else if linkindex == 7 {
+                tx = voltage as u16;
+            } else if linkindex == 8 {
+                tx = current as u16;
             }
             linkindex = linkindex + 1;
             unsafe{ p.COM.tx0.write(|w| w.bits( (tx & 0xFF) as u32 )); }
             unsafe{ p.COM.tx1.write(|w| w.bits( ((tx >> 8) & 0xFF) as u32 )); }
-    }
+        }
         
     }
 }
