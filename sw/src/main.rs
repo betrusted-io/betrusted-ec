@@ -61,10 +61,6 @@ fn main() -> ! {
                 } else {
                     unsafe{p.RGB.raw.write( |w| {w.bits(0)}); }
                 }
-//                if charger.registers[1] != 0x78 {
-//                    chg_start(&p);  
-//                }
-                chg_set_autoparams(&p);
             }
             last_state = ! last_state;
         }
