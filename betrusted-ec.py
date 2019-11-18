@@ -41,13 +41,13 @@ SPI_FLASH_SIZE = 1 * 1024 * 1024
 
 _io = [
     ("serial", 0,
-     Subsignal("rx", Pins("48")),
-     Subsignal("tx", Pins("3"), Misc("PULLUP")),
+     Subsignal("rx", Pins("48")),  # MON0
+     Subsignal("tx", Pins("3")),  # MON1
      IOStandard("LVCMOS33")
      ),
     # serial is muxed in with these key monitor pins -- TODO
 #    ("up5k_keycol0", 0, Pins("48"), IOStandard("LVCMOS33")),
-#    ("up5k_keycol1", 0, Pins("3"), IOStandard("LVCMOS33")),
+#    ("up5k_keycol1", 0, Pins("3"), IOStandard("LVCMOS33")),  # this is marking "high"
     ("up5k_keyrow0", 0, Pins("4"), IOStandard("LVCMOS33")),
     ("up5k_keyrow1", 0, Pins("2"), IOStandard("LVCMOS33")),
 
@@ -73,8 +73,6 @@ _io = [
     ("gg_int", 0, Pins("42"), IOStandard("LVCMOS18")),
     ("gyro_int0", 0, Pins("43"), IOStandard("LVCMOS18")),
 
-    ("fpga_dis", 0, Pins("21"), IOStandard("LVCMOS18")),
-
     ("clk12", 0, Pins("35"), IOStandard("LVCMOS18")),
 
     ("com", 0,
@@ -88,10 +86,13 @@ _io = [
     ("extcommin", 0, Pins("45"), IOStandard("LVCMOS33")),
     ("lcd_disp", 0, Pins("44"), IOStandard("LVCMOS33")),
 
-    ("pwr_s0", 0, Pins("19"), IOStandard("LVCMOS18")),
-    ("pwr_s1", 0, Pins("12"), IOStandard("LVCMOS18")),
-    ("sys_on", 0, Pins("47"), IOStandard("LVCMOS33")),
-    ("u_to_t_on", 0, Pins("46"), IOStandard("LVCMOS33")),
+    ("power", 0,
+        Subsignal("s0", Pins("19"), IOStandard("LVCMOS18")),
+        Subsignal("s1", Pins("12"), IOStandard("LVCMOS18")),
+        Subsignal("sys_on", Pins("47"), IOStandard("LVCMOS33")), # sys_on
+        Subsignal("u_to_t_on", Pins("46"), IOStandard("LVCMOS33")), # u_to_t_on
+        Subsignal("fpga_dis", Pins("21"), IOStandard("LVCMOS18")), # fpga_dis
+     ),
 
     ("led", 0,
          Subsignal("rgb0", Pins("39"), IOStandard("LVCMOS33")),
@@ -566,9 +567,38 @@ class Version(Module, AutoCSR):
         else:
             self.comb += self.model.status.eq(0x3f) # '?'
 
+class BtPower(Module, AutoCSR, AutoDoc):
+    def __init__(self, pads):
+        self.intro = ModuleDoc("""BtPower - power control pins (EC)""")
+
+        self.power = CSRStorage(8, fields =[
+            CSRField("self", description="Writing `1` to this keeps the EC powered on", reset=1),
+            CSRField("soc_on", description="Writing `1` to this powers on the SoC", reset=1),
+            CSRField("discharge", description="Writing `1` to this connects a low-value resistor across FPGA domain supplies to force a full discharge"),
+            CSRField("kbdscan", description="Writing `1` to this forces the power-down keyboard scan event")
+        ])
+
+        self.stats = CSRStatus(8, fields=[
+            CSRField("state", size=2, description="Current power state of the SOC"),
+            CSRField("monkey", size=2, description="Power-on key monitor input"),
+        ])
+        self.mon0 = Signal()
+        self.mon1 = Signal()
+        self.soc_on = Signal()
+        self.comb += [
+            pads.sys_on.eq(self.power.fields.self),
+            pads.u_to_t_on.eq(self.power.fields.soc_on),
+            pads.fpga_dis.eq(self.power.fields.discharge),
+            self.stats.fields.state.eq(Cat(pads.s0, pads.s1)),
+            self.stats.fields.monkey.eq(Cat(self.mon0, self.mon1)),
+
+            self.soc_on.eq(self.power.fields.soc_on),
+        ]
+
 class BaseSoC(SoCCore):
     SoCCore.csr_map = {
         "ctrl":           0,  # provided by default (optional)
+        "power":          4,
         "timer0":         5,  # provided by default (optional)
         "com":            6,
         "wifi":           7,
@@ -602,7 +632,13 @@ class BaseSoC(SoCCore):
         SoCCore.__init__(self, platform, clk_freq, integrated_sram_size=0, with_uart=False, **kwargs)
 
         from litex.soc.cores.uart import UARTWishboneBridge
-        self.submodules.uart_bridge = UARTWishboneBridge(platform.request("serial"), clk_freq, baudrate=115200)
+        serialpads = platform.request("serial")
+        fake_tx = Signal()
+        dbgpads = Record([('rx', 1), ('tx', 1)], name="serial")
+        dbgpads.rx = serialpads.rx
+        dbgpads.tx = fake_tx
+        drive_kbd = Signal()
+        self.submodules.uart_bridge = UARTWishboneBridge(dbgpads, clk_freq, baudrate=115200)
         self.add_wb_master(self.uart_bridge.wishbone)
         if hasattr(self, "cpu"):
 #            self.cpu.use_external_variant("rtl/VexRiscv_Fomu_Debug.v")   # comment this out for smaller build
@@ -641,8 +677,29 @@ class BaseSoC(SoCCore):
         # RGB for debug
         self.submodules.rgb = SBLED(platform.revision, platform.request("led"))
 
-        # Betrusted GPIO platform signals
-        self.comb += platform.request("fpga_dis", 0).eq(0)
+        # Betrusted Power management interface
+        self.submodules.power = BtPower(platform.request("power"))
+
+        # make a power on key. monitor "key4", if depressed, send the power_on signal to the SOC
+        # but only when the soc power state is "off"
+        # counting on mon1 to provide the signal
+        #key4 = Signal()
+        #self.comb += key4.eq(platform.request("up5k_keyrow1"))  # keyrow1 input is connected to keyboard signal "key4"
+        #key4_in = Signal()
+        #self.specials += Instance(
+        #    "SB_IO",
+        #    p_PIN_TYPE=1,
+        #    p_PULLUP=0,  # leave this here in case I want to try a pullup later on this pin
+        #    i_PACKAGE_PIN=key4,
+        #    o_D_IN_0=key4_in,
+        #)
+        self.comb += self.power.mon1.eq(platform.request("up5k_keyrow1"))
+        self.comb += self.power.mon0.eq(platform.request("up5k_keyrow0"))
+        self.comb += drive_kbd.eq(self.power.power.fields.kbdscan)
+
+        # serialpad TX is what we use to test for keyboard hit to power on the SOC
+        # only allow test keyboard hit patterns when the SOC is powered off
+        self.comb += serialpads.tx.eq( (~self.power.soc_on & drive_kbd) | (self.power.soc_on & dbgpads.tx) )
 
         # Tick timer
         self.submodules.ticktimer = TickTimer(clk_freq / 1000)
