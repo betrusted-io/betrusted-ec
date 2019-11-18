@@ -37,18 +37,20 @@ fn main() -> ! {
     chg_set_autoparams(&p);
     chg_start(&p);
 
-    // flash an LED!
+    unsafe{p.RGB.raw.write( |w| {w.bits(0)});}  // turn off all the LEDs
+
     let mut last_time : u32 = get_time_ms(&p);
     let mut last_state : bool = false;
     let mut charger : BtCharger = BtCharger::new();
     let mut voltage : i16 = 0;
     let mut current: i16 = 0;
     let mut linkindex : usize = 0;
+    let mut ledbits: u32 = 0;
     loop { 
         if get_time_ms(&p) - last_time > 1000 {
             last_time = get_time_ms(&p);
             if last_state {
-                unsafe{p.RGB.raw.write( |w| {w.bits(5)}); }
+                ledbits = 5;
                 chg_keepalive_ping(&p);
                 charger.update_regs(&p);
             } else {
@@ -57,12 +59,19 @@ fn main() -> ! {
                 current = gg_avg_current(&p);
 
                 if chg_is_charging(&p) {
-                    unsafe{p.RGB.raw.write( |w| {w.bits(2)}); }
+                    ledbits = 2;
                 } else {
-                    unsafe{p.RGB.raw.write( |w| {w.bits(0)}); }
+                    ledbits = 0;
                 }
             }
             last_state = ! last_state;
+
+            unsafe {
+                if DBGSTR[0] != 0 { // only update the LED bits if called for via DBGSTR
+                    p.RGB.raw.write( |w| {w.bits(ledbits)});
+                }
+            }
+
         }
 
         // simple test routine to loopback Rx data to the Tx on the COM port
