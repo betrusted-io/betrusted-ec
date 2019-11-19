@@ -70,9 +70,9 @@ fn main() -> ! {
                 current = gg_avg_current(&p);
 
                 // soc turns on automatically if the charger comes up
-                //if chg_is_charging(&p) || (p.POWER.stats.read().state().bits() & 0x2 != 0) {
-                //    soc_on = true;
-                //}
+                if chg_is_charging(&p) || (p.POWER.stats.read().state().bits() & 0x2 != 0) {
+                    soc_on = true;
+                }
 
                 if !soc_on {
                     stby_current = gg_avg_current(&p);
@@ -95,6 +95,7 @@ fn main() -> ! {
         }
 
         // monitor the keyboard inputs if the soc is in the off state
+        // FIXME: thar be dragins in the code down here
         if !soc_on {
             if get_time_ms(&p) - pd_time > 2000 { // delay for power-off to settle
                 
@@ -130,6 +131,7 @@ fn main() -> ! {
                 0x9000..=0x90FF => {
                     linkindex = 0;
                     comstate = ComState::Power;
+                    // ignore rapid, successive power down requests
                     if get_time_ms(&p) - pd_time > 2000 {
                         unsafe{ p.POWER.power.write(|w| w.bits((rx & 0xFF) as u32)); } 
                         pd_time = get_time_ms(&p);
