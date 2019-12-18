@@ -21,6 +21,7 @@ enum ComState {
     Idle,
     Stat,
     Power,
+    GasGauge,
 }
 
 #[entry]
@@ -29,6 +30,7 @@ fn main() -> ! {
     use betrusted_hal::hal_time::*;
     use betrusted_hal::api_gasgauge::*;
     use betrusted_hal::api_charger::*;
+    use betrusted_hal::api_lm3509::*;
 
     let p = betrusted_pac::Peripherals::take().unwrap();
 
@@ -57,11 +59,11 @@ fn main() -> ! {
     let mut pd_time: u32 = 0;
     let mut pd_interval: u32 = 0;
     let mut soc_on: bool = true;
+    let mut backlight : BtBacklight = BtBacklight::new();
     loop { 
         if get_time_ms(&p) - last_time > 1000 {
             last_time = get_time_ms(&p);
             if last_state {
-                ledbits = 5;
                 chg_keepalive_ping(&p);
                 charger.update_regs(&p);
             } else {
@@ -78,18 +80,11 @@ fn main() -> ! {
                     stby_current = gg_avg_current(&p);
                 }
 
-                if chg_is_charging(&p) {
-                    ledbits = 2;
-                } else {
-                    ledbits = 0;
-                }
             }
             last_state = ! last_state;
 
             unsafe {
-                if DBGSTR[0] != 0 { // only update the LED bits if called for via DBGSTR
-                    p.RGB.raw.write( |w| {w.bits(ledbits)});
-                }
+                p.RGB.raw.write( |w| {w.bits(ledbits)});
             }
 
         }
@@ -119,7 +114,7 @@ fn main() -> ! {
                 }
             }
         }
-        // simple test routine to loopback Rx data to the Tx on the COM port
+
         if p.COM.status.read().rxfull().bit_is_set() { 
             // read the rx data, then add a constant to it and fold it back into the tx register
             let rx: u16 = (p.COM.rx0.read().bits() as u16) | ((p.COM.rx1.read().bits() as u16) << 8);
@@ -127,6 +122,12 @@ fn main() -> ! {
 
             let mut tx: u16 = 0;
             match rx {
+                0x6800..=0x681F => {
+                        let bl_level: u8 = (rx & 0x1F) as u8;
+                        backlight.set_brightness(&p, bl_level);
+                    },
+                0x6000..=0x6007 => {ledbits = (rx & 0x7) as u32; comstate = ComState::Idle;},
+                0x7000 => {linkindex = 0; comstate = ComState::GasGauge;},
                 0x8000 => {linkindex = 0; comstate = ComState::Stat;},
                 0x9000..=0x90FF => {
                     linkindex = 0;
@@ -163,6 +164,19 @@ fn main() -> ! {
                         comstate = ComState::Idle;
                     }
                 },
+                ComState::GasGauge => {
+                    if linkindex == 0 {
+                        tx = current as u16;
+                    } else if linkindex == 1 {
+                        tx = stby_current as u16;
+                    } else if linkindex == 2 {
+                        tx = voltage as u16;
+                    } else if linkindex == 3 {
+                        tx = p.POWER.power.read().bits() as u16;
+                    } else {
+                        comstate = ComState::Idle;
+                    }
+                }
                 _ => tx = voltage as u16,
             }
             linkindex = linkindex + 1;
