@@ -610,6 +610,7 @@ class BaseSoC(SoCCore):
         "rgb":            13,
         "version":        14,
         "ticktimer":      15,
+        "ringosc":        3,
     }
 
     SoCCore.mem_map = {
@@ -712,6 +713,11 @@ class BaseSoC(SoCCore):
 
         ########### more to come?? ##########
 
+        # TRNG testing
+        from rtl.trng import TrngRingOsc
+        self.submodules.ringosc = TrngRingOsc(platform, device_root='ice40-up5k', target_freq=1e6)
+        # self.comb += platform.request("wifi_wup").eq(self.ringosc.trng_raw)  # this is just for debugging
+
         #### Platform config & build below
 
         # Add "-relut -dffe_min_ce_use 4" to the synth_ice40 command.
@@ -730,6 +736,9 @@ class BaseSoC(SoCCore):
 
         # Allow us to set the nextpnr seed
         platform.toolchain.nextpnr_build_template[1] += " --seed " + str(pnr_seed)
+
+        # Allow loops for RNG placement
+        platform.toolchain.nextpnr_build_template[1] += " --ignore-loops"
 
         if placer is not None:
             platform.toolchain.nextpnr_build_template[1] += " --placer {}".format(placer)

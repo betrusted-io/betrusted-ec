@@ -61,6 +61,13 @@ fn main() -> ! {
     let mut soc_on: bool = true;
     let mut backlight : BtBacklight = BtBacklight::new();
     loop { 
+        if p.RINGOSC.status.read().fresh().bits() == true {
+            let r: u32 =  p.RINGOSC.rand0.read().bits() as u32 |
+                          p.RINGOSC.rand1.read().bits() << 8 as u32 |
+                          p.RINGOSC.rand2.read().bits() << 16 as u32 |
+                          p.RINGOSC.rand3.read().bits() << 24 as u32;
+            unsafe{ DBGSTR[3] = r; }
+        }
         if get_time_ms(&p) - last_time > 1000 {
             last_time = get_time_ms(&p);
             if last_state {
