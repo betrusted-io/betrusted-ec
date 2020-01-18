@@ -111,7 +111,7 @@ class TrngRingOsc(Module, AutoCSR, AutoDoc):
                 if stage < fast_stages:
                     stagename = 'RINGOSC_CCW' + str(stage)
                     # initially, share the CLB -- but see if performance is better if the LUTs are spread farther apart
-                    platform.toolchain.attr_translate[stagename + 'LOCK'] = ("LOC", "SLICE_" + str(x) + 'Y' + str(y))
+                    platform.toolchain.attr_translate[stagename + 'LOCK'] = ("LOC", "SLICE_X" + str(x) + 'Y' + str(y))
                     self.specials += Instance("LUT1",
                                      name=stagename,
                                      p_INIT=1,
@@ -154,6 +154,7 @@ class TrngRingOsc(Module, AutoCSR, AutoDoc):
                 y = y + y_span
                 if y <= y_mid:  # we hit the middle
                     x = x - 1
+                    x_span = x_span - 2
                     y = 0
                     y_span = y_max - y_min
                 else:
@@ -165,6 +166,7 @@ class TrngRingOsc(Module, AutoCSR, AutoDoc):
                 y = y - y_span
                 if y > y_mid:  # we hit the middle
                     x = x + 1
+                    x_span = x_span - 2
                     y = y_max
                     y_span = y_max - y_min
                 else:
