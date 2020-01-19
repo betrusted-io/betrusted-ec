@@ -67,7 +67,7 @@ class TrngRingOsc(Module, AutoCSR, AutoDoc):
             stage_delay = 1.7  # rough delay of each ring oscillator stage (incl routing) in ns
             fast_stages = 3  # this has a net period of ~5.6ns
 
-            x_min = 2  # 0   leave the very edge available for I/O routing
+            x_min = 2  # 0   routing oscillator slightly through core logic adds more noise
             x_max = 63 # 65
             y_min = 0
             y_max = 99  # 149 if you want to deal with the special case notch in the upper right
