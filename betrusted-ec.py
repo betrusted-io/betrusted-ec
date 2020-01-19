@@ -715,7 +715,7 @@ class BaseSoC(SoCCore):
 
         # TRNG testing
         from rtl.trng import TrngRingOsc
-        self.submodules.ringosc = TrngRingOsc(platform, target_freq=1e6)
+        self.submodules.ringosc = TrngRingOsc(platform, target_freq=1e6, rng_shift_width=16)
         # self.comb += platform.request("wifi_wup").eq(self.ringosc.trng_raw)  # this is just for debugging
 
         #### Platform config & build below

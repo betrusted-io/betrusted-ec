@@ -17,7 +17,7 @@ enough, the fix is to slow down the target_freq parameter.
 * self.trng_slow and self.trng_fast are debug hooks for checking the ring oscillators  
 """
 class TrngRingOsc(Module, AutoCSR, AutoDoc):
-    def __init__(self, platform, target_freq=1e6):
+    def __init__(self, platform, target_freq=1e6, rng_shift_width=32):
         devstr = platform.device.split('-')
         device_root = devstr[0]
         if devstr[1] == 'up5k':
@@ -29,7 +29,7 @@ class TrngRingOsc(Module, AutoCSR, AutoDoc):
             CSRField("ena", size=1, description="Enable the TRNG; 0 puts the TRNG into full powerdown", reset=1)
         ])
         self.rand = CSRStatus(fields=[
-            CSRField("rand", size=32, description="Random data shifted into a 32-bit register for easier collection")
+            CSRField("rand", size=rng_shift_width, description="Random data shifted into a register for easier collection. Width set by rng_shift_width parameter.")
         ])
         self.status = CSRStatus(fields=[
             CSRField("fresh", size=1, description="When set, the rand register contains a fresh set of bits to be read; cleaned by reading the `rand` register")
@@ -64,11 +64,11 @@ class TrngRingOsc(Module, AutoCSR, AutoDoc):
         self.trng_slow = Signal()
 
         if device_root == 'xc7s50':
-            stage_delay = 3  # rough delay of each ring osicllator stage (incl routing) in ns
-            fast_stages = 3
+            stage_delay = 1.7  # rough delay of each ring oscillator stage (incl routing) in ns
+            fast_stages = 3  # this has a net period of ~5.6ns
 
-            x_min = 0
-            x_max = 65
+            x_min = 2  # 0   leave the very edge available for I/O routing
+            x_max = 63 # 65
             y_min = 0
             y_max = 99  # 149 if you want to deal with the special case notch in the upper right
         elif device_root == 'ice40up5k':
@@ -88,7 +88,7 @@ class TrngRingOsc(Module, AutoCSR, AutoDoc):
         y_span = y_max - y_min
         x_span = x_max - x_min
 
-        stages = int((target_period // stage_delay) + 1)
+        stages = int((target_period / stage_delay) + 1)
         if stages % 2 == 0:
             stages = stages + 1
         ring_cw = Signal(stages+1) # ring oscillator clockwise
