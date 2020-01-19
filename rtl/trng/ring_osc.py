@@ -26,7 +26,7 @@ class TrngRingOsc(Module, AutoCSR, AutoDoc):
         self.trng_raw = Signal()  # raw TRNG output bitstream
         self.trng_out_sync = Signal()  # single-bit output, synchronized to sysclk
         self.ctl = CSRStorage(fields=[
-            CSRField("ena", size=1, description="Enable the TRNG; 0 puts the TRNG into full powerdown", reset=1)
+            CSRField("ena", size=1, description="Enable the TRNG; 0 puts the TRNG into full powerdown", reset=0)
         ])
         self.rand = CSRStatus(fields=[
             CSRField("rand", size=rng_shift_width, description="Random data shifted into a register for easier collection. Width set by rng_shift_width parameter.")
@@ -119,6 +119,8 @@ class TrngRingOsc(Module, AutoCSR, AutoDoc):
                                      o_O=ring_ccw[stage+1],
                                      attr=("KEEP", "DONT_TOUCH", stagename + 'LOCK')
                                  )
+
+
             elif device_root == 'ice40up5k':
                 platform.toolchain.attr_translate[stagename + 'LOCK'] = ("BEL", "X" + str(x) + '/Y' + str(y) + '/lc0')
                 self.specials += Instance("SB_LUT4",
