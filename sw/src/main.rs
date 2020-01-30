@@ -61,13 +61,6 @@ fn main() -> ! {
     let mut soc_on: bool = true;
     let mut backlight : BtBacklight = BtBacklight::new();
     loop { 
-        if p.RINGOSC.status.read().fresh().bits() == true {
-            let r: u32 =  p.RINGOSC.rand0.read().bits() as u32 |
-                          p.RINGOSC.rand1.read().bits() << 8 as u32 |
-                          p.RINGOSC.rand2.read().bits() << 16 as u32 |
-                          p.RINGOSC.rand3.read().bits() << 24 as u32;
-            unsafe{ DBGSTR[3] = r; }
-        }
         if get_time_ms(&p) - last_time > 1000 {
             last_time = get_time_ms(&p);
             if last_state {
@@ -124,7 +117,7 @@ fn main() -> ! {
 
         if p.COM.status.read().rxfull().bit_is_set() { 
             // read the rx data, then add a constant to it and fold it back into the tx register
-            let rx: u16 = (p.COM.rx0.read().bits() as u16) | ((p.COM.rx1.read().bits() as u16) << 8);
+            let rx: u16 = p.COM.rx.read().bits() as u16;
             while p.COM.status.read().rxfull().bit_is_set() {} // this should clear before going on
 
             let mut tx: u16 = 0;
@@ -141,7 +134,7 @@ fn main() -> ! {
                     comstate = ComState::Power;
                     // ignore rapid, successive power down requests
                     if get_time_ms(&p) - pd_time > 2000 {
-                        unsafe{ p.POWER.power.write(|w| w.bits((rx & 0xFF) as u32)); } 
+                        unsafe{ p.POWER.power.write(|w| w.bits(0x5 as u32)); } 
                         pd_time = get_time_ms(&p);
                         pd_interval = get_time_ms(&p);
                         soc_on = false;
@@ -187,8 +180,7 @@ fn main() -> ! {
                 _ => tx = voltage as u16,
             }
             linkindex = linkindex + 1;
-            unsafe{ p.COM.tx0.write(|w| w.bits( (tx & 0xFF) as u32 )); }
-            unsafe{ p.COM.tx1.write(|w| w.bits( ((tx >> 8) & 0xFF) as u32 )); }
+            unsafe{ p.COM.tx.write(|w| w.bits( tx as u32 )); }
         }
         
     }

@@ -630,7 +630,7 @@ class BaseSoC(SoCCore):
         clk_freq = int(12e6)
         self.submodules.crg = platform._CRG(platform)
 
-        SoCCore.__init__(self, platform, clk_freq, integrated_sram_size=0, with_uart=False, **kwargs)
+        SoCCore.__init__(self, platform, clk_freq, integrated_sram_size=0, with_uart=False, csr_data_width=32, **kwargs)
 
         from litex.soc.cores.uart import UARTWishboneBridge
         serialpads = platform.request("serial")

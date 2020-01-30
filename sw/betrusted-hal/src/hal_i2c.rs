@@ -4,8 +4,7 @@ pub fn i2c_init(p: &betrusted_pac::Peripherals, clock_mhz: u32) {
     let clkcode: u32 = (clock_mhz * 1_000_000) / (5 * 100_000) - 1;
 
     // set the prescale assuming 100MHz cpu operation: 100MHz / ( 5 * 100kHz ) - 1 = 199
-    unsafe{p.I2C.prescale0.write( |w| {w.bits(clkcode & 0xFF)}); }
-    unsafe{p.I2C.prescale1.write( |w| {w.bits((clkcode >> 8) & 0xFF)}); }
+    unsafe{p.I2C.prescale.write( |w| {w.bits(clkcode)}); }
 
     // enable the block
     p.I2C.control.write( |w| {w.en().bit(true)});
