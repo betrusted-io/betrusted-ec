@@ -610,7 +610,7 @@ class BaseSoC(SoCCore):
         "rgb":            13,
         "version":        14,
         "ticktimer":      15,
-        "ringosc":        3,
+#        "ringosc":        3,
     }
 
     SoCCore.mem_map = {
@@ -618,7 +618,15 @@ class BaseSoC(SoCCore):
         "sram":     0x10000000,  # (default shadow @0xa0000000)
         "spiflash": 0x20000000,  # (default shadow @0xa0000000)
         "csr":      0x80000000,  # (default shadow @0xe0000000)
+        "wifi":     0xd0000000,
     }
+
+
+    interrupt_map = {
+        "timer0": 2,
+        "i2c": 3,
+    }
+    interrupt_map.update(SoCCore.interrupt_map)
 
     def __init__(self, platform,
                  use_dsp=False, placer="heap", output_dir="build",
@@ -667,16 +675,15 @@ class BaseSoC(SoCCore):
                 i_externalResetVector=self.reboot.addr.storage,
             )
 
-        self.submodules.version = Version(platform.revision)
+        # self.submodules.version = Version(platform.revision)
 
         # add I2C interface
         self.submodules.i2c = RtlI2C(platform, platform.request("i2c", 0))
-        self.add_interrupt("i2c")
 
         # Messible for debug
         self.submodules.messible = Messible()
         # RGB for debug
-        self.submodules.rgb = SBLED(platform.revision, platform.request("led"))
+        # self.submodules.rgb = SBLED(platform.revision, platform.request("led"))
 
         # Betrusted Power management interface
         self.submodules.power = BtPower(platform.request("power"))
@@ -711,37 +718,56 @@ class BaseSoC(SoCCore):
         # SPI port to wifi (master)
         self.submodules.wifi = SpiMaster(platform.request("wifi"))
 
+        self.submodules.spitest = SpiFifoSlave(None)
+        self.add_wb_slave(self.mem_map["wifi"], self.spitest.bus, 4)
+        self.add_memory_region("wifi", self.mem_map["wifi"], 4, type='io')
+
         ########### more to come?? ##########
 
         # TRNG testing
-        from rtl.trng import TrngRingOsc
-        self.submodules.ringosc = TrngRingOsc(platform, target_freq=1e6, rng_shift_width=32)
+        # from rtl.trng import TrngRingOsc
+        # self.submodules.ringosc = TrngRingOsc(platform, target_freq=1e6, rng_shift_width=32)
         # self.comb += platform.request("wifi_wup").eq(self.ringosc.trng_raw)  # this is just for debugging
 
         #### Platform config & build below
+
+
+        # Override default LiteX's yosys/build templates
+        assert hasattr(platform.toolchain, "yosys_template")
+        assert hasattr(platform.toolchain, "build_template")
+        platform.toolchain.yosys_template = [
+            "{read_files}",
+            "attrmap -tocase keep -imap keep=\"true\" keep=1 -imap keep=\"false\" keep=0 -remove keep=0",
+            "synth_ice40 -json {build_name}.json -top {build_name}",
+        ]
+        platform.toolchain.build_template = [
+            "yosys -q -l {build_name}.rpt {build_name}.ys",
+            "nextpnr-ice40 --json {build_name}.json --pcf {build_name}.pcf --asc {build_name}.txt \
+            --pre-pack {build_name}_pre_pack.py --{architecture} --package {package}",
+            "icepack {build_name}.txt {build_name}.bin"
+        ]
 
         # Add "-relut -dffe_min_ce_use 4" to the synth_ice40 command.
         # The "-reult" adds an additional LUT pass to pack more stuff in,
         # and the "-dffe_min_ce_use 4" flag prevents Yosys from generating a
         # Clock Enable signal for a LUT that has fewer than 4 flip-flops.
         # This increases density, and lets us use the FPGA more efficiently.
-        platform.toolchain.nextpnr_yosys_template[2] += " -relut -dffe_min_ce_use 4"
+        platform.toolchain.yosys_template[2] += " -relut -abc2 -dffe_min_ce_use 4 -relut"
         if use_dsp:
-            platform.toolchain.nextpnr_yosys_template[2] += " -dsp"
+            platform.toolchain.yosys_template[2] += " -dsp"
 
         # Disable final deep-sleep power down so firmware words are loaded
         # onto softcore's address bus.
-        platform.toolchain.build_template[3] = "icepack -s {build_name}.txt {build_name}.bin"
-        platform.toolchain.nextpnr_build_template[2] = "icepack -s {build_name}.txt {build_name}.bin"
+        platform.toolchain.build_template[2] = "icepack -s {build_name}.txt {build_name}.bin"
 
         # Allow us to set the nextpnr seed
-        platform.toolchain.nextpnr_build_template[1] += " --seed " + str(pnr_seed)
-
-        # Allow loops for RNG placement
-        platform.toolchain.nextpnr_build_template[1] += " --ignore-loops"
+        platform.toolchain.build_template[1] += " --seed " + str(pnr_seed)
 
         if placer is not None:
-            platform.toolchain.nextpnr_build_template[1] += " --placer {}".format(placer)
+            platform.toolchain.build_template[1] += " --placer {}".format(placer)
+
+        # Allow loops for RNG placement
+        platform.toolchain.build_template[1] += " --ignore-loops"
 
         if sim:
             class _WishboneBridge(Module):
@@ -867,7 +893,7 @@ def main():
         compile_software = False
 
     cpu_type = "vexriscv"
-    cpu_variant = "min"
+    cpu_variant = "minimal"
     cpu_variant = cpu_variant + "+debug"
 
     if args.no_cpu or args.sim:
