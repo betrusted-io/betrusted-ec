@@ -143,7 +143,9 @@ class SpiFifoSlave(Module, AutoCSR, AutoDoc):
 
         self.control = CSRStorage(fields=[
             CSRField("clrerr", description="Clear FIFO error flags", pulse=True),
+            CSRField("host_int", description="0->1 raises an interrupt to the COM host"), # rising edge triggered on other side
         ])
+        self.comb += pads.irq.eq(self.control.fields.host_int)
         self.status = CSRStatus(fields=[
             CSRField("tip", description="Set when transaction is in progress"),
             CSRField("rx_avail", description="Set when Rx FIFO has new, valid contents to read"),
@@ -156,15 +158,12 @@ class SpiFifoSlave(Module, AutoCSR, AutoDoc):
             CSRField("tx_over", description="Set when Tx FIFO overflows"),
             CSRField("tx_under", description = "Set when Tx FIFO underflows"),
         ])
-
         self.submodules.ev = EventManager()
         self.ev.spi_avail = EventSourcePulse(description="Triggered when Rx FIFO leaves empty state")  # rising edge triggered
         self.ev.spi_event = EventSourceProcess(description="Triggered every time a packet completes")  # falling edge triggered
-        self.ev.spi_irq = EventSourcePulse(description="Explicit interrupt request from master") # rising edge triggered
         self.ev.finalize()
         self.comb += self.ev.spi_avail.trigger.eq(self.status.fields.rx_avail)
         self.comb += self.ev.spi_event.trigger.eq(self.status.fields.tip)
-        self.specials += MultiReg(pads.irq, self.ev.spi_irq.trigger)
 
         self.bus = bus = wishbone.Interface()
         rd_ack = Signal()
