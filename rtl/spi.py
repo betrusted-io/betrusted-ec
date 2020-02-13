@@ -1,6 +1,9 @@
 from litex.soc.integration.doc import AutoDoc, ModuleDoc
 from litex.soc.interconnect.csr_eventmanager import *
 
+from litex.soc.interconnect import wishbone
+from migen.genlib.fifo import SyncFIFOBuffered
+
 from migen.genlib.cdc import MultiReg
 from migen.genlib.cdc import PulseSynchronizer
 
@@ -93,6 +96,70 @@ class SpiMaster(Module, AutoCSR, AutoDoc):
                     NextState("IDLE"),
                 ),
         )
+
+class SpiFifoSlave(Module, AutoCSR, AutoDoc):
+    def __init__(self, pads):
+        self.bus = bus = wishbone.Interface()
+        rd_ack = Signal()
+        wr_ack = Signal()
+        self.comb +=[
+            If(bus.we,
+               bus.ack.eq(wr_ack),
+            ).Else(
+                bus.ack.eq(rd_ack),
+            )
+        ]
+
+        self.submodules.rd_fifo = rd_fifo = SyncFIFOBuffered(16, 1280) # should infer SB_RAM256x16's. 2560 depth > 2312 bytes = wifi MTU
+
+        bus_read = Signal()
+        bus_read_d = Signal()
+        rd_ack_pipe = Signal()
+        self.comb += bus_read.eq(bus.cyc & bus.stb & ~bus.we & (bus.cti == 0))
+        self.sync += [  # This is the bus responder -- only works for uncached memory regions
+            bus_read_d.eq(bus_read),
+            If(bus_read & ~bus_read_d,  # One response, one cycle
+                rd_ack_pipe.eq(1),
+                If(rd_fifo.readable,
+                    bus.dat_r.eq(rd_fifo.dout),
+                    rd_fifo.re.eq(1),
+                ).Else(
+                    # Don't stall the bus indefinitely if we try to read from an empty fifo...just
+                    # return garbage
+                    bus.dat_r.eq(0xdeadbeef),
+                    rd_fifo.re.eq(0),
+                )
+               ).Else(
+                rd_fifo.re.eq(0),
+                rd_ack_pipe.eq(0),
+            ),
+            rd_ack.eq(rd_ack_pipe),
+        ]
+
+        self.submodules.wr_fifo = wr_fifo = SyncFIFOBuffered(16, 256)
+        self.sync += [
+            # This is the bus responder -- need to check how this interacts with uncached memory
+            # region
+            If(bus.cyc & bus.stb & bus.we & ~bus.ack,
+                If(wr_fifo.writable,
+                    wr_fifo.din.eq(bus.dat_w),
+                    wr_fifo.we.eq(1),
+                    wr_ack.eq(1),
+                ).Else(
+                    wr_fifo.we.eq(0),
+                    wr_ack.eq(0),
+                )
+               ).Else(
+                wr_fifo.we.eq(0),
+                wr_ack.eq(0),
+            )
+        ]
+
+        # dummy tie the fifos together
+        self.sync += [
+            rd_fifo.din.eq(wr_fifo.dout),
+            rd_fifo.we.eq(wr_fifo.readable),
+        ]
 
 
 class SpiSlave(Module, AutoCSR, AutoDoc):
