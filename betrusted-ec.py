@@ -365,8 +365,9 @@ class SBWarmBoot(Module, AutoCSR):
         parent.config["BITSTREAM_SYNC_HEADER2"] = 0x7eaa997e
 
 
-class PicoRVSpi(Module, AutoCSR):
+class PicoRVSpi(Module, AutoCSR, AutoDoc):
     def __init__(self, platform, pads, size=2*1024*1024):
+        self.intro = ModuleDoc("See https://github.com/cliffordwolf/picorv32/tree/master/picosoc#spi-flash-controller-config-register")
         self.size = size
 
         self.bus = bus = wishbone.Interface()
@@ -375,7 +376,7 @@ class PicoRVSpi(Module, AutoCSR):
 
         self.cfg1 = CSRStorage(size=8)
         self.cfg2 = CSRStorage(size=8)
-        self.cfg3 = CSRStorage(size=8)
+        self.cfg3 = CSRStorage(size=8, reset=0x24) # set 1 for qspi (bit 21); lower 4 bits is "dummy" cycles
         self.cfg4 = CSRStorage(size=8)
 
         self.stat1 = CSRStatus(size=8)
@@ -386,9 +387,20 @@ class PicoRVSpi(Module, AutoCSR):
         cfg = Signal(32)
         cfg_we = Signal(4)
         cfg_out = Signal(32)
+
+        # Add pulse the cfg_we line after reset
+        reset_counter = Signal(2, reset=3)
+        ic_reset = Signal(reset=1)
+        self.sync += \
+            If(reset_counter != 0,
+                reset_counter.eq(reset_counter - 1)
+            ).Else(
+                ic_reset.eq(0)
+            )
+
         self.comb += [
             cfg.eq(Cat(self.cfg1.storage, self.cfg2.storage, self.cfg3.storage, self.cfg4.storage)),
-            cfg_we.eq(Cat(self.cfg1.re, self.cfg2.re, self.cfg3.re, self.cfg4.re)),
+            cfg_we.eq(Cat(self.cfg1.re, self.cfg2.re, self.cfg3.re | ic_reset, self.cfg4.re)),
             self.stat1.status.eq(cfg_out[0:8]),
             self.stat2.status.eq(cfg_out[8:16]),
             self.stat3.status.eq(cfg_out[16:24]),
@@ -675,7 +687,7 @@ class BaseSoC(SoCCore):
                 i_externalResetVector=self.reboot.addr.storage,
             )
 
-        # self.submodules.version = Version(platform.revision)
+        self.submodules.version = Version(platform.revision)
 
         # add I2C interface
         self.submodules.i2c = RtlI2C(platform, platform.request("i2c", 0))
@@ -718,9 +730,9 @@ class BaseSoC(SoCCore):
         # SPI port to wifi (master)
         self.submodules.wifi = SpiMaster(platform.request("wifi"))
 
-        self.submodules.spitest = SpiFifoSlave(None)
-        self.add_wb_slave(self.mem_map["wifi"], self.spitest.bus, 4)
-        self.add_memory_region("wifi", self.mem_map["wifi"], 4, type='io')
+        #self.submodules.spitest = SpiFifoSlave(None)
+        #self.add_wb_slave(self.mem_map["wifi"], self.spitest.bus, 4)
+        #self.add_memory_region("wifi", self.mem_map["wifi"], 4, type='io')
 
         ########### more to come?? ##########
 

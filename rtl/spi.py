@@ -110,7 +110,7 @@ class SpiFifoSlave(Module, AutoCSR, AutoDoc):
             )
         ]
 
-        self.submodules.rd_fifo = rd_fifo = SyncFIFOBuffered(16, 256) # should infer one SB_RAM256x163
+        self.submodules.rd_fifo = rd_fifo = SyncFIFOBuffered(16, 1280) # should infer SB_RAM256x16's. 2560 depth > 2312 bytes = wifi MTU
 
         bus_read = Signal()
         bus_read_d = Signal()
