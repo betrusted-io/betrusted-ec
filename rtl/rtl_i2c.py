@@ -59,8 +59,12 @@ class RtlI2C(Module, AutoCSR, AutoDoc):
         ])
 
         self.submodules.ev = EventManager()
-        self.ev.i2c_int = EventSourcePulse()  # rising edge triggered
+        self.ev.i2c_int = EventSourcePulse(description="I2C cycle completed")  # rising edge triggered
+        self.ev.gg_int = EventSourceProcess(description="Gas gauge interrupt") # falling edge
+        self.ev.gyro_int = EventSourceProcess(description="Gyro interrupt") # falling edge
         self.ev.finalize()
+        self.specials += MultiReg(pads.gg_int_n, self.ev.gg_int.trigger)
+        self.specials += MultiReg(pads.gyro_int_n, self.ev.gyro_int.trigger)
 
         # control register
         ena = Signal()

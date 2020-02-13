@@ -34,11 +34,23 @@ class SpiMaster(Module, AutoCSR, AutoDoc):
             CSRField("tip", description="Set when transaction is in progress"),
             CSRField("txfull", description="Set when Tx register is full"),
         ])
+        self.wifi = CSRStorage(fields=[
+            CSRField("reset", description="Write `1` to this register to reset the wifi chip; write `0` to enable normal operation", reset=1),
+            CSRField("pa_ena", description="Mapped to PA_ENABLE for wifi (only useful if configured in wifi firmware)"),
+            CSRField("wakeup", description="Wakeup the wifi chip"),
+        ])
+        self.comb += [
+            pads.pa_enable.eq(self.wifi.fields.pa_ena),
+            pads.wakeup.eq(self.wifi.fields.wakeup),
+            pads.res_n.eq(~self.wifi.fields.reset),
+        ]
 
         self.submodules.ev = EventManager()
-        self.ev.spi_int = EventSourceProcess()  # falling edge triggered
+        self.ev.spi_int = EventSourceProcess(description="Triggered on conclusion of each transaction")  # falling edge triggered
+        self.ev.wirq = EventSourceProcess(description="Interrupt request from wifi chip") # falling edge triggered
         self.ev.finalize()
         self.comb += self.ev.spi_int.trigger.eq(self.control.fields.intena & self.status.fields.tip)
+        self.specials += MultiReg(pads.wirq, self.ev.wirq.trigger)
 
         # Replica CSR into "spi" clock domain
         self.tx_r = Signal(16)
@@ -97,8 +109,63 @@ class SpiMaster(Module, AutoCSR, AutoDoc):
                 ),
         )
 
+class StickyBit(Module):
+    def __init__(self):
+        self.flag = Signal()
+        self.bit = Signal()
+        self.clear = Signal()
+
+        self.sync += [
+            If(self.clear,
+                self.bit.eq(0)
+            ).Else(
+                If(self.flag,
+                    self.bit.eq(1)
+                ).Else(
+                    self.bit.eq(self.bit)
+                )
+            )
+        ]
+
 class SpiFifoSlave(Module, AutoCSR, AutoDoc):
     def __init__(self, pads):
+        self.intro = ModuleDoc("""Simple soft SPI slave module optimized for Betrusted-EC (UP5K arch) use
+
+        Assumes a free-running sclk and csn performs the function of framing bits
+        Thus csn must go high between each frame, you cannot hold csn low for burst transfers.
+        """)
+
+        self.miso = pads.miso
+        self.mosi = pads.mosi
+        self.csn = pads.csn
+
+        ### clock is not wired up in this module, it's moved up to CRG for implementation-dependent buffering
+
+        self.control = CSRStorage(fields=[
+            CSRField("clrerr", description="Clear FIFO error flags", pulse=True),
+        ])
+        self.status = CSRStatus(fields=[
+            CSRField("tip", description="Set when transaction is in progress"),
+            CSRField("rx_avail", description="Set when Rx FIFO has new, valid contents to read"),
+            CSRField("rx_over", description="Set if Rx FIFO has overflowed"),
+            CSRField("rx_under", description="Set if Rx FIFO underflows"),
+            CSRField("rx_level", size=12, description="Level of Rx FIFO"),
+            CSRField("tx_avail", description="Set when Tx FIFO has space for new content"),
+            CSRField("tx_empty", description="Set when Tx FIFO is empty"),
+            CSRField("tx_level", size=12, description="Level of Tx FIFO"),
+            CSRField("tx_over", description="Set when Tx FIFO overflows"),
+            CSRField("tx_under", description = "Set when Tx FIFO underflows"),
+        ])
+
+        self.submodules.ev = EventManager()
+        self.ev.spi_avail = EventSourcePulse(description="Triggered when Rx FIFO leaves empty state")  # rising edge triggered
+        self.ev.spi_event = EventSourceProcess(description="Triggered every time a packet completes")  # falling edge triggered
+        self.ev.spi_irq = EventSourcePulse(description="Explicit interrupt request from master") # rising edge triggered
+        self.ev.finalize()
+        self.comb += self.ev.spi_avail.trigger.eq(self.status.fields.rx_avail)
+        self.comb += self.ev.spi_event.trigger.eq(self.status.fields.tip)
+        self.specials += MultiReg(pads.irq, self.ev.spi_irq.trigger)
+
         self.bus = bus = wishbone.Interface()
         rd_ack = Signal()
         wr_ack = Signal()
@@ -110,7 +177,16 @@ class SpiFifoSlave(Module, AutoCSR, AutoDoc):
             )
         ]
 
-        self.submodules.rd_fifo = rd_fifo = SyncFIFOBuffered(16, 1280) # should infer SB_RAM256x16's. 2560 depth > 2312 bytes = wifi MTU
+        # read/rx subsystemx
+        self.submodules.rx_fifo = rx_fifo = SyncFIFOBuffered(16, 1280) # should infer SB_RAM256x16's. 2560 depth > 2312 bytes = wifi MTU
+        self.submodules.rx_under = StickyBit()
+        self.comb += [
+            self.status.fields.rx_level.eq(rx_fifo.level),
+            self.status.fields.rx_avail.eq(rx_fifo.readable),
+            self.rx_under.clear.eq(self.control.fields.clrerr),
+            self.status.fields.rx_under.eq(self.rx_under.bit),
+        ]
+
 
         bus_read = Signal()
         bus_read_d = Signal()
@@ -120,46 +196,93 @@ class SpiFifoSlave(Module, AutoCSR, AutoDoc):
             bus_read_d.eq(bus_read),
             If(bus_read & ~bus_read_d,  # One response, one cycle
                 rd_ack_pipe.eq(1),
-                If(rd_fifo.readable,
-                    bus.dat_r.eq(rd_fifo.dout),
-                    rd_fifo.re.eq(1),
+                If(rx_fifo.readable,
+                    bus.dat_r.eq(rx_fifo.dout),
+                    rx_fifo.re.eq(1),
                 ).Else(
                     # Don't stall the bus indefinitely if we try to read from an empty fifo...just
                     # return garbage
                     bus.dat_r.eq(0xdeadbeef),
-                    rd_fifo.re.eq(0),
+                    rx_fifo.re.eq(0),
+                    self.rx_under.flag.eq(1),
                 )
                ).Else(
-                rd_fifo.re.eq(0),
+                rx_fifo.re.eq(0),
                 rd_ack_pipe.eq(0),
             ),
             rd_ack.eq(rd_ack_pipe),
         ]
 
-        self.submodules.wr_fifo = wr_fifo = SyncFIFOBuffered(16, 256)
+        # tx/write spislave
+        self.submodules.tx_fifo = tx_fifo = SyncFIFOBuffered(16, 1280)
+        self.submodules.tx_over = StickyBit()
+        self.comb += [
+           self.tx_over.clear.eq(self.control.fields.clrerr),
+           self.status.fields.tx_over.eq(self.tx_over.bit)
+        ]
+
         self.sync += [
-            # This is the bus responder -- need to check how this interacts with uncached memory
-            # region
             If(bus.cyc & bus.stb & bus.we & ~bus.ack,
-                If(wr_fifo.writable,
-                    wr_fifo.din.eq(bus.dat_w),
-                    wr_fifo.we.eq(1),
+                If(tx_fifo.writable,
+                    tx_fifo.din.eq(bus.dat_w),
+                    tx_fifo.we.eq(1),
                     wr_ack.eq(1),
                 ).Else(
-                    wr_fifo.we.eq(0),
+                    self.tx_over.flag.eq(1),
+                    tx_fifo.we.eq(0),
                     wr_ack.eq(0),
                 )
                ).Else(
-                wr_fifo.we.eq(0),
+                tx_fifo.we.eq(0),
                 wr_ack.eq(0),
             )
         ]
 
-        # dummy tie the fifos together
-        self.sync += [
-            rd_fifo.din.eq(wr_fifo.dout),
-            rd_fifo.we.eq(wr_fifo.readable),
+        # Replica CSR into "spi" clock domain
+        self.txrx = Signal(16)
+        self.tip_r = Signal()
+        self.rxfull_r = Signal()
+        self.rxover_r = Signal()
+        self.csn_r = Signal()
+
+        self.specials += MultiReg(~self.csn, self.tip_r)
+        self.comb += self.status.fields.tip.eq(self.tip_r)
+        tip_d = Signal()
+        donepulse = Signal()
+        self.sync += tip_d.eq(self.tip_r)
+        self.comb += donepulse.eq(~self.tip_r & tip_d)  # done pulse goes high when tip drops
+
+        self.submodules.rx_over = StickyBit()
+        self.comb += [
+            self.status.fields.rx_over.eq(self.rx_over.bit),
+            self.rx_over.clear.eq(self.control.fields.clrerr),
+            self.rx_over.flag.eq(~self.rx_fifo.writable & donepulse),
         ]
+        self.submodules.tx_under = StickyBit()
+        self.comb += [
+            self.status.fields.tx_under.eq(self.tx_under.bit),
+            self.tx_under.clear.eq(self.control.fields.clrerr),
+            self.tx_under.flag.eq(~self.tx_fifo.readable & donepulse),
+        ]
+
+        self.comb += self.miso.eq(self.txrx[15])
+        self.comb += [
+            self.rx_fifo.din.eq(self.txrx),
+            self.rx_fifo.we.eq(donepulse),
+            self.tx_fifo.re.eq(donepulse),
+        ]
+
+        csn_d = Signal()
+        self.sync.spislave += [
+            csn_d.eq(self.csn),
+            # "Sloppy" clock boundary crossing allowed because "rxfull" is synchronized and CPU should grab data based on that
+            If(self.csn == 0,
+               self.txrx.eq(Cat(self.mosi, self.txrx[0:15])),
+            ).Else(
+               self.txrx.eq(self.tx_fifo.dout)
+            )
+        ]
+
 
 
 class SpiSlave(Module, AutoCSR, AutoDoc):

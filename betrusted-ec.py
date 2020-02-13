@@ -69,9 +69,9 @@ _io = [
     ("i2c", 0,
      Subsignal("scl", Pins("23"), IOStandard("LVCMOS18")),
      Subsignal("sda", Pins("25"), IOStandard("LVCMOS18")),
-     ),
-    ("gg_int", 0, Pins("42"), IOStandard("LVCMOS18")),
-    ("gyro_int0", 0, Pins("43"), IOStandard("LVCMOS18")),
+     Subsignal("gg_int_n", Pins("42"), IOStandard("LVCMOS18")),
+     Subsignal("gyro_int_n", Pins("43"), IOStandard("LVCMOS18")),
+    ),
 
     ("clk12", 0, Pins("35"), IOStandard("LVCMOS18")),
 
@@ -79,9 +79,9 @@ _io = [
         Subsignal("csn", Pins("11"), IOStandard("LVCMOS18")),
         Subsignal("miso", Pins("10"), IOStandard("LVCMOS18")),
         Subsignal("mosi", Pins("9"), IOStandard("LVCMOS18")),
+        Subsignal("irq", Pins("6"), IOStandard("LVCMOS18")), # ACTIVE HIGH
      ),
     ("com_sclk", 0, Pins("20"), IOStandard("LVCMOS18")),
-    ("com_irq", 0, Pins("6"), IOStandard("LVCMOS18")),
 
     ("extcommin", 0, Pins("45"), IOStandard("LVCMOS33")),
     ("lcd_disp", 0, Pins("44"), IOStandard("LVCMOS33")),
@@ -105,12 +105,12 @@ _io = [
          Subsignal("mosi", Pins("34"), IOStandard("LVCMOS18")),
          Subsignal("csn", Pins("28"), IOStandard("LVCMOS18")),
          Subsignal("sclk", Pins("36"), IOStandard("LVCMOS18")),
+         Subsignal("lpclk", Pins("37"), IOStandard("LVCMOS18")),  # not currently used...
+         Subsignal("pa_enable", Pins("27"), IOStandard("LVCMOS18")),
+         Subsignal("res_n", Pins("26"), IOStandard("LVCMOS18")),
+         Subsignal("wirq", Pins("31"), IOStandard("LVCMOS18")),
+         Subsignal("wakeup", Pins("38"), IOStandard("LVCMOS18")),
      ),
-    ("wifi_lpclk", 0, Pins("37"), IOStandard("LVCMOS18")),
-    ("wifi_pa_enable", 0, Pins("27"), IOStandard("LVCMOS18")),
-    ("wifi_res_n", 0, Pins("26"), IOStandard("LVCMOS18")),
-    ("wifi_wirq", 0, Pins("31"), IOStandard("LVCMOS18")),
-    ("wifi_wup", 0, Pins("38"), IOStandard("LVCMOS18")),
 
     # Only used for simulation
     ("wishbone", 0,
@@ -379,10 +379,7 @@ class PicoRVSpi(Module, AutoCSR, AutoDoc):
         self.cfg3 = CSRStorage(size=8, reset=0x24) # set 1 for qspi (bit 21); lower 4 bits is "dummy" cycles
         self.cfg4 = CSRStorage(size=8)
 
-        self.stat1 = CSRStatus(size=8)
-        self.stat2 = CSRStatus(size=8)
-        self.stat3 = CSRStatus(size=8)
-        self.stat4 = CSRStatus(size=8)
+        self.stat = CSRStatus(size=32)
 
         cfg = Signal(32)
         cfg_we = Signal(4)
@@ -401,10 +398,7 @@ class PicoRVSpi(Module, AutoCSR, AutoDoc):
         self.comb += [
             cfg.eq(Cat(self.cfg1.storage, self.cfg2.storage, self.cfg3.storage, self.cfg4.storage)),
             cfg_we.eq(Cat(self.cfg1.re, self.cfg2.re, self.cfg3.re | ic_reset, self.cfg4.re)),
-            self.stat1.status.eq(cfg_out[0:8]),
-            self.stat2.status.eq(cfg_out[8:16]),
-            self.stat3.status.eq(cfg_out[16:24]),
-            self.stat4.status.eq(cfg_out[24:32]),
+            self.stat.status.eq(cfg_out),
         ]
 
         mosi_pad = TSTriple()
@@ -485,100 +479,6 @@ class PicoRVSpi(Module, AutoCSR, AutoDoc):
         )
         platform.add_source("rtl/spimemio.v")
 
-class Version(Module, AutoCSR):
-    def __init__(self, model):
-        def makeint(i, base=10):
-            try:
-                return int(i, base=base)
-            except:
-                return 0
-        def get_gitver():
-            import subprocess
-            def decode_version(v):
-                version = v.split(".")
-                major = 0
-                minor = 0
-                rev = 0
-                if len(version) >= 3:
-                    rev = makeint(version[2])
-                if len(version) >= 2:
-                    minor = makeint(version[1])
-                if len(version) >= 1:
-                    major = makeint(version[0])
-                return (major, minor, rev)
-            git_rev_cmd = subprocess.Popen(["git", "describe", "--tags", "--dirty=+"],
-                                stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE)
-            (git_stdout, _) = git_rev_cmd.communicate()
-            if git_rev_cmd.wait() != 0:
-                print('unable to get git version')
-                return
-            raw_git_rev = git_stdout.decode().strip()
-
-            dirty = False
-            if raw_git_rev[-1] == "+":
-                raw_git_rev = raw_git_rev[:-1]
-                dirty = True
-
-            parts = raw_git_rev.split("-")
-            major = 0
-            minor = 0
-            rev = 0
-            gitrev = 0
-            gitextra = 0
-
-            if len(parts) >= 3:
-                if parts[0].startswith("v"):
-                    version = parts[0]
-                    if version.startswith("v"):
-                        version = parts[0][1:]
-                    (major, minor, rev) = decode_version(version)
-                gitextra = makeint(parts[1])
-                if parts[2].startswith("g"):
-                    gitrev = makeint(parts[2][1:], base=16)
-            elif len(parts) >= 2:
-                if parts[1].startswith("g"):
-                    gitrev = makeint(parts[1][1:], base=16)
-                version = parts[0]
-                if version.startswith("v"):
-                    version = parts[0][1:]
-                (major, minor, rev) = decode_version(version)
-            elif len(parts) >= 1:
-                version = parts[0]
-                if version.startswith("v"):
-                    version = parts[0][1:]
-                (major, minor, rev) = decode_version(version)
-
-            return (major, minor, rev, gitrev, gitextra, dirty)
-
-        self.major = CSRStatus(8)
-        self.minor = CSRStatus(8)
-        self.revision = CSRStatus(8)
-        self.gitrev = CSRStatus(32)
-        self.gitextra = CSRStatus(10)
-        self.dirty = CSRStatus(1)
-        self.model = CSRStatus(8)
-
-        (major, minor, rev, gitrev, gitextra, dirty) = get_gitver()
-        self.comb += [
-            self.major.status.eq(major),
-            self.minor.status.eq(minor),
-            self.revision.status.eq(rev),
-            self.gitrev.status.eq(gitrev),
-            self.gitextra.status.eq(gitextra),
-            self.dirty.status.eq(dirty),
-        ]
-        if model == "evt":
-            self.comb += self.model.status.eq(0x45) # 'E'
-        elif model == "dvt":
-            self.comb += self.model.status.eq(0x44) # 'D'
-        elif model == "pvt":
-            self.comb += self.model.status.eq(0x50) # 'P'
-        elif model == "hacker":
-            self.comb += self.model.status.eq(0x48) # 'H'
-        else:
-            self.comb += self.model.status.eq(0x3f) # '?'
-
 class BtPower(Module, AutoCSR, AutoDoc):
     def __init__(self, pads):
         self.intro = ModuleDoc("""BtPower - power control pins (EC)""")
@@ -620,9 +520,7 @@ class BaseSoC(SoCCore):
         "messible":       11,
         "reboot":         12,
         "rgb":            13,
-        "version":        14,
         "ticktimer":      15,
-#        "ringosc":        3,
     }
 
     SoCCore.mem_map = {
@@ -637,6 +535,8 @@ class BaseSoC(SoCCore):
     interrupt_map = {
         "timer0": 2,
         "i2c": 3,
+        "wifi" : 4,
+        "com" : 5,
     }
     interrupt_map.update(SoCCore.interrupt_map)
 
@@ -687,8 +587,6 @@ class BaseSoC(SoCCore):
                 i_externalResetVector=self.reboot.addr.storage,
             )
 
-        self.submodules.version = Version(platform.revision)
-
         # add I2C interface
         self.submodules.i2c = RtlI2C(platform, platform.request("i2c", 0))
 
@@ -725,24 +623,15 @@ class BaseSoC(SoCCore):
         self.submodules.ticktimer = TickTimer(clk_freq / 1000)
 
         # COM port (spi slave to Artix)
-        self.submodules.com = SpiSlave(platform.request("com"))
+        self.submodules.com = SpiFifoSlave(platform.request("com"))
+        self.add_wb_slave(self.mem_map["wifi"], self.com.bus, 4)
+        self.add_memory_region("wifi", self.mem_map["wifi"], 4, type='io')
 
         # SPI port to wifi (master)
         self.submodules.wifi = SpiMaster(platform.request("wifi"))
 
-        #self.submodules.spitest = SpiFifoSlave(None)
-        #self.add_wb_slave(self.mem_map["wifi"], self.spitest.bus, 4)
-        #self.add_memory_region("wifi", self.mem_map["wifi"], 4, type='io')
-
-        ########### more to come?? ##########
-
-        # TRNG testing
-        # from rtl.trng import TrngRingOsc
-        # self.submodules.ringosc = TrngRingOsc(platform, target_freq=1e6, rng_shift_width=32)
-        # self.comb += platform.request("wifi_wup").eq(self.ringosc.trng_raw)  # this is just for debugging
 
         #### Platform config & build below
-
 
         # Override default LiteX's yosys/build templates
         assert hasattr(platform.toolchain, "yosys_template")
