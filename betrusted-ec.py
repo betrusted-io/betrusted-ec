@@ -31,7 +31,7 @@ from rtl.messible import Messible
 from rtl.ticktimer import TickTimer
 from rtl.spi import *
 
-import lxsocdoc
+import litex.soc.doc as lxsocdoc
 
 # Ish. It's actually slightly smaller, but this is divisible by 4.
 GATEWARE_SIZE = 0x1a000
@@ -264,88 +264,6 @@ class CocotbPlatform(SimPlatform):
                 ResetSignal("sys").eq(rst),
             ]
 
-
-class SBLED(Module, AutoCSR):
-    def __init__(self, revision, pads):
-        bringup_debug = True   # used only for early bringup debugging, delete once Rust runtime is stable and we don't need a single-word write test of CPU execution
-
-        rgba_pwm = Signal(3)
-
-        self.dat = CSRStorage(8)
-        self.addr = CSRStorage(4)
-        self.ctrl = CSRStorage(6)
-        self.raw = CSRStorage(3)
-
-        ledd_value = Signal(3)
-        if revision == "pvt" or revision == "evt" or revision == "dvt":
-            self.comb += [
-                If(self.ctrl.storage[3], rgba_pwm[1].eq(self.raw.storage[0])).Else(rgba_pwm[1].eq(ledd_value[0])),
-                If(self.ctrl.storage[4], rgba_pwm[0].eq(self.raw.storage[1])).Else(rgba_pwm[0].eq(ledd_value[1])),
-                If(self.ctrl.storage[5], rgba_pwm[2].eq(self.raw.storage[2])).Else(rgba_pwm[2].eq(ledd_value[2])),
-            ]
-        else:
-            self.comb += [
-                If(self.ctrl.storage[3], rgba_pwm[0].eq(self.raw.storage[0])).Else(rgba_pwm[0].eq(ledd_value[0])),
-                If(self.ctrl.storage[4], rgba_pwm[1].eq(self.raw.storage[1])).Else(rgba_pwm[1].eq(ledd_value[1])),
-                If(self.ctrl.storage[5], rgba_pwm[2].eq(self.raw.storage[2])).Else(rgba_pwm[2].eq(ledd_value[2])),
-            ]
-
-        if bringup_debug:
-            self.specials += Instance("SB_RGBA_DRV",
-                  i_CURREN=1,
-                  i_RGBLEDEN=1,
-                  i_RGB0PWM=self.raw.storage[0],
-                  i_RGB1PWM=self.raw.storage[1],
-                  i_RGB2PWM=self.raw.storage[2],
-                  o_RGB0=pads.rgb0,
-                  o_RGB1=pads.rgb1,
-                  o_RGB2=pads.rgb2,
-                  p_CURRENT_MODE="0b1",
-                  p_RGB0_CURRENT="0b000011",
-                  p_RGB1_CURRENT="0b000011",
-                  p_RGB2_CURRENT="0b000011",
-              )
-        else:
-            self.specials += Instance("SB_RGBA_DRV",
-                i_CURREN = self.ctrl.storage[1],
-                i_RGBLEDEN = self.ctrl.storage[2],
-                i_RGB0PWM = rgba_pwm[0],
-                i_RGB1PWM = rgba_pwm[1],
-                i_RGB2PWM = rgba_pwm[2],
-                o_RGB0 = pads.rgb0,
-                o_RGB1 = pads.rgb1,
-                o_RGB2 = pads.rgb2,
-                p_CURRENT_MODE = "0b1",
-                p_RGB0_CURRENT = "0b000011",
-                p_RGB1_CURRENT = "0b000011",
-                p_RGB2_CURRENT = "0b000011",
-            )
-
-        self.specials += Instance("SB_LEDDA_IP",
-            i_LEDDCS = self.dat.re,
-            i_LEDDCLK = ClockSignal(),
-            i_LEDDDAT7 = self.dat.storage[7],
-            i_LEDDDAT6 = self.dat.storage[6],
-            i_LEDDDAT5 = self.dat.storage[5],
-            i_LEDDDAT4 = self.dat.storage[4],
-            i_LEDDDAT3 = self.dat.storage[3],
-            i_LEDDDAT2 = self.dat.storage[2],
-            i_LEDDDAT1 = self.dat.storage[1],
-            i_LEDDDAT0 = self.dat.storage[0],
-            i_LEDDADDR3 = self.addr.storage[3],
-            i_LEDDADDR2 = self.addr.storage[2],
-            i_LEDDADDR1 = self.addr.storage[1],
-            i_LEDDADDR0 = self.addr.storage[0],
-            i_LEDDDEN = self.dat.re,
-            i_LEDDEXE = self.ctrl.storage[0],
-            # o_LEDDON = led_is_on, # Indicates whether LED is on or not
-            # i_LEDDRST = ResetSignal(), # This port doesn't actually exist
-            o_PWMOUT0 = ledd_value[0],
-            o_PWMOUT1 = ledd_value[1],
-            o_PWMOUT2 = ledd_value[2],
-            o_LEDDON = Signal(),
-        )
-
 class SBWarmBoot(Module, AutoCSR):
     def __init__(self, parent, reset_vector=0):
         self.ctrl = CSRStorage(size=8)
@@ -519,7 +437,6 @@ class BaseSoC(SoCCore):
         "picorvspi":      10,
         "messible":       11,
         "reboot":         12,
-        "rgb":            13,
         "ticktimer":      15,
     }
 
@@ -527,7 +444,7 @@ class BaseSoC(SoCCore):
         "rom":      0x00000000,  # (default shadow @0x80000000)
         "sram":     0x10000000,  # (default shadow @0xa0000000)
         "spiflash": 0x20000000,  # (default shadow @0xa0000000)
-        "csr":      0x80000000,  # (default shadow @0xe0000000)
+        "csr":      0xe0000000,  # (default shadow @0xe0000000)
         "wifi":     0xd0000000,
     }
 
@@ -592,8 +509,6 @@ class BaseSoC(SoCCore):
 
         # Messible for debug
         self.submodules.messible = Messible()
-        # RGB for debug
-        # self.submodules.rgb = SBLED(platform.revision, platform.request("led"))
 
         # Betrusted Power management interface
         self.submodules.power = BtPower(platform.request("power"))
@@ -620,7 +535,7 @@ class BaseSoC(SoCCore):
         self.comb += serialpads.tx.eq( (~self.power.soc_on & drive_kbd) | (self.power.soc_on & dbgpads.tx) )
 
         # Tick timer
-        self.submodules.ticktimer = TickTimer(clk_freq / 1000)
+        self.submodules.ticktimer = TickTimer(1000, clk_freq, bits=40)
 
         # COM port (spi slave to Artix)
         self.submodules.com = SpiFifoSlave(platform.request("com"))

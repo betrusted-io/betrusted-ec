@@ -144,6 +144,7 @@ class SpiFifoSlave(Module, AutoCSR, AutoDoc):
         self.control = CSRStorage(fields=[
             CSRField("clrerr", description="Clear FIFO error flags", pulse=True),
             CSRField("host_int", description="0->1 raises an interrupt to the COM host"), # rising edge triggered on other side
+            CSRField("pump", description="Drain one element from TX fifo per write of `1`. Used to clear TX FIFO in case of master/slave phase mismatch.", pulse=True),
         ])
         self.comb += pads.irq.eq(self.control.fields.host_int)
         self.status = CSRStatus(fields=[
@@ -161,9 +162,11 @@ class SpiFifoSlave(Module, AutoCSR, AutoDoc):
         self.submodules.ev = EventManager()
         self.ev.spi_avail = EventSourcePulse(description="Triggered when Rx FIFO leaves empty state")  # rising edge triggered
         self.ev.spi_event = EventSourceProcess(description="Triggered every time a packet completes")  # falling edge triggered
+        self.ev.spi_err = EventSourcePulse(description="Triggered when any error condition occurs") # rising edge
         self.ev.finalize()
         self.comb += self.ev.spi_avail.trigger.eq(self.status.fields.rx_avail)
         self.comb += self.ev.spi_event.trigger.eq(self.status.fields.tip)
+        self.comb += self.ev.spi_err.trigger.eq(self.status.fields.rx_over | self.status.fields.rx_under | self.status.fields.tx_over | self.status.fields.tx_under)
 
         self.bus = bus = wishbone.Interface()
         rd_ack = Signal()
@@ -198,6 +201,7 @@ class SpiFifoSlave(Module, AutoCSR, AutoDoc):
                 If(rx_fifo.readable,
                     bus.dat_r.eq(rx_fifo.dout),
                     rx_fifo.re.eq(1),
+                    self.rx_under.flag.eq(0),
                 ).Else(
                     # Don't stall the bus indefinitely if we try to read from an empty fifo...just
                     # return garbage
@@ -208,6 +212,7 @@ class SpiFifoSlave(Module, AutoCSR, AutoDoc):
                ).Else(
                 rx_fifo.re.eq(0),
                 rd_ack_pipe.eq(0),
+                self.rx_under.flag.eq(0),
             ),
             rd_ack.eq(rd_ack_pipe),
         ]
@@ -216,8 +221,11 @@ class SpiFifoSlave(Module, AutoCSR, AutoDoc):
         self.submodules.tx_fifo = tx_fifo = SyncFIFOBuffered(16, 1280)
         self.submodules.tx_over = StickyBit()
         self.comb += [
-           self.tx_over.clear.eq(self.control.fields.clrerr),
-           self.status.fields.tx_over.eq(self.tx_over.bit)
+            self.tx_over.clear.eq(self.control.fields.clrerr),
+            self.status.fields.tx_over.eq(self.tx_over.bit),
+            self.status.fields.tx_empty.eq(~tx_fifo.readable),
+            self.status.fields.tx_avail.eq(tx_fifo.writable),
+            self.status.fields.tx_level.eq(tx_fifo.level),
         ]
 
         self.sync += [
@@ -268,7 +276,7 @@ class SpiFifoSlave(Module, AutoCSR, AutoDoc):
         self.comb += [
             self.rx_fifo.din.eq(self.txrx),
             self.rx_fifo.we.eq(donepulse),
-            self.tx_fifo.re.eq(donepulse),
+            self.tx_fifo.re.eq(donepulse | self.control.fields.pump),
         ]
 
         csn_d = Signal()
