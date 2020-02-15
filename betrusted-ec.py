@@ -105,12 +105,12 @@ _io = [
          Subsignal("mosi", Pins("34"), IOStandard("LVCMOS18")),
          Subsignal("csn", Pins("28"), IOStandard("LVCMOS18")),
          Subsignal("sclk", Pins("36"), IOStandard("LVCMOS18")),
-         Subsignal("lpclk", Pins("37"), IOStandard("LVCMOS18")),  # not currently used...
          Subsignal("pa_enable", Pins("27"), IOStandard("LVCMOS18")),
          Subsignal("res_n", Pins("26"), IOStandard("LVCMOS18")),
          Subsignal("wirq", Pins("31"), IOStandard("LVCMOS18")),
          Subsignal("wakeup", Pins("38"), IOStandard("LVCMOS18")),
      ),
+    ("lpclk", 0, Pins("37"), IOStandard("LVCMOS18")),
 
     # Only used for simulation
     ("wishbone", 0,
@@ -144,47 +144,38 @@ class BetrustedPlatform(LatticePlatform):
             clk12_raw = platform.request("clk12")
             clk12 = Signal()
 
-#            reset_delay = Signal(12, reset=4095)
-#            self.clock_domains.cd_por = ClockDomain()
-#            self.reset = Signal()
-
             self.clock_domains.cd_sys = ClockDomain()
+            self.comb += self.cd_sys.clk.eq(clk12)
 
             platform.add_period_constraint(clk12_raw, 1e9/12e6)
 
             # POR reset logic- POR generated from sys clk, POR logic feeds sys clk
-            # reset.
-#            self.comb += [
-#                self.cd_por.clk.eq(self.cd_sys.clk),
-#                self.cd_sys.rst.eq(reset_delay != 0),
-#            ]
+            # reset. Just need a pulse one cycle wide to get things working right.
+            self.clock_domains.cd_por = ClockDomain()
+            reset_cascade = Signal(reset=1)
+            reset_initiator = Signal()
+            self.sync.por += [
+                reset_cascade.eq(reset_initiator)
+            ]
+            self.comb += [
+                self.cd_por.clk.eq(self.cd_sys.clk),
+                self.cd_sys.rst.eq(reset_cascade),
+            ]
 
-            self.comb += self.cd_sys.clk.eq(clk12)
-
-            lock = Signal()
-#            self.sync.por += \
-#                If(reset_delay != 0,
-#                    reset_delay.eq(reset_delay - 1)
-#                )
-#            self.specials += AsyncResetSynchronizer(self.cd_por, self.reset)
-            self.specials += AsyncResetSynchronizer(self.cd_sys, ~lock)
-
-            # generate a >1us-wide pulse at 1Hz based on clk12 for display extcomm signal
-            # count down from 12e6 to 0 so that first extcomm pulse comes after lcd_disp is high
+            # generate a >1us-wide pulse at 1Hz based on lpclk for display extcomm signal
+            self.clock_domains.cd_lpclk = ClockDomain()
+            self.specials += Instance("SB_GB", i_USER_SIGNAL_TO_GLOBAL_BUFFER=platform.request("lpclk"),
+                o_GLOBAL_BUFFER_OUTPUT=self.cd_lpclk.clk)
             extcomm = platform.request("extcommin", 0)
-            extcomm_div = Signal(24, reset=int(12e6))
+            extcomm_div = Signal(15)
             self.sync += [
-                If(extcomm_div == 0,
-                   extcomm_div.eq(int(12e6))
+                If(extcomm_div == 32767,
+                   extcomm_div.eq(0),
+                   extcomm.eq(1),
                 ).Else(
-                   extcomm_div.eq(extcomm_div - 1)
+                   extcomm_div.eq(extcomm_div + 1),
+                   extcomm.eq(0),
                 ),
-
-                If(extcomm_div < 13,
-                   extcomm.eq(1)
-                ).Else(
-                   extcomm.eq(0)
-                )
             ]
             self.comb += platform.request("lcd_disp", 0).eq(1)  # force display on for now
 
@@ -211,7 +202,6 @@ class BetrustedPlatform(LatticePlatform):
                 i_PACKAGEPIN = clk12_raw,
                 o_PLLOUTCORE = clkspi,
                 o_PLLOUTGLOBAL = clk12,
-                o_LOCK = lock,
                 i_BYPASS = 1,  # bypass connects clk12 to PLLOUTGLOBAL
                 i_RESETB = 1,
             )
@@ -532,7 +522,7 @@ class BaseSoC(SoCCore):
         self.comb += serialpads.tx.eq( (~self.power.soc_on & drive_kbd) | (self.power.soc_on & dbgpads.tx) )
 
         # Tick timer
-        self.submodules.ticktimer = TickTimer(1000, clk_freq, bits=32)
+        self.submodules.ticktimer = TickTimer(1000, clk_freq, bits=40)
 
         # COM port (spi slave to Artix)
         self.submodules.com = SpiFifoSlave(platform.request("com"))

@@ -10,7 +10,7 @@ pub fn time_init(p: &betrusted_pac::Peripherals) {
 pub fn get_time_ms(p: &betrusted_pac::Peripherals) -> u32 {
     let time: u32;
     
-    time = p.TICKTIMER.time.read().bits();
+    time = p.TICKTIMER.time0.read().bits();
 
     time / TICKS_PER_MS
 }

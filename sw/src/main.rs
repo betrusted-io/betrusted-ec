@@ -128,9 +128,7 @@ fn main() -> ! {
                         let bl_level: u8 = (rx & 0x1F) as u8;
                         backlight.set_brightness(&p, bl_level);
                     },
-                0x7000 => {linkindex = 0; comstate = ComState::GasGauge;
-                    com_sentinel = com_sentinel + 1;
-                },
+                0x7000 => {linkindex = 0; comstate = ComState::GasGauge;},
                 0x8000 => {linkindex = 0; comstate = ComState::Stat;},
                 0x9000..=0x90FF => {
                     linkindex = 0;
@@ -156,12 +154,14 @@ fn main() -> ! {
                     while !p.COM.status.read().tx_empty().bit_is_set() {
                         p.COM.control.write( |w| w.pump().bit(true));
                     }
+                    p.COM.control.write( |w| w.clrerr().bit(true) ); // clear all error flags
+                    unsafe { p.COM.control.write( |w| w.bits(0) ); } // reset the bits.
+                    com_sentinel = com_sentinel + 1; // for debugging only, right now no output
                     unsafe{ (*com_fifo).write(tx as u32); }
                     continue;
                 }
                 _ => {
-                    tx = rx + com_sentinel;
-                    com_sentinel = com_sentinel + 1;
+                    tx = rx;
                     unsafe{ (*com_fifo).write(tx as u32); }                    
                     continue;
                 },
