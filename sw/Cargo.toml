@@ -13,6 +13,7 @@ riscv-rt = { git = "https://github.com/betrusted-io/riscv-rt.git", tag = "v0.6.2
 # riscv-semihosting = { git = "https://github.com/riscv-rust/riscv-semihosting.git" }
 betrusted-pac = { path = "betrusted-pac" }
 betrusted-hal = { path = "betrusted-hal" }
+volatile = "0.2.6"
 
 # this lets you use `cargo fix`!
 [[bin]]

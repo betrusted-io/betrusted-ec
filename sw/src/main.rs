@@ -5,6 +5,7 @@ use core::panic::PanicInfo;
 use riscv_rt::entry;
 
 extern crate betrusted_hal;
+extern crate volatile;
 
 const CONFIG_CLOCK_FREQUENCY: u32 = 12_000_000;
 
@@ -45,8 +46,14 @@ fn main() -> ! {
     chg_set_autoparams(&p);
     chg_start(&p);
 
-    unsafe{p.RGB.raw.write( |w| {w.bits(0)});}  // turn off all the LEDs
+    use volatile::Volatile;
+    let com_ptr: *mut u32 = 0xD000_0000 as *mut u32; 
+    let com_fifo = com_ptr as *mut Volatile<u32>;
+    let com_rd_ptr: *mut u32 = 0xD000_0000 as *mut u32;
+    let com_rd = com_rd_ptr as *mut Volatile<u32>;
 
+    unsafe{ (*com_fifo).write(2020); } // load a dummy entry in so we can respond on the first txrx
+    
     let mut last_time : u32 = get_time_ms(&p);
     let mut last_state : bool = false;
     let mut charger : BtCharger = BtCharger::new();
@@ -54,12 +61,13 @@ fn main() -> ! {
     let mut current: i16 = 0;
     let mut stby_current: i16 = 0;
     let mut linkindex : usize = 0;
-    let mut ledbits: u32 = 0;
     let mut comstate: ComState = ComState::Idle;
     let mut pd_time: u32 = 0;
     let mut pd_interval: u32 = 0;
     let mut soc_on: bool = true;
     let mut backlight : BtBacklight = BtBacklight::new();
+    let mut com_sentinel: u16 = 0;
+    backlight.set_brightness(&p, 0); // make sure the backlight is off on boot
     loop { 
         if get_time_ms(&p) - last_time > 1000 {
             last_time = get_time_ms(&p);
@@ -82,11 +90,6 @@ fn main() -> ! {
 
             }
             last_state = ! last_state;
-
-            unsafe {
-                p.RGB.raw.write( |w| {w.bits(ledbits)});
-            }
-
         }
 
         // monitor the keyboard inputs if the soc is in the off state
@@ -115,10 +118,9 @@ fn main() -> ! {
             }
         }
 
-        if p.COM.status.read().rxfull().bit_is_set() { 
-            // read the rx data, then add a constant to it and fold it back into the tx register
-            let rx: u16 = p.COM.rx.read().bits() as u16;
-            while p.COM.status.read().rxfull().bit_is_set() {} // this should clear before going on
+        while p.COM.status.read().rx_avail().bit_is_set() {
+            let rx: u16;
+            unsafe{ rx = (*com_rd).read() as u16; }
 
             let mut tx: u16 = 0;
             match rx {
@@ -126,8 +128,9 @@ fn main() -> ! {
                         let bl_level: u8 = (rx & 0x1F) as u8;
                         backlight.set_brightness(&p, bl_level);
                     },
-                0x6000..=0x6007 => {ledbits = (rx & 0x7) as u32; comstate = ComState::Idle;},
-                0x7000 => {linkindex = 0; comstate = ComState::GasGauge;},
+                0x7000 => {linkindex = 0; comstate = ComState::GasGauge;
+                    com_sentinel = com_sentinel + 1;
+                },
                 0x8000 => {linkindex = 0; comstate = ComState::Stat;},
                 0x9000..=0x90FF => {
                     linkindex = 0;
@@ -140,7 +143,28 @@ fn main() -> ! {
                         soc_on = false;
                     }
                 },
-                _ => tx = voltage as u16,
+                0xF0F0 => {
+                    // this a "read continuation" command, in other words, return read data
+                    // based on the current state. Do nothing here, check "comstate.
+                }
+                0xFFFF => {
+                    // reset link command, when received, empty all the FIFOs, and prime Tx with dummy data
+                    tx = 0;
+                    while p.COM.status.read().rx_avail().bit_is_set() {
+                        unsafe{ tx += (*com_rd).read() as u16; }
+                    }
+                    while !p.COM.status.read().tx_empty().bit_is_set() {
+                        p.COM.control.write( |w| w.pump().bit(true));
+                    }
+                    unsafe{ (*com_fifo).write(tx as u32); }
+                    continue;
+                }
+                _ => {
+                    tx = rx + com_sentinel;
+                    com_sentinel = com_sentinel + 1;
+                    unsafe{ (*com_fifo).write(tx as u32); }                    
+                    continue;
+                },
             }
 
             match comstate {
@@ -177,10 +201,10 @@ fn main() -> ! {
                         comstate = ComState::Idle;
                     }
                 }
-                _ => tx = voltage as u16,
+                _ => tx = 8888,
             }
             linkindex = linkindex + 1;
-            unsafe{ p.COM.tx.write(|w| w.bits( tx as u32 )); }
+            unsafe{ (*com_fifo).write(tx as u32); }
         }
         
     }

@@ -272,20 +272,21 @@ class SpiFifoSlave(Module, AutoCSR, AutoDoc):
             self.tx_under.flag.eq(~self.tx_fifo.readable & donepulse),
         ]
 
+        rx = Signal(16)
         self.comb += self.miso.eq(self.txrx[15])
         self.comb += [
-            self.rx_fifo.din.eq(self.txrx),
+            self.rx_fifo.din.eq(rx),
             self.rx_fifo.we.eq(donepulse),
             self.tx_fifo.re.eq(donepulse | self.control.fields.pump),
         ]
 
-        csn_d = Signal()
         self.sync.spislave += [
-            csn_d.eq(self.csn),
-            # "Sloppy" clock boundary crossing allowed because "rxfull" is synchronized and CPU should grab data based on that
+            # "Sloppy" clock boundary crossing allowed because rx is, in theory, static when donepulse happens
             If(self.csn == 0,
                self.txrx.eq(Cat(self.mosi, self.txrx[0:15])),
+                rx.eq(Cat(self.mosi, self.txrx[0:15])),
             ).Else(
+                rx.eq(rx),
                self.txrx.eq(self.tx_fifo.dout)
             )
         ]

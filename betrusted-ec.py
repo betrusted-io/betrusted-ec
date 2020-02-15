@@ -144,9 +144,9 @@ class BetrustedPlatform(LatticePlatform):
             clk12_raw = platform.request("clk12")
             clk12 = Signal()
 
-            reset_delay = Signal(12, reset=4095)
-            self.clock_domains.cd_por = ClockDomain()
-            self.reset = Signal()
+#            reset_delay = Signal(12, reset=4095)
+#            self.clock_domains.cd_por = ClockDomain()
+#            self.reset = Signal()
 
             self.clock_domains.cd_sys = ClockDomain()
 
@@ -154,24 +154,20 @@ class BetrustedPlatform(LatticePlatform):
 
             # POR reset logic- POR generated from sys clk, POR logic feeds sys clk
             # reset.
-            self.comb += [
-                self.cd_por.clk.eq(self.cd_sys.clk),
-                self.cd_sys.rst.eq(reset_delay != 0),
-            ]
-
-#            self.specials += Instance(
-#                "SB_GB",
-#                i_USER_SIGNAL_TO_GLOBAL_BUFFER=clk12_raw,
-#                o_GLOBAL_BUFFER_OUTPUT=clk12,
-#            )
+#            self.comb += [
+#                self.cd_por.clk.eq(self.cd_sys.clk),
+#                self.cd_sys.rst.eq(reset_delay != 0),
+#            ]
 
             self.comb += self.cd_sys.clk.eq(clk12)
 
-            self.sync.por += \
-                If(reset_delay != 0,
-                    reset_delay.eq(reset_delay - 1)
-                )
-            self.specials += AsyncResetSynchronizer(self.cd_por, self.reset)
+            lock = Signal()
+#            self.sync.por += \
+#                If(reset_delay != 0,
+#                    reset_delay.eq(reset_delay - 1)
+#                )
+#            self.specials += AsyncResetSynchronizer(self.cd_por, self.reset)
+            self.specials += AsyncResetSynchronizer(self.cd_sys, ~lock)
 
             # generate a >1us-wide pulse at 1Hz based on clk12 for display extcomm signal
             # count down from 12e6 to 0 so that first extcomm pulse comes after lcd_disp is high
@@ -215,6 +211,7 @@ class BetrustedPlatform(LatticePlatform):
                 i_PACKAGEPIN = clk12_raw,
                 o_PLLOUTCORE = clkspi,
                 o_PLLOUTGLOBAL = clk12,
+                o_LOCK = lock,
                 i_BYPASS = 1,  # bypass connects clk12 to PLLOUTGLOBAL
                 i_RESETB = 1,
             )
@@ -445,7 +442,7 @@ class BaseSoC(SoCCore):
         "sram":     0x10000000,  # (default shadow @0xa0000000)
         "spiflash": 0x20000000,  # (default shadow @0xa0000000)
         "csr":      0xe0000000,  # (default shadow @0xe0000000)
-        "wifi":     0xd0000000,
+        "com":      0xd0000000,
     }
 
 
@@ -535,12 +532,12 @@ class BaseSoC(SoCCore):
         self.comb += serialpads.tx.eq( (~self.power.soc_on & drive_kbd) | (self.power.soc_on & dbgpads.tx) )
 
         # Tick timer
-        self.submodules.ticktimer = TickTimer(1000, clk_freq, bits=40)
+        self.submodules.ticktimer = TickTimer(1000, clk_freq, bits=32)
 
         # COM port (spi slave to Artix)
         self.submodules.com = SpiFifoSlave(platform.request("com"))
-        self.add_wb_slave(self.mem_map["wifi"], self.com.bus, 4)
-        self.add_memory_region("wifi", self.mem_map["wifi"], 4, type='io')
+        self.add_wb_slave(self.mem_map["com"], self.com.bus, 4)
+        self.add_memory_region("com", self.mem_map["com"], 4, type='io')
 
         # SPI port to wifi (master)
         self.submodules.wifi = SpiMaster(platform.request("wifi"))
