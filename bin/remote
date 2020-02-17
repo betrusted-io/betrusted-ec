@@ -1,1 +1,2 @@
-target remote 10.0.245.90:1234
+file ../sw/target/riscv32i-unknown-none-elf/release/betrusted-ec
+target remote 10.0.245.90:3333

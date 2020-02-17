@@ -27,6 +27,7 @@ from litex.soc.interconnect import wishbone
 from litex.soc.interconnect.csr import *
 
 from rtl.rtl_i2c import RtlI2C
+from rtl.hard_i2c import HardI2C
 from rtl.messible import Messible
 from rtl.ticktimer import TickTimer
 from rtl.spi import *
@@ -431,6 +432,7 @@ class BaseSoC(SoCCore):
         "rom":      0x00000000,  # (default shadow @0x80000000)
         "sram":     0x10000000,  # (default shadow @0xa0000000)
         "spiflash": 0x20000000,  # (default shadow @0xa0000000)
+        "i2c":      0xb0000000,
         "csr":      0xe0000000,  # (default shadow @0xe0000000)
         "com":      0xd0000000,
     }
@@ -454,7 +456,7 @@ class BaseSoC(SoCCore):
         clk_freq = int(12e6)
         self.submodules.crg = platform._CRG(platform)
 
-        SoCCore.__init__(self, platform, clk_freq, integrated_sram_size=0, with_uart=False, csr_data_width=32, **kwargs)
+        SoCCore.__init__(self, platform, clk_freq, integrated_sram_size=0, uart_name="crossover", csr_data_width=32, **kwargs) # with_uart=False
 
         from litex.soc.cores.uart import UARTWishboneBridge
         serialpads = platform.request("serial")
@@ -492,7 +494,10 @@ class BaseSoC(SoCCore):
             )
 
         # add I2C interface
-        self.submodules.i2c = RtlI2C(platform, platform.request("i2c", 0))
+        # self.submodules.i2c = RtlI2C(platform, platform.request("i2c", 0))
+        self.submodules.i2c = HardI2C(platform, platform.request("i2c", 0))
+        self.add_wb_slave(self.mem_map["i2c"], self.i2c.bus, 16*4)
+        self.add_memory_region("i2c", self.mem_map["i2c"], 16*4, type='io')
 
         # Messible for debug
         self.submodules.messible = Messible()
@@ -522,7 +527,7 @@ class BaseSoC(SoCCore):
         self.comb += serialpads.tx.eq( (~self.power.soc_on & drive_kbd) | (self.power.soc_on & dbgpads.tx) )
 
         # Tick timer
-        self.submodules.ticktimer = TickTimer(1000, clk_freq, bits=40)
+        self.submodules.ticktimer = TickTimer(100000, clk_freq, bits=48)
 
         # COM port (spi slave to Artix)
         self.submodules.com = SpiFifoSlave(platform.request("com"))

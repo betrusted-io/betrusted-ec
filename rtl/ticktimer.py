@@ -7,7 +7,7 @@ from litex.soc.integration.doc import AutoDoc, ModuleDoc
 
 class TickTimer(Module, AutoCSR, AutoDoc):
     """Millisecond timer"""
-    def __init__(self, clkspertick, clkfreq, bits=40):
+    def __init__(self, clkspertick, clkfreq, bits=48):
         self.clkspertick = int(clkfreq/ clkspertick)
 
         self.intro = ModuleDoc("""TickTimer: A practical systick timer.

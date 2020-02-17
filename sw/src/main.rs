@@ -27,24 +27,25 @@ enum ComState {
 
 #[entry]
 fn main() -> ! {
-    use betrusted_hal::hal_i2c::*;
+    use betrusted_hal::hal_hardi2c::*;
     use betrusted_hal::hal_time::*;
     use betrusted_hal::api_gasgauge::*;
     use betrusted_hal::api_charger::*;
     use betrusted_hal::api_lm3509::*;
 
     let p = betrusted_pac::Peripherals::take().unwrap();
+    let mut i2c = Hardi2c::new();
 
     time_init(&p);
 
-    i2c_init(&p, CONFIG_CLOCK_FREQUENCY / 1_000_000);
+    i2c.i2c_init(CONFIG_CLOCK_FREQUENCY);
     // this needs to be one of the first things called after I2C comes up
-    chg_set_safety(&p);
+    chg_set_safety(&mut i2c);
 
-    gg_start(&p);
+    gg_start(&mut i2c);
 
-    chg_set_autoparams(&p);
-    chg_start(&p);
+    chg_set_autoparams(&mut i2c);
+    chg_start(&mut i2c);
 
     use volatile::Volatile;
     let com_ptr: *mut u32 = 0xD000_0000 as *mut u32; 
@@ -67,25 +68,25 @@ fn main() -> ! {
     let mut soc_on: bool = true;
     let mut backlight : BtBacklight = BtBacklight::new();
     let mut com_sentinel: u16 = 0;
-    backlight.set_brightness(&p, 0); // make sure the backlight is off on boot
+    backlight.set_brightness(&mut i2c, 0); // make sure the backlight is off on boot
     loop { 
         if get_time_ms(&p) - last_time > 1000 {
             last_time = get_time_ms(&p);
             if last_state {
-                chg_keepalive_ping(&p);
-                charger.update_regs(&p);
+                chg_keepalive_ping(&mut i2c);
+                charger.update_regs(&mut i2c);
             } else {
                 // once every second run these routines
-                voltage = gg_voltage(&p);
-                current = gg_avg_current(&p);
+                voltage = gg_voltage(&mut i2c);
+                current = gg_avg_current(&mut i2c);
 
                 // soc turns on automatically if the charger comes up
-                if chg_is_charging(&p) || (p.POWER.stats.read().state().bits() & 0x2 != 0) {
+                if chg_is_charging(&mut i2c) || (p.POWER.stats.read().state().bits() & 0x2 != 0) {
                     soc_on = true;
                 }
 
                 if !soc_on {
-                    stby_current = gg_avg_current(&p);
+                    stby_current = gg_avg_current(&mut i2c);
                 }
 
             }
@@ -126,7 +127,7 @@ fn main() -> ! {
             match rx {
                 0x6800..=0x681F => {
                         let bl_level: u8 = (rx & 0x1F) as u8;
-                        backlight.set_brightness(&p, bl_level);
+                        backlight.set_brightness(&mut i2c, bl_level);
                     },
                 0x7000 => {linkindex = 0; comstate = ComState::GasGauge;},
                 0x8000 => {linkindex = 0; comstate = ComState::Stat;},
@@ -143,7 +144,7 @@ fn main() -> ! {
                 },
                 0xF0F0 => {
                     // this a "read continuation" command, in other words, return read data
-                    // based on the current state. Do nothing here, check "comstate.
+                    // based on the current state. Do nothing here, check "comstate".
                 }
                 0xFFFF => {
                     // reset link command, when received, empty all the FIFOs, and prime Tx with dummy data

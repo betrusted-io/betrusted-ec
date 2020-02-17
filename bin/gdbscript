@@ -1,2 +1,0 @@
-file ../sw/target/riscv32i-unknown-none-elf/release/betrusted-ec
-set riscv use_compressed_breakpoints off

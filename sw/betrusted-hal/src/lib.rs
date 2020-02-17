@@ -1,6 +1,9 @@
 #![no_std]
 
-pub mod hal_i2c;
+extern crate bitflags;
+extern crate volatile;
+
+pub mod hal_hardi2c;
 pub mod hal_time;
 pub mod api_gasgauge;
 pub mod api_charger;

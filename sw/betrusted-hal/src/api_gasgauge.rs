@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::hal_i2c::i2c_master;
+use crate::hal_hardi2c::Hardi2c;
 
 const BQ27421_ADDR : u8 = 0x55;
 
@@ -41,45 +41,45 @@ const GG_CODE_CLR_HIB :  u16 = 0x0012;
 const GG_UPDATE_INTERVAL_MS : u32 = 1000;
 const GG_TIMEOUT_MS: u32 = 5;
 
-fn gg_set(p: &betrusted_pac::Peripherals, cmd_code: u8, val: u16) {
+fn gg_set(i2c: &mut Hardi2c, cmd_code: u8, val: u16) {
     let txbuf: [u8; 3] = [cmd_code, (val & 0xff) as u8, ((val >> 8) & 0xff) as u8];
 
-    i2c_master(p, BQ27421_ADDR, Some(&txbuf), None, GG_TIMEOUT_MS);
+    i2c.i2c_master(BQ27421_ADDR, Some(&txbuf), None, GG_TIMEOUT_MS);
 }
 
-fn gg_set_byte(p: &betrusted_pac::Peripherals, cmd_code: u8, val: u8) {
+fn gg_set_byte(i2c: &mut Hardi2c, cmd_code: u8, val: u8) {
     let txbuf: [u8; 2] = [cmd_code, val];
 
-    i2c_master(p, BQ27421_ADDR, Some(&txbuf), None, GG_TIMEOUT_MS);
+    i2c.i2c_master(BQ27421_ADDR, Some(&txbuf), None, GG_TIMEOUT_MS);
 }
 
-fn gg_get(p: &betrusted_pac::Peripherals, cmd_code: u8) -> i16 {
+fn gg_get(i2c: &mut Hardi2c, cmd_code: u8) -> i16 {
     let txbuf: [u8; 1] = [cmd_code];
     let mut rxbuf: [u8; 2] = [0, 0];
 
-    i2c_master(p, BQ27421_ADDR, Some(&txbuf), Some(&mut rxbuf), GG_TIMEOUT_MS);
+    i2c.i2c_master(BQ27421_ADDR, Some(&txbuf), Some(&mut rxbuf), GG_TIMEOUT_MS);
 
     // don't do the sign conversion untl after the bytes are composited, sign extension of
     // of i8's would be inappropriate for this application
     (rxbuf[0] as u16 | (rxbuf[1] as u16) << 8) as i16
 }   
 
-fn gg_get_byte(p: &betrusted_pac::Peripherals, cmd_code: u8) -> u8 {
+fn gg_get_byte(i2c: &mut Hardi2c, cmd_code: u8) -> u8 {
     let txbuf: [u8; 1] = [cmd_code];
     let mut rxbuf: [u8; 1] = [0];
 
-    i2c_master(p, BQ27421_ADDR, Some(&txbuf), Some(&mut rxbuf), GG_TIMEOUT_MS);
+    i2c.i2c_master(BQ27421_ADDR, Some(&txbuf), Some(&mut rxbuf), GG_TIMEOUT_MS);
 
     rxbuf[0]
 }   
 
-pub fn gg_start(p: &betrusted_pac::Peripherals) { gg_set(p, GG_CMD_CNTL, GG_CODE_CLR_HIB);  }
-pub fn gg_set_hibernate(p: &betrusted_pac::Peripherals) { gg_set(p, GG_CMD_CNTL, GG_CODE_SET_HIB); }
-pub fn gg_voltage(p: &betrusted_pac::Peripherals) -> i16 { gg_get(p, GG_CMD_VOLT) }
-pub fn gg_avg_current(p: &betrusted_pac::Peripherals) -> i16  { gg_get(p, GG_CMD_AVGCUR) }
-pub fn gg_avg_power(p: &betrusted_pac::Peripherals) -> i16  { gg_get(p, GG_CMD_AVGPWR) }
-pub fn gg_remaining_capacity(p: &betrusted_pac::Peripherals) -> i16  { gg_get(p, GG_CMD_RM) }
-pub fn gg_state_of_charge(p: &betrusted_pac::Peripherals) -> i16  { gg_get(p, GG_CMD_SOC) }
+pub fn gg_start(i2c: &mut Hardi2c) { gg_set(i2c, GG_CMD_CNTL, GG_CODE_CLR_HIB);  }
+pub fn gg_set_hibernate(i2c: &mut Hardi2c) { gg_set(i2c, GG_CMD_CNTL, GG_CODE_SET_HIB); }
+pub fn gg_voltage(i2c: &mut Hardi2c) -> i16 { gg_get(i2c, GG_CMD_VOLT) }
+pub fn gg_avg_current(i2c: &mut Hardi2c) -> i16  { gg_get(i2c, GG_CMD_AVGCUR) }
+pub fn gg_avg_power(i2c: &mut Hardi2c) -> i16  { gg_get(i2c, GG_CMD_AVGPWR) }
+pub fn gg_remaining_capacity(i2c: &mut Hardi2c) -> i16  { gg_get(i2c, GG_CMD_RM) }
+pub fn gg_state_of_charge(i2c: &mut Hardi2c) -> i16  { gg_get(i2c, GG_CMD_SOC) }
 
 fn compute_checksum(blockdata: &[u8]) -> u8 {
     let mut checksum: u8 = 0;
@@ -90,38 +90,38 @@ fn compute_checksum(blockdata: &[u8]) -> u8 {
     255 - checksum
 }
 
-pub fn gg_device_type(p: &betrusted_pac::Peripherals) -> i16 {
-    gg_set(p, GG_CMD_CNTL, GG_CODE_DEVTYPE);
-    gg_get(p, GG_CMD_CNTL)
+pub fn gg_device_type(i2c: &mut Hardi2c) -> i16 {
+    gg_set(i2c, GG_CMD_CNTL, GG_CODE_DEVTYPE);
+    gg_get(i2c, GG_CMD_CNTL)
 }
 
-pub fn gg_control_status(p: &betrusted_pac::Peripherals) -> i16 {
-    gg_set(p, GG_CMD_CNTL, GG_CODE_CTLSTAT);
-    gg_get(p, GG_CMD_CNTL)
+pub fn gg_control_status(i2c: &mut Hardi2c) -> i16 {
+    gg_set(i2c, GG_CMD_CNTL, GG_CODE_CTLSTAT);
+    gg_get(i2c, GG_CMD_CNTL)
 }
 
 #[doc = "Set the design capacity of the battery. Returns previously assigned capacity."]
-pub fn gg_set_design_capacity(p: &betrusted_pac::Peripherals, mah: u16) -> u16 {
+pub fn gg_set_design_capacity(i2c: &mut Hardi2c, mah: u16) -> u16 {
     // unseal the gasguage by writing the unseal command twice
-    gg_set(p, GG_CMD_CNTL, GG_CODE_UNSEAL);
-    gg_set(p, GG_CMD_CNTL, GG_CODE_UNSEAL);
+    gg_set(i2c, GG_CMD_CNTL, GG_CODE_UNSEAL);
+    gg_set(i2c, GG_CMD_CNTL, GG_CODE_UNSEAL);
 
     // set configuraton update command
-    gg_set(p, GG_CMD_CNTL, GG_CODE_CFGUPDATE);
+    gg_set(i2c, GG_CMD_CNTL, GG_CODE_CFGUPDATE);
 
     loop {
-        let flags : i16 = gg_get(p, GG_CMD_FLAG);
+        let flags : i16 = gg_get(i2c, GG_CMD_FLAG);
         if (flags & 0x10) != 0 { break; }
     }
     
-    gg_set_byte(p, GG_EXT_BLKDATACTL, 0x0);    // enable block data memory control
-    gg_set_byte(p, GG_EXT_BLKDATACLS, 0x52);   // set data class to 0x52 -- state subclass
-    gg_set_byte(p, GG_EXT_BLKDATAOFF, 0x00);  // specify block data offset
+    gg_set_byte(i2c, GG_EXT_BLKDATACTL, 0x0);    // enable block data memory control
+    gg_set_byte(i2c, GG_EXT_BLKDATACLS, 0x52);   // set data class to 0x52 -- state subclass
+    gg_set_byte(i2c, GG_EXT_BLKDATAOFF, 0x00);  // specify block data offset
 
     // read the existing data block, extract design capacity, then update and writeback
     let mut blockdata: [u8; 33] = [0; 33];
     for i in 0..32 { // skip checksum as we don't check it
-        blockdata[i] = gg_get_byte(p, GG_EXT_BLKDATABSE + i as u8);
+        blockdata[i] = gg_get_byte(i2c, GG_EXT_BLKDATABSE + i as u8);
     }
 
     let design_capacty: u16 = (blockdata[11] as u16) | ((blockdata[10] as u16) << 8);
@@ -130,19 +130,19 @@ pub fn gg_set_design_capacity(p: &betrusted_pac::Peripherals, mah: u16) -> u16 {
     blockdata[10] = ((mah >> 8) & 0xFF) as u8;
     blockdata[32] = compute_checksum(&blockdata);
     for i in 0..33 {
-        gg_set_byte(p, GG_EXT_BLKDATABSE + i as u8, blockdata[i]);
+        gg_set_byte(i2c, GG_EXT_BLKDATABSE + i as u8, blockdata[i]);
     }
 
     // reset the gasguage to get the new data to take hold
-    gg_set(p, GG_CMD_CNTL, GG_CODE_RESET);
+    gg_set(i2c, GG_CMD_CNTL, GG_CODE_RESET);
 
     loop {
-        let flags : i16 = gg_get(p, GG_CMD_FLAG);
+        let flags : i16 = gg_get(i2c, GG_CMD_FLAG);
         if (flags & 0x10) != 0 { break; }
     }
 
     // seal the gas gauge
-    gg_set(p, GG_CMD_CNTL, GG_CODE_SEAL);
+    gg_set(i2c, GG_CMD_CNTL, GG_CODE_SEAL);
 
     design_capacty
 }
