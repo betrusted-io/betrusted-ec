@@ -1,7 +1,11 @@
 use bitflags::*;
 use volatile::*;
-use crate::hal_time::get_time_ms;
-use crate::hal_time::delay_us;
+use crate::hal_time::get_time_ticks_trunc;
+use crate::hal_time::delay_ms;
+
+#[used]  // This is necessary to keep DBGSTR from being optimized out
+static mut I2C_DBGSTR: [u32; 8] = [0; 8];
+//  print/x betrusted_hal::hal_hardi2c::I2C_DBGSTR
 
 // wishbone bus width is natively 32-bits, and to simplify
 // implementation we just throw away the top 24 bits and stride
@@ -68,6 +72,15 @@ bitflags! {
     }
 }
 
+bitflags! {
+    pub struct IrqStat: u32 {
+        const IRQARBL  = 0b1000;
+        const IRQTRRDY = 0b0100;
+        const IRQTROE  = 0b0010;
+        const IRQHGC   = 0b0001;
+    }
+}
+
 pub struct Hardi2c {
     p: betrusted_pac::Peripherals,
     control: *mut Volatile <u32>,
@@ -78,6 +91,7 @@ pub struct Hardi2c {
     command: *mut Volatile <u32>,
     txd: *mut Volatile <u32>,
     rxd: *mut Volatile <u32>,
+    irqstat: *mut Volatile <u32>,
 }
 
 impl Hardi2c {
@@ -93,6 +107,7 @@ impl Hardi2c {
                 command: ((HARDI2C_BASE + HARDI2C_COMMAND) as *mut u32) as *mut Volatile <u32>,
                 txd: ((HARDI2C_BASE + HARDI2C_TXD) as *mut u32) as *mut Volatile <u32>,
                 rxd: ((HARDI2C_BASE + HARDI2C_RXD) as *mut u32) as *mut Volatile <u32>,
+                irqstat: ((HARDI2C_BASE + HARDI2C_IRQSTAT) as *mut u32) as *mut Volatile <u32>,
             }
         }
     }
@@ -109,29 +124,56 @@ impl Hardi2c {
         unsafe{ (*self.prescale_msb).write( (clock_code >> 8) & 0x3 ); }
     
         // enable the block
-        unsafe{ (*self.control).write((Control::I2CEN | Control::SDA_DEL_SEL_75NS).bits()); }
+        unsafe{ (*self.control).write((Control::I2CEN | Control::SDA_DEL_SEL_0NS).bits()); }
         // disable interrupts
         unsafe{ (*self.irqen).write(0); }
+        // clear irqstat
+        unsafe{ (*self.irqstat).write((IrqStat::IRQARBL | IrqStat::IRQTRRDY | IrqStat::IRQTROE | IrqStat::IRQHGC).bits()); }
     }
 
     /// Wait for trrdy or srw to go true. trrdy = false => wait for srw [FIXME] make this interrupt driven, not polled
     fn i2c_wait(&mut self, flag: u32, timeout_ms: u32) -> u32 {
-        let starttime: u32 = get_time_ms(&self.p);
+        let starttime: u32 = get_time_ticks_trunc(&self.p);
 
-        let mut stat: bool;
-        loop {
-            if (unsafe{ (*self.status).read() } & flag) == 0 {
-                stat = false;
-            } else {
-                stat = true;
-            }
+        while (unsafe{ (*self.status).read() } & flag) == 0 {
+            let curtime: u32 = get_time_ticks_trunc(&self.p);
 
-            if stat {
-                break;
+            if curtime >= starttime {
+                if (curtime - starttime) > timeout_ms {
+                    unsafe{ (*self.command).write(Command::CKSDIS.bits()); }
+                    unsafe{ I2C_DBGSTR[7] = 42; }
+                    return 1;
+                }
+            } else {  // deal with roll-over
+                if (curtime + (0xFFFF_FFFF - starttime)) > timeout_ms {
+                    unsafe{ (*self.command).write(Command::CKSDIS.bits()); }
+                    unsafe{ I2C_DBGSTR[7] = 42; }
+                    return 1;
+                }
             }
-            if get_time_ms(&self.p) > starttime + timeout_ms {
-                unsafe{ (*self.command).write(Command::CKSDIS.bits()); }
-                return 1;
+        }
+        0
+    }
+
+    /// opposite polarity as above; don't generalize because the extra code can hurt wait loop timing
+    fn i2c_wait_n(&mut self, flag: u32, timeout_ms: u32) -> u32 {
+        let starttime: u32 = get_time_ticks_trunc(&self.p);
+
+        while (unsafe{ (*self.status).read() } & flag) != 0 {
+            let curtime: u32 = get_time_ticks_trunc(&self.p);
+
+            if curtime >= starttime {
+                if (curtime - starttime) > timeout_ms {
+                    //unsafe{ (*self.command).write(Command::CKSDIS.bits()); }
+                    unsafe{ I2C_DBGSTR[7] = 42; }
+                    return 1;
+                }
+            } else {  // deal with roll-over
+                if (curtime + (0xFFFF_FFFF - starttime)) > timeout_ms {
+                    //unsafe{ (*self.command).write(Command::CKSDIS.bits()); }
+                    unsafe{ I2C_DBGSTR[7] = 42; }
+                    return 1;
+                }
             }
         }
         0
@@ -140,59 +182,82 @@ impl Hardi2c {
     /// The primary I2C interface call. This version currently blocks until the transaction is done.
     pub fn i2c_master(&mut self, addr: u8, txbuf: Option<&[u8]>, rxbuf: Option<&mut [u8]>, timeout_ms: u32) -> u32 {
         let mut ret: u32 = 0;
+        
+        // hoist these up to optimize performance a bit
+        let do_rx: bool = rxbuf.is_some();
+        let rxbuf_checked : &mut [u8] = rxbuf.unwrap();
     
         // write half
         if txbuf.is_some() {
             let txbuf_checked : &[u8] = txbuf.unwrap();
-            unsafe{ (*self.txd).write((addr << 1 | 0) as u32); }
-            unsafe{ (*self.command).write((Command::STA | Command::WR | Command::CKSDIS).bits()); }
-        
-            for i in 0..txbuf_checked.len() {
-                ret += self.i2c_wait(Status::TRRDY.bits(), timeout_ms);
-                unsafe{ (*self.txd).write(txbuf_checked[i] as u32); }
-                unsafe{ (*self.command).write((Command::WR | Command::CKSDIS).bits()); }
 
-                if (i == (txbuf_checked.len() - 1)) && rxbuf.is_none() {
-                    // can this be issued immediately, or do we need to wait for trrdy?
+            unsafe{ (*self.txd).write((addr << 1 | 0) as u32); }
+            // trrdy should drop when data is accepted
+            ret += self.i2c_wait_n(Status::TRRDY.bits(), timeout_ms);
+            unsafe{ I2C_DBGSTR[3] = (*self.status).read(); }
+            // issue write+start
+            unsafe{ (*self.command).write((Command::STA | Command::WR | Command::CKSDIS).bits()); }
+            
+            for i in 0..txbuf_checked.len() {
+                // when trrdy goes high again, it's ready to accept the next datum
+                ret += self.i2c_wait((Status::TRRDY | Status::BUSY).bits(), timeout_ms);
+                ret += self.i2c_wait_n(Status::TIP.bits(), timeout_ms); // wait until the transaction in progress is done
+                
+                // write data
+                unsafe{ (*self.txd).write(txbuf_checked[i] as u32); }
+                
+                // wait for trrdy to go low to indicate data was written
+                //ret += self.i2c_wait_n(Status::TRRDY.bits(), timeout_ms);
+
+                // now issue the write command
+                unsafe{ (*self.command).write((Command::WR | Command::CKSDIS).bits()); }
+                /*
+                for _ in 0..20 {
+                    unsafe{ I2C_DBGSTR[1] += (*self.status).read(); }
+                    unsafe{ I2C_DBGSTR[6] = I2C_DBGSTR[6] + 1; }
+                }*/
+
+                if (i == (txbuf_checked.len() - 1)) && !do_rx {
+                    // trrdy going high indicates command was accepted
+                    ret += self.i2c_wait((Status::TRRDY | Status::BUSY).bits(), timeout_ms);
+                    // now issue 'stop' command
                     unsafe{ (*self.command).write((Command::STO | Command::CKSDIS).bits()); }
+                    // wait until busy drops, indicates we are done with write-phase
+                    unsafe{ I2C_DBGSTR[2] = (*self.status).read(); }
+                    ret += self.i2c_wait_n(Status::BUSY.bits(), timeout_ms);
                 }
             }
-            
-            if (unsafe{(*self.status).read()} & Status::TROE.bits()) != 0 {
-                ret += 1;
-            }
         }
-    
+
         // read half
-        if rxbuf.is_some() {
-            let rxbuf_checked : &mut [u8] = rxbuf.unwrap();
+        if do_rx {
+            ret += self.i2c_wait((Status::TRRDY).bits(), timeout_ms);
             unsafe{ (*self.txd).write((addr << 1 | 1) as u32); }
             unsafe{ (*self.command).write((Command::STA | Command::WR | Command::CKSDIS).bits()); }
     
             ret += self.i2c_wait(Status::SRW.bits(), timeout_ms);
+            //ret += self.i2c_wait_n(Status::TIP.bits(), timeout_ms);
             unsafe{ (*self.command).write((Command::RD).bits()); }
     
             for i in 0..rxbuf_checked.len() {
                 if i == (rxbuf_checked.len() - 1) {
+                    /*
                     if rxbuf_checked.len() == 1 {
                         // real time delay requirement if only one byte read
                         // 2 * tSCL min, 7 * tSCL max: 20-70 microseconds, e.g. 240 cycles @ 12MHz
-                        // when using delay_us, recognize that delays round down, so a 30us argument
-                        // will give a delay from 20-30us
-                        delay_us(&self.p, 30);
-                    }
+                        // 1 tick is one tSCL, but with overhead, we should be > 2
+                        delay_ticks(&self.p, 2);
+                    } */
+                    //ret += self.i2c_wait_n(Status::TIP.bits(), timeout_ms);
                     unsafe{ (*self.command).write((Command::RD | Command::STO | Command::ACK | Command::CKSDIS).bits()); }
                     ret += self.i2c_wait(Status::TRRDY.bits(), timeout_ms);
+                    //ret += self.i2c_wait_n(Status::BUSY.bits(), timeout_ms);
                     rxbuf_checked[i] = unsafe{ (*self.rxd).read() } as u8;
                 } else {
                     ret += self.i2c_wait(Status::TRRDY.bits(), timeout_ms);
                     rxbuf_checked[i] = unsafe{ (*self.rxd).read() } as u8;
                     // RD command implicitly repeats
                 }
-            }
-
-            if (unsafe{(*self.status).read()} & Status::TROE.bits()) != 0 {
-                ret += 1;
             }
         }
     

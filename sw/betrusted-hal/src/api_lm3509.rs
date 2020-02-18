@@ -9,7 +9,7 @@ const LM3509_BMAIN_ADR: u8 = 0xA0;
 const LM3509_BSUB_ADR: u8 = 0xB0;
 const LM3509_GPIO_ADR: u8 = 0x80;
 
-const BL_TIMEOUT_MS: u32 = 5;
+const BL_TIMEOUT_MS: u32 = 2;
 
 pub struct BtBacklight {
     /// number from 0-3 which specifies how fast the brightness level changes (0 is fastest, 3 is slowest)

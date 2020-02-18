@@ -8,7 +8,7 @@ from litex.soc.integration.doc import AutoDoc, ModuleDoc
 class TickTimer(Module, AutoCSR, AutoDoc):
     """Millisecond timer"""
     def __init__(self, clkspertick, clkfreq, bits=48):
-        self.clkspertick = int(clkfreq/ clkspertick)
+        self.clkspertick = int(clkfreq/ clkspertick) - 1
 
         self.intro = ModuleDoc("""TickTimer: A practical systick timer.
         
@@ -23,7 +23,7 @@ class TickTimer(Module, AutoCSR, AutoDoc):
 
         self.note = ModuleDoc(title="Configuration",
             body="This timer was configured with {} bits, which rolls over in {:.2f} years, with each bit giving {}ms resolution".format(
-                bits, (2**bits / (60*60*24*365)) * (self.clkspertick / clkfreq), 1000 * (self.clkspertick / clkfreq)))
+                bits, (2**bits / (60*60*24*365)) * ((self.clkspertick+1) / clkfreq), 1000 * ((self.clkspertick+1) / clkfreq)))
 
         prescaler = Signal(max=self.clkspertick, reset=self.clkspertick)
         timer = Signal(bits)  # offer up to 40 bits of system time, a bit over 34 years @ 1ms per tick

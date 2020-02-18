@@ -12,7 +12,7 @@ const  BQ24157_IBAT_ADR : u8 = 4;
 const  BQ24157_SPCHG_ADR : u8 = 5;
 const  BQ24157_SAFE_ADR : u8 = 6;
 
-const CHG_TIMEOUT_MS: u32 = 5;
+const CHG_TIMEOUT_MS: u32 = 1;
 
 pub struct BtCharger {
     pub registers: [u8; 7],

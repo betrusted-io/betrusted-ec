@@ -39,7 +39,7 @@ const GG_CODE_SET_HIB :  u16 = 0x0011;
 const GG_CODE_CLR_HIB :  u16 = 0x0012;
 
 const GG_UPDATE_INTERVAL_MS : u32 = 1000;
-const GG_TIMEOUT_MS: u32 = 5;
+const GG_TIMEOUT_MS: u32 = 2;
 
 fn gg_set(i2c: &mut Hardi2c, cmd_code: u8, val: u16) {
     let txbuf: [u8; 3] = [cmd_code, (val & 0xff) as u8, ((val >> 8) & 0xff) as u8];

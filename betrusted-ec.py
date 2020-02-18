@@ -527,7 +527,7 @@ class BaseSoC(SoCCore):
         self.comb += serialpads.tx.eq( (~self.power.soc_on & drive_kbd) | (self.power.soc_on & dbgpads.tx) )
 
         # Tick timer
-        self.submodules.ticktimer = TickTimer(100000, clk_freq, bits=48)
+        self.submodules.ticktimer = TickTimer(1000, clk_freq, bits=40)
 
         # COM port (spi slave to Artix)
         self.submodules.com = SpiFifoSlave(platform.request("com"))

@@ -80,8 +80,8 @@ class HardI2C(Module, AutoCSR, AutoDoc):
                 o_SDAO=self.sda.o,
                 o_SDAOE=self.sda.oe,
                 # not sure these are needed...just copied from the sim template
-                p_I2C_SLAVE_INIT_ADDR = "0b1111100001",
-                p_BUS_ADDR74 = "0b0001",
+                # p_I2C_SLAVE_INIT_ADDR = "0b1111100001",
+                p_BUS_ADDR74 = "0b0001", # seems to define bus address bits 4:7???
                 attr=('keep', 'I2C_LOCK'),
             )
         ]

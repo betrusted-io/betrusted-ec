@@ -1,4 +1,4 @@
-const TICKS_PER_MS: u64 = 100;
+const TICKS_PER_MS: u64 = 1;
 
 pub fn time_init(p: &betrusted_pac::Peripherals) {
     p.TICKTIMER.control.write( |w| {w.reset().bit(true)});
@@ -24,6 +24,28 @@ pub fn delay_ms(p: &betrusted_pac::Peripherals, ms: u32) {
             break;
         }
     }
+}
+
+/// callers must deal with overflow, but the function is fast
+pub fn get_time_ticks_trunc(p: &betrusted_pac::Peripherals) -> u32 {
+    p.TICKTIMER.time0.read().bits()
+}
+
+pub fn delay_ticks(p: &betrusted_pac::Peripherals, ticks: u32) {
+    let start: u32 = p.TICKTIMER.time0.read().bits();
+
+    loop {
+        let cur: u32 = p.TICKTIMER.time0.read().bits();
+        if cur > start {
+            if (cur - start) > ticks {
+                break;
+            }
+        } else { // handle overflow
+            if (cur + (0xffff_ffff - start)) > ticks {
+                break;
+            }
+        }
+    }    
 }
 
 pub fn delay_us(p: &betrusted_pac::Peripherals, us: u64) {
