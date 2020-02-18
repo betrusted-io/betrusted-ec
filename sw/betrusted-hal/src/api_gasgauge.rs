@@ -66,7 +66,7 @@ fn gg_get(i2c: &mut Hardi2c, cmd_code: u8) -> i16 {
 
 fn gg_get_byte(i2c: &mut Hardi2c, cmd_code: u8) -> u8 {
     let txbuf: [u8; 1] = [cmd_code];
-    let mut rxbuf: [u8; 1] = [0];
+    let mut rxbuf: [u8; 2] = [0, 0];
 
     i2c.i2c_master(BQ27421_ADDR, Some(&txbuf), Some(&mut rxbuf), GG_TIMEOUT_MS);
 

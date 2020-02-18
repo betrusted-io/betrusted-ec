@@ -24,7 +24,7 @@ impl BtCharger {
     }
 
     pub fn update_regs(&mut self, i2c: &mut Hardi2c) -> &mut Self {
-        let mut rxbuf: [u8; 1] = [0];
+        let mut rxbuf: [u8; 2] = [0, 0];
         let mut txbuf: [u8; 1] = [0];
 
         for i in 0..7 {
@@ -39,7 +39,7 @@ impl BtCharger {
 
 pub fn chg_is_charging(i2c: &mut Hardi2c) -> bool {
     let txbuf: [u8; 1] = [BQ24157_STAT_ADR];
-    let mut rxbuf: [u8; 1] = [0];
+    let mut rxbuf: [u8; 2] = [0, 0];
 
     i2c.i2c_master(BQ24157_ADDR, Some(&txbuf), Some(&mut rxbuf), CHG_TIMEOUT_MS);
     match (rxbuf[0] >> 4) & 0x3 {

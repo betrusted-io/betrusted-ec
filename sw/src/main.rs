@@ -69,13 +69,6 @@ fn main() -> ! {
     let mut backlight : BtBacklight = BtBacklight::new();
     let mut com_sentinel: u16 = 0;
     backlight.set_brightness(&mut i2c, 0); // make sure the backlight is off on boot
-    loop {
-        if get_time_ms(&p) - last_time > 1_000_000 {
-            break;
-        }
-        charger.update_regs(&mut i2c);
-        delay_ms(&p, 10);
-    }
 
     loop { 
         if get_time_ms(&p) - last_time > 1000 {
