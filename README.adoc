@@ -7,7 +7,7 @@ comms port on the SoC and the untrusted wifi stack.
 From the strict security model, the EC is in the untrusted domain, and
 the core SoC must be robust against arbitrary remote exploits in the EC.
 
-Compiled documentation: https://ci.betrusted.io/job/betrusted-ec-doc/lastSuccessfulBuild/artifact/build/documentation/_build/html/index.html[latest register set], https://ci.betrusted.io/job/betrusted-ec-rustdoc/lastSuccessfulBuild/artifact/sw/betrusted-pac/target/riscv32i-unknown-none-elf/doc/betrusted_pac/index.html[latest rust API documentation]
+Compiled documentation: https://ci.betrusted.io/betrusted-ec/doc/[latest register set], https://ci.betrusted.io/betrusted-ec/rustdoc/betrusted_pac/[latest rust API documentation]
 
 ## Getting Started
 
