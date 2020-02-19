@@ -36,11 +36,11 @@ class HardI2C(Module, AutoCSR, AutoDoc):
         I took the strategy of just mapping the address and data bits straight over to wishbone, 
         so that the 8-bit registers are actually strided over words, and the upper 24 bits are wasted. 
         Thus the address table given in the docs needs to be multiplied by 4 to get the actual offsets. 
-        The code for the driver is here: 
-        https://github.com/betrusted-io/betrusted-ec/blob/e0f21858cd2cbb6448173f63467a93c8458c6798/sw/betrusted-hal/src/hal_hardi2c.rs#L1  
+        The code for the driver is here:
+        https://github.com/betrusted-io/betrusted-ec/blob/2584cf6af56eeb22d29ae649dd25dc3569b58065/sw/betrusted-hal/src/hal_hardi2c.rs#L9         
         
-        Before attempting to integrate this block, read the comments in the driver. There are significant
-        limitations in using this IP block.
+        Before attempting to integrate this block, read the comments in the driver in the permalink
+        above. There are significant limitations in using this IP block.
         """)
 
         self.sda = TSTriple(1)

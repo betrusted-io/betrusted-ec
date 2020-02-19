@@ -2,6 +2,7 @@
 
 use crate::hal_hardi2c::Hardi2c;
 
+
 const BQ24157_ADDR: u8 = 0x6a; 
 
 const  BQ24157_STAT_ADR : u8 = 0;
@@ -14,6 +15,7 @@ const  BQ24157_SAFE_ADR : u8 = 6;
 
 const CHG_TIMEOUT_MS: u32 = 1;
 
+#[derive(Debug)]
 pub struct BtCharger {
     pub registers: [u8; 7],
 }
@@ -32,7 +34,6 @@ impl BtCharger {
             while i2c.i2c_master(BQ24157_ADDR, Some(&txbuf), Some(&mut rxbuf), CHG_TIMEOUT_MS) != 0 {}
             self.registers[i] = rxbuf[0] as u8;
         }
-
         self
     }
 }

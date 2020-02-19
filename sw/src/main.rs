@@ -7,6 +7,9 @@ use riscv_rt::entry;
 extern crate betrusted_hal;
 extern crate volatile;
 
+#[macro_use]
+mod debug;
+
 const CONFIG_CLOCK_FREQUENCY: u32 = 12_000_000;
 
 // allocate a global, unsafe static string for debug output
@@ -70,12 +73,14 @@ fn main() -> ! {
     let mut com_sentinel: u16 = 0;
     backlight.set_brightness(&mut i2c, 0); // make sure the backlight is off on boot
 
+    sprintln!("Hello world!");
     loop { 
         if get_time_ms(&p) - last_time > 1000 {
             last_time = get_time_ms(&p);
             if last_state {
                 chg_keepalive_ping(&mut i2c);
                 charger.update_regs(&mut i2c);
+                // sprintln!("registers: {:?}", charger);
             } else {
                 // once every second run these routines
                 voltage = gg_voltage(&mut i2c);
