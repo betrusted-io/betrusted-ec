@@ -22,6 +22,25 @@ class HardI2C(Module, AutoCSR, AutoDoc):
         See "Advanced iCE40 I2C and SPI Hardened IP Usage Guide (TN1276) 
         (http://www.latticesemi.com/view_document?document_id=50117) for 
         more details."
+        
+        The SB_I2C block uses a wishbone-oid interface. They only provide a signal 
+        called "STB" which actually needs to be mapped to "CYC", not "STB", because they 
+        lack a "CYC" signal. The block also does not pay attention to CTI, etc. You must make 
+        sure that your wishbone interface is configured to be non-caching for the region.
+
+        The Lattice docs say that bits 7:4 depend upon the location of the block (upper right 
+        or upper left) but looking through Clifford's notes it seems maybe it's actually set by 
+        a parameter p_BUS_ADDR74. I didn't resolve this but just in case I put a hard BEL constraint 
+        on it so it doesn't move around.
+
+        I took the strategy of just mapping the address and data bits straight over to wishbone, 
+        so that the 8-bit registers are actually strided over words, and the upper 24 bits are wasted. 
+        Thus the address table given in the docs needs to be multiplied by 4 to get the actual offsets. 
+        The code for the driver is here: 
+        https://github.com/betrusted-io/betrusted-ec/blob/e0f21858cd2cbb6448173f63467a93c8458c6798/sw/betrusted-hal/src/hal_hardi2c.rs#L1  
+        
+        Before attempting to integrate this block, read the comments in the driver. There are significant
+        limitations in using this IP block.
         """)
 
         self.sda = TSTriple(1)
