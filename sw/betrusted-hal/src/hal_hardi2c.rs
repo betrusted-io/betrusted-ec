@@ -139,13 +139,11 @@ impl Hardi2c {
 
             if curtime >= starttime {
                 if (curtime - starttime) > timeout_ms {
-                    // unsafe{ (*self.command).write(Command::CKSDIS.bits()); }
                     unsafe{ I2C_DBGSTR[6] += 1; }
                     return 1;
                 }
             } else {  // deal with roll-over
                 if (curtime + (0xFFFF_FFFF - starttime)) > timeout_ms {
-                    // unsafe{ (*self.command).write(Command::CKSDIS.bits()); }
                     unsafe{ I2C_DBGSTR[6] += 1; }
                     return 1;
                 }
@@ -163,13 +161,11 @@ impl Hardi2c {
 
             if curtime >= starttime {
                 if (curtime - starttime) > timeout_ms {
-                    //unsafe{ (*self.command).write(Command::CKSDIS.bits()); }
                     unsafe{ I2C_DBGSTR[7] += 1; }
                     return 1;
                 }
             } else {  // deal with roll-over
                 if (curtime + (0xFFFF_FFFF - starttime)) > timeout_ms {
-                    //unsafe{ (*self.command).write(Command::CKSDIS.bits()); }
                     unsafe{ I2C_DBGSTR[7] += 1; }
                     return 1;
                 }
@@ -179,11 +175,12 @@ impl Hardi2c {
     }
 
     /// The primary I2C interface call. This version currently blocks until the transaction is done.
-    /// Due to a limitation of the hardware, rxbuf should either be None, or have a length >= 2
+    /// Due to a limitation of the hardware, rxbuf should either be None, or have a length >= 2!!
+    /// So, for single-byte reads, read 2 bytes, ignore the second.
     pub fn i2c_master(&mut self, addr: u8, txbuf: Option<&[u8]>, rxbuf: Option<&mut [u8]>, timeout_ms: u32) -> u32 {
         let mut ret: u32 = 0;
         
-        // hoist these up to optimize performance a bit
+        // hoist this up to optimize performance a bit
         let do_rx: bool = rxbuf.is_some();
     
         // write half
@@ -204,13 +201,10 @@ impl Hardi2c {
                 // write data
                 unsafe{ (*self.txd).write(txbuf_checked[i] as u32); }
                 
-                // wait for trrdy to go low to indicate data was written
-                //ret += self.i2c_wait_n(Status::TRRDY.bits(), timeout_ms);
-
                 // now issue the write command
                 unsafe{ (*self.command).write((Command::WR | Command::CKSDIS).bits()); }
 
-                if i == (txbuf_checked.len() - 1) { // && !do_rx
+                if i == (txbuf_checked.len() - 1) { // && !do_rx // repeated-start does not work with this IP block; always stop
                     // trrdy going high indicates command was accepted
                     ret += self.i2c_wait((Status::TRRDY).bits(), timeout_ms);
                     // now issue 'stop' command
@@ -221,8 +215,9 @@ impl Hardi2c {
                 }
             }
         }
+        // let the write "stop" condition complete
         if self.i2c_wait_n(Status::BUSY.bits(), timeout_ms) != 0 {
-            unsafe{ I2C_DBGSTR[1] += 1; }
+            unsafe{ I2C_DBGSTR[1] += 1; }  ret += 1;
         }
 
         // read half
@@ -230,50 +225,54 @@ impl Hardi2c {
             let rxbuf_checked : &mut [u8] = rxbuf.unwrap();
 
             unsafe{ (*self.txd).write((addr << 1 | 1) as u32); } // set "read" for address mode
+            // ensure the address write was committed
             if self.i2c_wait_n(Status::TRRDY.bits(), timeout_ms) != 0 {
-                unsafe{ I2C_DBGSTR[2] += 1; }
+                unsafe{ I2C_DBGSTR[2] += 1; }  ret += 1;
             }
             // issue bus write + start
             unsafe{ (*self.command).write((Command::STA | Command::WR | Command::CKSDIS).bits()); }
     
-            //rxbuf_checked[0] = unsafe{ (*self.rxd).read() } as u8; // clear rxd??
+            // SRW goes high once the address is sent and we're in read mode
             if self.i2c_wait(Status::SRW.bits(), timeout_ms) != 0 {
-                unsafe{ I2C_DBGSTR[3] += 1; }
+                unsafe{ I2C_DBGSTR[3] += 1; }  ret += 1;
             }
-            //ret += self.i2c_wait_n(Status::TIP.bits(), timeout_ms);
+            // issue the "read" command
             unsafe{ (*self.command).write((Command::RD).bits()); }
     
             for i in 0..rxbuf_checked.len() {
                 if i == (rxbuf_checked.len() - 1) {
                     if rxbuf_checked.len() == 1 {
-                        // HACK ALERT
+                        // HACK ALERT -- fail if we try to read just one byte
                         // this just doesn't work: can't get the timing tight enough to
                         // meet the hardware block's requirements. Thus, require always
                         // two-byte reads. This path should never be called.
                         assert!(false);
 
-                        // real time delay requirement if only one byte read
-                        // 2 * tSCL min, 7 * tSCL max: 20-70 microseconds, e.g. 240 cycles @ 12MHz
-                        // 1 tick is one tSCL, but with overhead, we should be > 2
-                        //  delay_ticks(&self.p, 2);
+                        // time delay requirement inserted here if only one byte read:
+                        // 2 * tSCL min, 7 * tSCL max: 20-70 microseconds
+                        //
+                        // in practice, even with hardware timer support I was unable
+                        // to get this path to work
                     }
-                    //ret += self.i2c_wait_n(Status::TIP.bits(), timeout_ms);
+                    // initiate the "read stop" command
                     unsafe{ (*self.command).write((Command::RD | Command::STO | Command::ACK | Command::CKSDIS).bits()); }
+                    // wait for trrdy to indicate data is available to be read
                     if self.i2c_wait(Status::TRRDY.bits(), timeout_ms) != 0 {
-                        unsafe{ I2C_DBGSTR[4] += 1; }
+                        unsafe{ I2C_DBGSTR[4] += 1; }  ret += 1;
                     }
-                    //ret += self.i2c_wait_n(Status::BUSY.bits(), timeout_ms);
                     rxbuf_checked[i] = unsafe{ (*self.rxd).read() } as u8;
                 } else {
+                    // wait for trrdy to indicate data is available
                     if self.i2c_wait(Status::TRRDY.bits(), timeout_ms) != 0 {
-                        unsafe{ I2C_DBGSTR[5] += 1; }
+                        unsafe{ I2C_DBGSTR[5] += 1; }  ret += 1;
                     }
+                    // read the data
                     rxbuf_checked[i] = unsafe{ (*self.rxd).read() } as u8;
-                    // RD command implicitly repeats
+
+                    // RD command implicitly repeats -- no need to re-issue the command
                 }
             }
         }
-    
         ret
     }    
 }
