@@ -19,9 +19,9 @@ class HardI2C(Module, AutoCSR, AutoDoc):
         All functions of this IP block are programmed by wishbone cycles, by
         writing to and reading from registers scattered across a 16-word region.
         
-        See "Advanced iCE40 I2C and SPI Hardened IP Usage Guide (TN1276) 
+        See "Advanced iCE40 I2C and SPI Hardened IP Usage Guide (TN1276)" 
         (http://www.latticesemi.com/view_document?document_id=50117) for 
-        more details."
+        more details.
         
         The SB_I2C block uses a wishbone-oid interface. They only provide a signal 
         called "STB" which actually needs to be mapped to "CYC", not "STB", because they 
