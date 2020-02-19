@@ -7,6 +7,9 @@ comms port on the SoC and the untrusted wifi stack.
 From the strict security model, the EC is in the untrusted domain, and
 the core SoC must be robust against arbitrary remote exploits in the EC.
 
+The latest passing build register set documentation for the EC can be found at:
+https://ci.betrusted.io/job/betrusted-ec-doc/lastSuccessfulBuild/artifact/build/documentation/_build/html/index.html
+
 ## Getting Started
 
 1. Ensure you have a toolchain installed, including a compiler, Python 3.5+, `nextpnr-ice40`, and `yosys`.  These can all be obtained by downloading the [Fomu toolchain](https://github.com/im-tomu/fomu-toolchain/releases/latest) and adding it to your `PATH`.
