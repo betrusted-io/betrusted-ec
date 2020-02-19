@@ -756,4 +756,7 @@ def main():
     lxsocdoc.generate_svd(soc, "build/software")
 
 if __name__ == "__main__":
+    from datetime import datetime
+    start = datetime.now()
     main()
+    print("Run completed in {}".format(datetime.now()-start))
