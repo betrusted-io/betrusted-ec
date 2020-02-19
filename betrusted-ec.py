@@ -751,7 +751,6 @@ def main():
                     top_multiboot_file.write(top)
         pad_file(os.path.join(output_dir, 'gateware', 'top.bin'), os.path.join(output_dir, 'gateware', 'top_pad.bin'), 0x1a000)
         pad_file(os.path.join(output_dir, 'gateware', 'top-multiboot.bin'), os.path.join(output_dir, 'gateware', 'top-multiboot_pad.bin'), 0x1a000)
-        merge_file(os.path.join(output_dir, 'software', 'bios', 'bios.bin'), os.path.join(output_dir, 'gateware', 'top_pad.bin'), os.path.join(output_dir, 'gateware', 'bt-ec.bin'))
 
     lxsocdoc.generate_docs(soc, "build/documentation", note_pulses=True)
     lxsocdoc.generate_svd(soc, "build/software")
