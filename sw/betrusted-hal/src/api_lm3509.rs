@@ -46,18 +46,18 @@ impl BtBacklight {
             // first set the brightness control to 0
             txbuf[0] = LM3509_BMAIN_ADR;
             txbuf[1] = level | 0xE0;
-            i2c.i2c_master(LM3509_ADDR, Some(&txbuf), None, BL_TIMEOUT_MS);
+            while i2c.i2c_master(LM3509_ADDR, Some(&txbuf), None, BL_TIMEOUT_MS) != 0 {}
     
             // then put the string into shutdown mode
             txbuf[0] = LM3509_GP_ADR;
             txbuf[1] = 0xC0 | ((self.rate_of_change & 0x3) << 3);
-            i2c.i2c_master(LM3509_ADDR, Some(&txbuf), None, BL_TIMEOUT_MS);
+            while i2c.i2c_master(LM3509_ADDR, Some(&txbuf), None, BL_TIMEOUT_MS) != 0 {}
 
             return
         } else {
             // activate BMAIN, BSUB and set ramp value
             txbuf[1] = ((self.rate_of_change & 0x3) << 3) | 0xC7;
-            i2c.i2c_master(LM3509_ADDR, Some(&txbuf), None, BL_TIMEOUT_MS);
+            while i2c.i2c_master(LM3509_ADDR, Some(&txbuf), None, BL_TIMEOUT_MS) != 0 {}
 
             // clamp brightness level to 31
             if level_local > 31 {
@@ -67,7 +67,7 @@ impl BtBacklight {
             txbuf[0] = LM3509_BMAIN_ADR;
             txbuf[1] = level_local | 0xE0;
 
-            i2c.i2c_master(LM3509_ADDR, Some(&txbuf), None, BL_TIMEOUT_MS);
+            while i2c.i2c_master(LM3509_ADDR, Some(&txbuf), None, BL_TIMEOUT_MS) != 0 {}
         }
     }
 

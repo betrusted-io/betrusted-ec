@@ -29,7 +29,7 @@ impl BtCharger {
 
         for i in 0..7 {
             txbuf[0] = i as u8;
-            i2c.i2c_master(BQ24157_ADDR, Some(&txbuf), Some(&mut rxbuf), CHG_TIMEOUT_MS);
+            while i2c.i2c_master(BQ24157_ADDR, Some(&txbuf), Some(&mut rxbuf), CHG_TIMEOUT_MS) != 0 {}
             self.registers[i] = rxbuf[0] as u8;
         }
 
@@ -41,7 +41,7 @@ pub fn chg_is_charging(i2c: &mut Hardi2c) -> bool {
     let txbuf: [u8; 1] = [BQ24157_STAT_ADR];
     let mut rxbuf: [u8; 2] = [0, 0];
 
-    i2c.i2c_master(BQ24157_ADDR, Some(&txbuf), Some(&mut rxbuf), CHG_TIMEOUT_MS);
+    while i2c.i2c_master(BQ24157_ADDR, Some(&txbuf), Some(&mut rxbuf), CHG_TIMEOUT_MS) != 0 {}
     match (rxbuf[0] >> 4) & 0x3 {
         0 => false,
         1 => true,
@@ -53,7 +53,7 @@ pub fn chg_is_charging(i2c: &mut Hardi2c) -> bool {
 
 pub fn chg_keepalive_ping(i2c: &mut Hardi2c) {
     let txbuf: [u8; 2] = [BQ24157_STAT_ADR, 0x80]; // 32 sec timer reset, enable stat pin
-    i2c.i2c_master(BQ24157_ADDR, Some(&txbuf), None, CHG_TIMEOUT_MS);
+    while i2c.i2c_master(BQ24157_ADDR, Some(&txbuf), None, CHG_TIMEOUT_MS) != 0 {}
 }
 
 pub fn chg_set_safety(i2c: &mut Hardi2c) {
@@ -64,7 +64,7 @@ pub fn chg_set_safety(i2c: &mut Hardi2c) {
     //    971mA | 485mA | 242mA | 121 mA, plus offset of 667mA
     // 0x70 = 1.515A & 4.2V limits
     let txbuf: [u8; 2] = [BQ24157_SAFE_ADR, 0x70];
-    i2c.i2c_master(BQ24157_ADDR, Some(&txbuf), None, CHG_TIMEOUT_MS);
+    while i2c.i2c_master(BQ24157_ADDR, Some(&txbuf), None, CHG_TIMEOUT_MS) != 0 {}
 }
 
 // 50 F8 8E 51 6B 03 70 - dump from known good charging system
@@ -75,14 +75,14 @@ pub fn chg_set_autoparams(i2c: &mut Hardi2c) {
     // + 0x2 = OTG boost not enabled
     // address 2
     let txbuf: [u8; 2] = [BQ24157_BATV_ADR, 0x8E]; 
-    i2c.i2c_master(BQ24157_ADDR, Some(&txbuf), None, CHG_TIMEOUT_MS);
+    while i2c.i2c_master(BQ24157_ADDR, Some(&txbuf), None, CHG_TIMEOUT_MS) != 0 {}
 
     // set special charger voltage, e.g. threshold to reduce charging current due to bad cables
     // address 5
     // 0.32V | 0.16V | 0.08V | + 4.2V = 4.44V DPM threshold
     // normal charge current, special charger voltage = 4.2V
     let txbuf2: [u8; 2] = [BQ24157_SPCHG_ADR, 0x3];
-    i2c.i2c_master(BQ24157_ADDR, Some(&txbuf2), None, CHG_TIMEOUT_MS);
+    while i2c.i2c_master(BQ24157_ADDR, Some(&txbuf2), None, CHG_TIMEOUT_MS) != 0 {}
     
     // set target charge current + termination current
     // 1.55A target current.
@@ -93,7 +93,7 @@ pub fn chg_set_autoparams(i2c: &mut Hardi2c) {
     // 242mA | 121mA | 60mA +  60mA offset => 0x1 = 120mA termination
     // address 4
     let txbuf3: [u8; 2] = [BQ24157_IBAT_ADR, 0x11]; 
-    i2c.i2c_master(BQ24157_ADDR, Some(&txbuf3), None, CHG_TIMEOUT_MS);
+    while i2c.i2c_master(BQ24157_ADDR, Some(&txbuf3), None, CHG_TIMEOUT_MS) != 0 {}
 }
 
 /// This forces the start of charging. It's a bit of a hammer, maybe refine it down the road. [FIXME]
@@ -102,5 +102,5 @@ pub fn chg_start(i2c: &mut Hardi2c) {
     // address 1
     let txbuf: [u8; 2] = [BQ24157_CTRL_ADR, 0xB0];  // 0x78 previous value
     // charge mode, not hiZ, charger enabled, enable charge current termination, weak battery==3.7V, Iin limit = no limit
-    i2c.i2c_master(BQ24157_ADDR, Some(&txbuf), None, CHG_TIMEOUT_MS); 
+    while i2c.i2c_master(BQ24157_ADDR, Some(&txbuf), None, CHG_TIMEOUT_MS) != 0 {} 
 }
