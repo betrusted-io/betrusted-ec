@@ -10,9 +10,6 @@
 [submodule "deps/migen"]
 	path = deps/migen
 	url = https://github.com/m-labs/migen.git
-[submodule "deps/lxsocdoc"]
-	path = deps/lxsocdoc
-	url = https://github.com/xobs/lxsocdoc.git
 [submodule "deps/litex_boards"]
 	path = deps/litex_boards
 	url = https://github.com/litex-hub/litex-boards.git
