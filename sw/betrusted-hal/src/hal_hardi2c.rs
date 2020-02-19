@@ -123,7 +123,7 @@ impl Hardi2c {
         unsafe{ (*self.prescale_msb).write( (clock_code >> 8) & 0x3 ); }
     
         // enable the block
-        unsafe{ (*self.control).write((Control::I2CEN | Control::SDA_DEL_SEL_0NS).bits()); }
+        unsafe{ (*self.control).write((Control::I2CEN | Control::SDA_DEL_SEL_75NS).bits()); }
         // disable interrupts
         unsafe{ (*self.irqen).write(0); }
         // clear irqstat
