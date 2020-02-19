@@ -4,8 +4,8 @@
 
 if [ -z "$1" ]
 then
-    echo "Error: at least one argument needed."
-    echo "$0 ssh-target [privatekey]"
+    echo "Usage: $0 ssh-target [privatekey]"
+    echo "ssh-target is missing."
     echo "Assumes betrusted-scripts repo is cloned on repository at ~/code/betrused-scripts/"
 fi
 
