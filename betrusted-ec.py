@@ -535,7 +535,7 @@ class BaseSoC(SoCCore):
         self.add_memory_region("com", self.mem_map["com"], 4, type='io')
 
         # SPI port to wifi (master)
-        self.submodules.wifi = SpiMaster(platform.request("wifi"))
+        self.submodules.wifi = SpiMaster(platform.request("wifi"), gpio_cs=True)  # control CS with GPIO per wf200 API spec
 
 
         #### Platform config & build below

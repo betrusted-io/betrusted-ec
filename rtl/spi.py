@@ -8,7 +8,7 @@ from migen.genlib.cdc import MultiReg
 from migen.genlib.cdc import PulseSynchronizer
 
 class SpiMaster(Module, AutoCSR, AutoDoc):
-    def __init__(self, pads):
+    def __init__(self, pads, gpio_cs=False):
         self.intro = ModuleDoc("""Simple soft SPI master module optimized for Betrusted applications
 
         Requires a clock domain 'spi', which runs at the speed of the SPI bus. 
@@ -18,7 +18,12 @@ class SpiMaster(Module, AutoCSR, AutoDoc):
         
         Note that for the ICE40 master, timing simulations indicate the clock rate could go higher than 24MHz, although
         there is some question if setup/hold times to the external can be met after all delays are counted.
-        """)
+        
+        The gpio_cs parameter when true turns CS into a GPIO to be managed by software; when false,
+        it is automatically asserted/de-asserted by the SpiMaster machine.
+        
+        gpio_cs is {} in this instance. 
+        """.format(gpio_cs))
 
         self.miso = pads.miso
         self.mosi = pads.mosi
@@ -26,6 +31,10 @@ class SpiMaster(Module, AutoCSR, AutoDoc):
 
         self.tx = CSRStorage(16, name="tx", description="""Tx data, for MOSI""")
         self.rx = CSRStatus(16, name="rx", description="""Rx data, from MISO""")
+        if gpio_cs:
+            self.cs = CSRStorage(fields=[
+                CSRField("cs", description="Writing `1` to this asserts cs_n, that is, brings it low; writing `0`, brings it high")
+            ])
         self.control = CSRStorage(fields=[
             CSRField("go", description="Initiate a SPI cycle by writing a `1`. Does not automatically clear."),
             CSRField("intena", description="Enable interrupt on transaction finished"),
@@ -71,7 +80,10 @@ class SpiMaster(Module, AutoCSR, AutoDoc):
         self.comb += self.go_edge.eq(self.go_r & ~self.go_d)
 
         self.csn_r = Signal(reset=1)
-        self.comb += self.csn.eq(self.csn_r)
+        if gpio_cs:
+            self.comb += self.csn.eq(~self.cs.fields.cs)
+        else:
+            self.comb += self.csn.eq(self.csn_r)
         self.comb += self.rx.status.eq(self.rx_r) ## invalid while transaction is in progress
         fsm = FSM(reset_state="IDLE")
         fsm = ClockDomainsRenamer("spi")(fsm)
