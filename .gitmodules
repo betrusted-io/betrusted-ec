@@ -22,3 +22,11 @@
 [submodule "deps/lxsocsupport"]
         path = deps/lxsocsupport
 	url = https://github.com/xobs/lxsocsupport.git
+[submodule "sw/imports/wfx-firmware"]
+	path = sw/imports/wfx-firmware
+	url = https://github.com/SiliconLabs/wfx-firmware.git
+	branch = master
+[submodule "sw/imports/wfx-fullMAC-tools"]
+	path = sw/imports/wfx-fullMAC-tools
+	url = https://github.com/SiliconLabs/wfx-fullMAC-tools.git
+	branch = master
