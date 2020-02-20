@@ -15,6 +15,9 @@ class SpiMaster(Module, AutoCSR, AutoDoc):
         
         Simulation benchmarks 16.5us to transfer 16x16 bit words including setup overhead (sysclk=100MHz, spiclk=25MHz)
         which is about 15Mbps system-level performance, assuming the receiver can keep up.
+        
+        Note that for the ICE40 master, timing simulations indicate the clock rate could go higher than 24MHz, although
+        there is some question if setup/hold times to the external can be met after all delays are counted.
         """)
 
         self.miso = pads.miso
