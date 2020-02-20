@@ -1,5 +1,5 @@
 [package]
-name = "betrusted-hal"
+name = "c_types"
 version = "0.1.0"
 authors = ["bunnie <bunnie@kosagi.com>"]
 edition = "2018"
@@ -7,7 +7,6 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-betrusted-pac = { path = "../betrusted-pac" }
-bitflags = "1.2.1"
-volatile = "0.2.6"
-c_types = { path = "../c_types" }
+bare-metal = "0.2.0"
+riscv = { git = "https://github.com/betrusted-io/riscv.git", tag = "v0.5.5" }
+riscv-rt = { git = "https://github.com/betrusted-io/riscv-rt.git", tag = "v0.6.2" }
