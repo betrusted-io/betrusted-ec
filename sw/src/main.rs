@@ -9,6 +9,7 @@ extern crate volatile;
 
 extern crate wfx200_sys;
 extern crate wfx200_rs;
+extern crate wfx_bindings;
 
 #[macro_use]
 mod debug;
@@ -38,6 +39,9 @@ fn main() -> ! {
     use betrusted_hal::api_gasgauge::*;
     use betrusted_hal::api_charger::*;
     use betrusted_hal::api_lm3509::*;
+    use wfx200_sys::wfx_bindings::sl_wfx_deinit;
+
+    unsafe{ sl_wfx_deinit(); }
 
     let p = betrusted_pac::Peripherals::take().unwrap();
     let mut i2c = Hardi2c::new();

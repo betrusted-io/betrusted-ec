@@ -19,6 +19,7 @@ dependencies = [
  "volatile 0.2.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "wfx200_rs 0.1.0",
  "wfx200_sys 0.1.0",
+ "wfx_bindings 0.1.0",
 ]
 
 [[package]]

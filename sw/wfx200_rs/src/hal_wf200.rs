@@ -12,6 +12,19 @@ pub unsafe extern "C" fn sl_wfx_host_spi_cs_assert() -> sl_status_t {
     SL_STATUS_OK
 }
 
+#[export_name = "sl_wfx_host_spi_cs_deassert"]
+pub unsafe extern "C" fn sl_wfx_host_spi_cs_deassert() -> sl_status_t {
+    unsafe{ betrusted_pac::Peripherals::steal().WIFI.cs.write(|w| w.cs().bit(false)); }
+    SL_STATUS_OK
+}
+
+#[export_name = "sl_wfx_host_deinit_bus"]
+pub unsafe extern "C" fn sl_wfx_host_deinit_bus()-> sl_status_t { 
+    unsafe{ betrusted_pac::Peripherals::steal().WIFI.control.write(|w| w.bits(0)); }
+    unsafe{ betrusted_pac::Peripherals::steal().WIFI.wifi.write(|w| w.bits(0)); }
+    SL_STATUS_OK 
+}
+
 pub struct Wfx200 {
     p: betrusted_pac::Peripherals,
 }
@@ -21,10 +34,6 @@ impl Wfx200 {
         Wfx200 {
             p: unsafe{ betrusted_pac::Peripherals::steal() },
         }
-    }
-    pub fn sl_wfx_host_spi_cs_deassert(&mut self) -> sl_status_t {
-        self.p.WIFI.cs.write(|w| w.cs().bit(false));
-        SL_STATUS_OK
     }
     pub fn sl_wfx_host_enable_platform_interrupt(&mut self) -> sl_status_t {
         self.p.WIFI.ev_enable.write(|w| unsafe{w.bits(1)} );
@@ -38,11 +47,6 @@ impl Wfx200 {
         self.p.WIFI.control.write(|w| unsafe{w.bits(0)});
         self.p.WIFI.wifi.write(|w| unsafe{w.bits(0)});
         SL_STATUS_OK
-    }
-    pub fn sl_wfx_host_deinit_bus(&mut self)-> sl_status_t { 
-        self.p.WIFI.control.write(|w| unsafe{w.bits(0)});
-        self.p.WIFI.wifi.write(|w| unsafe{w.bits(0)});
-        SL_STATUS_OK 
     }
     pub fn sl_wfx_host_reset_chip(&mut self) -> sl_status_t {
         self.p.WIFI.wifi.write(|w| unsafe{w.reset().bit(true)});

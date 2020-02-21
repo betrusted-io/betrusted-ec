@@ -3,7 +3,7 @@
 
 extern crate c_types;
 extern crate betrusted_hal;
-extern crate wfx_bindings;
+pub extern crate wfx_bindings;
 
 #[cfg(test)]
 mod tests {
