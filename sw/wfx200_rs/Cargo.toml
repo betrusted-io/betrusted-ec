@@ -1,0 +1,14 @@
+[package]
+name = "wfx200_rs"
+version = "0.1.0"
+authors = ["bunnie <bunnie@kosagi.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+wfx200_sys = { path = "../wfx200_sys" }
+c_types = { path = "../c_types" }
+betrusted-hal = { path = "../betrusted-hal" }
+betrusted-pac = { path = "../betrusted-pac" }
+wfx_bindings = { path = "../wfx_bindings" }
