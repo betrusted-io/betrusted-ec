@@ -47,12 +47,3 @@ pub fn delay_ticks(p: &betrusted_pac::Peripherals, ticks: u32) {
         }
     }    
 }
-
-pub fn delay_us(p: &betrusted_pac::Peripherals, us: u64) {
-    let starttime: u64 = (p.TICKTIMER.time0.read().bits() as u64) | ((p.TICKTIMER.time1.read().bits() as u64) << 32);
-    let tick_increment: u64 = us / 10; // each tick increment is 10us with TICKS_PER_MS = 100
-
-    while ((p.TICKTIMER.time0.read().bits() as u64) | ((p.TICKTIMER.time1.read().bits() as u64) << 32)) > (starttime + tick_increment) {
-
-    }
-}

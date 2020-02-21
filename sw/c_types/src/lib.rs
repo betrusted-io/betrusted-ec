@@ -1,4 +1,5 @@
 #![no_std]
+#![allow(nonstandard_style)]
 
 pub type c_char = i8;
 pub type c_schar = i8;    

@@ -3,14 +3,11 @@
 extern crate bitflags;
 extern crate volatile;
 
-extern crate c_types;
-
 pub mod hal_hardi2c;
 pub mod hal_time;
 pub mod api_gasgauge;
 pub mod api_charger;
 pub mod api_lm3509;
-pub mod api_wf200;
 
 #[cfg(test)]
 mod tests {

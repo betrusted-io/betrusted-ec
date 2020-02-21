@@ -7,6 +7,9 @@ use riscv_rt::entry;
 extern crate betrusted_hal;
 extern crate volatile;
 
+extern crate wfx200_sys;
+extern crate wfx200_rs;
+
 #[macro_use]
 mod debug;
 

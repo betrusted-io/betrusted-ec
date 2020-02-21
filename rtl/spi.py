@@ -37,7 +37,6 @@ class SpiMaster(Module, AutoCSR, AutoDoc):
             ])
         self.control = CSRStorage(fields=[
             CSRField("go", description="Initiate a SPI cycle by writing a `1`. Does not automatically clear."),
-            CSRField("intena", description="Enable interrupt on transaction finished"),
         ])
         self.status = CSRStatus(fields=[
             CSRField("tip", description="Set when transaction is in progress"),
@@ -58,7 +57,7 @@ class SpiMaster(Module, AutoCSR, AutoDoc):
         self.ev.spi_int = EventSourceProcess(description="Triggered on conclusion of each transaction")  # falling edge triggered
         self.ev.wirq = EventSourceProcess(description="Interrupt request from wifi chip") # falling edge triggered
         self.ev.finalize()
-        self.comb += self.ev.spi_int.trigger.eq(self.control.fields.intena & self.status.fields.tip)
+        self.comb += self.ev.spi_int.trigger.eq(self.status.fields.tip)
         self.specials += MultiReg(pads.wirq, self.ev.wirq.trigger)
 
         # Replica CSR into "spi" clock domain
