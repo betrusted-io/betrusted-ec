@@ -1,6 +1,7 @@
 MEMORY
 {
-  RAM : ORIGIN = 0x10000000, LENGTH = 128K
+  /* RAM is actually 128K, but reserve top 32K for WF200 C-FFI buffers */
+  RAM : ORIGIN = 0x10000000, LENGTH = 96K
   FLASH : ORIGIN = 0x2001A000, LENGTH = 16M
 }
 

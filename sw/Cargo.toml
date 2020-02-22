@@ -17,6 +17,7 @@ volatile = "0.2.6"
 wfx200_sys = { path = "wfx200_sys" }
 wfx200_rs = { path = "wfx200_rs" }
 wfx_bindings = { path = "wfx_bindings" }
+xous-nommu = { path = "xous-nommu" }
 
 # this lets you use `cargo fix`!
 [[bin]]

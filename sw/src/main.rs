@@ -11,6 +11,10 @@ extern crate wfx200_sys;
 extern crate wfx200_rs;
 extern crate wfx_bindings;
 
+extern crate xous_nommu;
+use wfx200_rs::hal_wf200::wfx_init;
+use wfx_bindings::*;
+
 #[macro_use]
 mod debug;
 
@@ -39,9 +43,10 @@ fn main() -> ! {
     use betrusted_hal::api_gasgauge::*;
     use betrusted_hal::api_charger::*;
     use betrusted_hal::api_lm3509::*;
-    use wfx200_sys::wfx_bindings::sl_wfx_deinit;
 
-    unsafe{ sl_wfx_deinit(); }
+    // Initialize the no-MMU version of Xous, which will give us
+    // basic access to tasks and interrupts.
+    xous_nommu::init();
 
     let p = betrusted_pac::Peripherals::take().unwrap();
     let mut i2c = Hardi2c::new();
@@ -80,8 +85,23 @@ fn main() -> ! {
     let mut com_sentinel: u16 = 0;
     backlight.set_brightness(&mut i2c, 0); // make sure the backlight is off on boot
 
-    sprintln!("Hello world!");
+    // init the wifi interface
+    if wfx_init() == SL_STATUS_OK {
+        sprintln!("Wifi ready");
+    } else {
+        sprintln!("Wifi init failed");
+    }
+
     loop { 
+        if wfx200_rs::hal_wf200::wfx200_event_get() {
+            // first thing -- clear the event. So that if we get another event
+            // while handling this packet, we have a chance of detecting that.
+            // we lack mutexes, so we need to think about this behavior very carefully.
+            wfx200_rs::hal_wf200::wfx200_event_clear();
+
+            // handle the Rx packet
+
+        }
         if get_time_ms(&p) - last_time > 1000 {
             last_time = get_time_ms(&p);
             if last_state {

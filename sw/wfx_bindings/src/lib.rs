@@ -12290,7 +12290,7 @@ extern "C" {
     pub fn sl_wfx_host_spi_transfer_no_cs_assert(
         type_: sl_wfx_host_bus_transfer_type_t,
         header: *mut u8,
-        header_length: u16,
+        host_bus_transfer_type_t: u16,
         buffer: *mut u8,
         buffer_length: u16,
     ) -> sl_status_t;
