@@ -14,8 +14,8 @@ riscv-rt = { git = "https://github.com/betrusted-io/riscv-rt.git", tag = "v0.6.2
 betrusted-pac = { path = "betrusted-pac" }
 betrusted-hal = { path = "betrusted-hal" }
 volatile = "0.2.6"
-wfx200_sys = { path = "wfx200_sys" }
-wfx200_rs = { path = "wfx200_rs" }
+wfx_sys = { path = "wfx_sys" }
+wfx_rs = { path = "wfx_rs" }
 wfx_bindings = { path = "wfx_bindings" }
 xous-nommu = { path = "xous-nommu" }
 

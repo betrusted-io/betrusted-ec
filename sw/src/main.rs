@@ -7,12 +7,12 @@ use riscv_rt::entry;
 extern crate betrusted_hal;
 extern crate volatile;
 
-extern crate wfx200_sys;
-extern crate wfx200_rs;
+extern crate wfx_sys;
+extern crate wfx_rs;
 extern crate wfx_bindings;
 
 extern crate xous_nommu;
-use wfx200_rs::hal_wf200::wfx_init;
+use wfx_rs::hal_wf200::wfx_init;
 use wfx_bindings::*;
 
 #[macro_use]
@@ -93,11 +93,11 @@ fn main() -> ! {
     }
 
     loop { 
-        if wfx200_rs::hal_wf200::wfx200_event_get() {
+        if wfx_rs::hal_wf200::wf200_event_get() {
             // first thing -- clear the event. So that if we get another event
             // while handling this packet, we have a chance of detecting that.
             // we lack mutexes, so we need to think about this behavior very carefully.
-            wfx200_rs::hal_wf200::wfx200_event_clear();
+            wfx_rs::hal_wf200::wf200_event_clear();
 
             // handle the Rx packet
 

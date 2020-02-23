@@ -1,6 +1,6 @@
 #![no_std]
 
-extern crate wfx200_sys;
+extern crate wfx_sys;
 extern crate c_types;
 extern crate betrusted_hal;
 extern crate betrusted_pac;

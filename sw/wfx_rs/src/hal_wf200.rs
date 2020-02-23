@@ -5,14 +5,15 @@ use crate::betrusted_hal::hal_time::get_time_ms;
 use crate::betrusted_pac;
 use crate::wfx_bindings;
 use xous_nommu::syscalls::*;
-use core::mem::transmute;
+use core::slice;
+use core::str;
 
 #[macro_use]
 mod debug;
 
 pub use wfx_bindings::*;
 
-static mut WFX200_EVENT: bool = false;
+static mut WF200_EVENT: bool = false;
 pub const WIFI_EVENT_SPI: u32 = 0x1;
 pub const WIFI_EVENT_WIRQ: u32 = 0x2;
 
@@ -30,9 +31,9 @@ pub const WFX_MAX_PTRS: usize = 16;
 static mut WFX_PTR_COUNT: u8 = 0;
 static mut WFX_PTR_LIST: [usize; WFX_MAX_PTRS] = [0; WFX_MAX_PTRS];
 
-pub fn wfx200_event_set() { unsafe{ WFX200_EVENT = true; } }
-pub fn wfx200_event_get() -> bool { unsafe{ WFX200_EVENT } }
-pub fn wfx200_event_clear() { unsafe{ WFX200_EVENT = false; } }
+pub fn wf200_event_set() { unsafe{ WF200_EVENT = true; } }
+pub fn wf200_event_get() -> bool { unsafe{ WF200_EVENT } }
+pub fn wf200_event_clear() { unsafe{ WF200_EVENT = false; } }
 
 /// a non-official structure that's baked into the sl_wfx_host.c file, and
 /// is used to pass data between various functions within the driver
@@ -111,7 +112,7 @@ pub unsafe extern "C" fn sl_wfx_host_deinit_bus()-> sl_status_t {
 #[export_name = "sl_wfx_host_enable_platform_interrupt"]
 pub unsafe extern "C" fn sl_wfx_host_enable_platform_interrupt() -> sl_status_t {
    sys_interrupt_claim(betrusted_pac::Interrupt::WIFI as usize, |_| {
-       wfx200_event_set();
+       wf200_event_set();
         // clear the interrupt
         unsafe{ betrusted_pac::Peripherals::steal().WIFI.ev_pending.write(|w| w.bits(WIFI_EVENT_WIRQ)); }
     })
@@ -395,18 +396,14 @@ pub unsafe extern "C" fn sl_wfx_host_setup_waited_event(event_id: u8) -> sl_stat
 #[export_name = "sl_wfx_host_transmit_frame"]
 pub unsafe extern "C" fn sl_wfx_host_transmit_frame(frame: *mut c_types::c_void, frame_len: u32) -> sl_status_t {
     let mut ret: sl_status_t = SL_STATUS_OK;
-    use core::mem;
-
-    //let rust_frame: &[u8] = unsafe{ mem::transmute( slice {data: frame, len: frame_len as usize} )};
-    /*
-    unsafe {
-        let rframe: &[u8] = mem::transmute::<*mut c_types::c_void, &[u8]>(frame);
-        sprint!("TX> {:02x}{:02x} {:02x}{:02x} ", rframe[0], rframe[1], rframe[2], rframe[3]);
-        for i in 4..frame_len {
-            sprint!("{:02x} ", rframe[i as usize]);
-        }
+    
+    let rframe: &str = unsafe {str::from_utf8(slice::from_raw_parts(frame as *const u8, frame_len as usize)).expect("unable to create string from parts") };
+    let u8frame: *const u8 = rframe.as_ptr();
+    sprint!("TX> {:02x}{:02x} {:02x}{:02x} ", u8frame.add(0).read(), u8frame.add(1).read(), u8frame.add(2).read(), u8frame.add(3).read());
+    for i in 4..frame_len {
+        sprint!("{:02x} ", u8frame.add(i as usize).read());
     }
-    sprint!("\r\n");*/
+    sprint!("\r\n");
     unsafe{ ret = sl_wfx_data_write( frame, frame_len ); }
     ret
 }
@@ -494,8 +491,11 @@ pub unsafe extern "C" fn strtoul(
     // check this is according to the specs we anticipate
     assert!(__base == 16 as c_types::c_int);
     assert!(__endptr == ::core::ptr::null::<c_types::c_void> as *mut *mut c_types::c_char);
-
-    let s: &str = __nptr as &str;
+    let mut length: usize = 0;
+    while(__nptr).add(length).read() != 0 {
+        length += 1;
+    }
+    let s = unsafe { str::from_utf8(slice::from_raw_parts(__nptr as *const u8, length)).expect("unable to parse string") };
     usize::from_str_radix(s.trim_start_matches("0x"), 16).expect("unable to parse num") as c_types::c_ulong
 }
 

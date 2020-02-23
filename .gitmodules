@@ -30,7 +30,7 @@
 	path = sw/imports/wfx-fullMAC-tools
 	url = https://github.com/SiliconLabs/wfx-fullMAC-tools.git
 	branch = master
-[submodule "sw/wfx200_sys/wfx-fullMAC-driver"]
-	path = sw/wfx200_sys/wfx-fullMAC-driver
+[submodule "sw/wfx_sys/wfx-fullMAC-driver"]
+	path = sw/wfx_sys/wfx-fullMAC-driver
 	url = https://github.com/SiliconLabs/wfx-fullMAC-driver.git
 	branch = master
