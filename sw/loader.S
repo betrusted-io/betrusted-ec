@@ -1,6 +1,6 @@
 	lui  a1, 0x2001B   		# form address 0x2001_B000: a1 is source
 	lui  a2, 0x10000		# form address 0x1000_0000: a2 is dest
- 	lui  a3, 0x10005	        # end copy,0x1000_5000 (20kiB): a3
+ 	lui  a3, 0x10008	        # end copy,0x1000_5000 (32kiB): a3
 loop:
 	lw   a4, 0(a1)			# copy source to temp
 	sw   a4, 0(a2)                  # store in dest
