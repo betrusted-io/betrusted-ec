@@ -60,6 +60,9 @@ class SpiMaster(Module, AutoCSR, AutoDoc):
         self.comb += self.ev.spi_int.trigger.eq(self.status.fields.tip)
         self.specials += MultiReg(pads.wirq, self.ev.wirq.trigger)
 
+        tx_swab = Signal(16)
+        self.comb += tx_swab.eq(Cat(self.tx.storage[8:], self.tx.storage[:8]))
+
         # Replica CSR into "spi" clock domain
         self.tx_r = Signal(16)
         self.rx_r = Signal(16)
@@ -83,7 +86,7 @@ class SpiMaster(Module, AutoCSR, AutoDoc):
             self.comb += self.csn.eq(~self.cs.fields.cs)
         else:
             self.comb += self.csn.eq(self.csn_r)
-        self.comb += self.rx.status.eq(self.rx_r) ## invalid while transaction is in progress
+        self.comb += self.rx.status.eq(Cat(self.rx_r[8:],self.rx_r[:8])) ## invalid while transaction is in progress
         fsm = FSM(reset_state="IDLE")
         fsm = ClockDomainsRenamer("spi")(fsm)
         self.submodules += fsm
@@ -92,13 +95,13 @@ class SpiMaster(Module, AutoCSR, AutoDoc):
         fsm.act("IDLE",
                 If(self.go_edge,
                    NextState("RUN"),
-                   NextValue(self.tx_r, Cat(0, self.tx.storage[:15])),
+                   NextValue(self.tx_r, Cat(0, tx_swab[:15])),
                    # stability guaranteed so no synchronizer necessary
                    NextValue(spicount, 15),
                    NextValue(self.txfull_r, 0),
                    NextValue(self.tip_r, 1),
                    NextValue(self.csn_r, 0),
-                   NextValue(self.mosi, self.tx.storage[15]),
+                   NextValue(self.mosi, tx_swab[15]),
                    NextValue(self.rx_r, Cat(self.miso, self.rx_r[:15])),
                    NextValue(spiclk_run, 1),
                 ).Else(
