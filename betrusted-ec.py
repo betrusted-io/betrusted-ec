@@ -111,7 +111,7 @@ _io = [
          Subsignal("wirq", Pins("31"), IOStandard("LVCMOS18")),
          Subsignal("wakeup", Pins("38"), IOStandard("LVCMOS18")),
      ),
-    ("lpclk", 0, Pins("37"), IOStandard("LVCMOS18")),
+    # ("lpclk", 0, Pins("37"), IOStandard("LVCMOS18")),  # conflicts with SB_PLL40_2_PAD...what weirdness
 
     # Only used for simulation
     ("wishbone", 0,
@@ -163,20 +163,22 @@ class BetrustedPlatform(LatticePlatform):
                 self.cd_sys.rst.eq(reset_cascade),
             ]
 
-            # generate a >1us-wide pulse at 1Hz based on lpclk for display extcomm signal
-            self.clock_domains.cd_lpclk = ClockDomain()
-            self.specials += Instance("SB_GB", i_USER_SIGNAL_TO_GLOBAL_BUFFER=platform.request("lpclk"),
-                o_GLOBAL_BUFFER_OUTPUT=self.cd_lpclk.clk)
+            # generate a >1us-wide pulse at 1Hz based on clk12 for display extcomm signal
+            # count down from 12e6 to 0 so that first extcomm pulse comes after lcd_disp is high
             extcomm = platform.request("extcommin", 0)
-            extcomm_div = Signal(15)
+            extcomm_div = Signal(24, reset=int(12e6))
             self.sync += [
-                If(extcomm_div == 32767,
-                   extcomm_div.eq(0),
-                   extcomm.eq(1),
+                If(extcomm_div == 0,
+                   extcomm_div.eq(int(12e6))
                 ).Else(
-                   extcomm_div.eq(extcomm_div + 1),
-                   extcomm.eq(0),
+                   extcomm_div.eq(extcomm_div - 1)
                 ),
+
+                If(extcomm_div < 13,
+                   extcomm.eq(1)
+                ).Else(
+                   extcomm.eq(0)
+                )
             ]
             self.comb += platform.request("lcd_disp", 0).eq(1)  # force display on for now
 
@@ -185,11 +187,11 @@ class BetrustedPlatform(LatticePlatform):
             self.clock_domains.cd_spi = ClockDomain()
             self.comb += self.cd_spi.clk.eq(clkspi)
             self.specials += Instance(
-                "SB_PLL40_PAD",
+                "SB_PLL40_2_PAD",
                 # Parameters
                 p_DIVR = 0,
-                p_DIVF = 63,
-                p_DIVQ = 5,
+                p_DIVF = 52,  # 63 for 24 MHz, 52 for 20 MHz NOTE: timing seems marginal @ 24MHz, bus fails when oscope probe is present
+                p_DIVQ = 5,   # 5
                 p_FILTER_RANGE = 1,
                 p_FEEDBACK_PATH = "SIMPLE",
                 p_DELAY_ADJUSTMENT_MODE_FEEDBACK = "FIXED",
@@ -197,13 +199,14 @@ class BetrustedPlatform(LatticePlatform):
                 p_DELAY_ADJUSTMENT_MODE_RELATIVE = "FIXED",
                 p_FDA_RELATIVE = 0,
                 p_SHIFTREG_DIV_MODE = 1,
-                p_PLLOUT_SELECT = "GENCLK",
-                p_ENABLE_ICEGATE = 0,
+                p_PLLOUT_SELECT_PORTB = "GENCLK",
+                p_ENABLE_ICEGATE_PORTA = 0,
+                p_ENABLE_ICEGATE_PORTB = 0,
                 # IO
                 i_PACKAGEPIN = clk12_raw,
-                o_PLLOUTCORE = clkspi,
-                o_PLLOUTGLOBAL = clk12,
-                i_BYPASS = 1,  # bypass connects clk12 to PLLOUTGLOBAL
+                o_PLLOUTGLOBALA = clk12,    # from input pin
+                o_PLLOUTGLOBALB = clkspi,   # from PLL
+                i_BYPASS = 0,
                 i_RESETB = 1,
             )
             # global buffer for input SPI clock
