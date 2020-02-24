@@ -118,14 +118,14 @@ PROG_PINS_CFG: {
         SLEW_RATE: 4,
         PULL_UP_DOWN: none,
         SLEEP_CFG: none,
-        PIN_MODE: tri,
+        PIN_MODE: func,
         GPIO_ID: L
     },
     GPIO_WIRQ: {
         SLEW_RATE: 4,
         PULL_UP_DOWN: none,
         SLEEP_CFG: none,
-        PIN_MODE: tri,
+        PIN_MODE: func,
         GPIO_ID: M
     }
 },
@@ -139,20 +139,20 @@ HIF_PINS_CFG: {
         SLEW_RATE: 4
     },
     SDIO_CMD_SPI_MOSI: {
-        SLEW_RATE: 6
+        SLEW_RATE: 4
     },
     SDIO_D0_SPI_MISO: {
-        SLEW_RATE: 6,
+        SLEW_RATE: 4,
         SLEEP_CFG: none
     },
     SDIO_D1_SPI_WIRQ: {
-        SLEW_RATE: 6
+        SLEW_RATE: 3
     },
     SDIO_D2_HIF_SEL: {
-        SLEW_RATE: 6
+        SLEW_RATE: 3
     },
     SDIO_D3_SPI_CSN: {
-        SLEW_RATE: 6
+        SLEW_RATE: 3
     }
 },
 
@@ -160,15 +160,16 @@ HIF_PINS_CFG: {
 /* Clock configuration */
 /***********************/
 
+// capacitance load target is 10pF; Cstray ~4pF so CL for each pin should be 10-4 = 6pF * 2 = 12pF
 HF_CLK: {
     // XTAL_CFG allows to fine tune XTAL Oscillator frequency
     XTAL_CFG: {
         // CTUNE_FIX allows to set a high value capacitance on both XTAL_I and XTAL_O. Type: integer between 0 and 3 (default = 3)
-        CTUNE_FIX: 3,
+        CTUNE_FIX: 3,  // 9pF each pin
         // CTUNE_XI allows to fine tune the capacitor on pin XTAL_I. Type: integer between 0 and 255 (default = 140)
-        CTUNE_XI: 41,
+        CTUNE_XI: 38,  // 80fF per LSB, 38 = ~3pF
         // CTUNE_XO similar to CTUNE_XI for XTAL_O pin
-        CTUNE_XO: 41
+        CTUNE_XO: 38
     },
     // XTAL_SHARED indicates if the crystal is shared with another IC and thus must be kept active during sleep. Type: enum = 'no', 'yes'
     XTAL_SHARED: no,
@@ -297,7 +298,7 @@ RF_ANTENNA_SEL_DIV_CFG: {
     //   - TX2_RX1: Tx on RF_2 and Rx on RF_1
     //   - TX12_RX12: antenna diversity case: both Tx and Rx on the same RF port which is automatically selected (requires DIVERSITY to be set)
     //
-    RF_PORTS: TX1_RX1,
+    RF_PORTS: TX1_RX1, // for initial testing. also should try TX12_RX12 with both antennae installed
 
     //
     // Diversity control mode:
@@ -306,59 +307,3 @@ RF_ANTENNA_SEL_DIV_CFG: {
     //
     DIVERSITY: OFF
 },
-
-/*********************************/
-/* RF test feature configuration */
-/*********************************/
-
-TEST_FEATURE_CFG: {
-    // TEST_CHANNEL_FREQ can designate either a Wi-Fi channel or a frequency in MHz:
-    //   - [1-14]: Wi-Fi channel to use
-    //   - [2300 - 2600]: RF frequency in MHz
-    //
-    TEST_CHANNEL_FREQ: 11,
-
-    // TEST_MODE selects the activated test feature: enum = 'rx', 'tx_packet', 'tx_cw'
-    TEST_MODE: tx_packet,
-
-    // TEST_IND period in ms at which an indication message is sent.
-    //       In the case of rx test, it returns the measurement results (PER and RSSI)
-    TEST_IND: 1000,
-
-    // CFG_TX_CW: additional configuration for tx_cw mode
-    CFG_TX_CW: {
-        // CW_MODE CW mode, either single tone (use FREQ1) or dual tone: enum 'single' or 'dual'
-        CW_MODE: single,
-        // FREQ1 frequency offset -31 to 31 (in 312.5kHz)
-        FREQ1: 1,
-        // FREQ2 frequency offset -31 to 31 (in 312.5kHz)
-        FREQ2: 2,
-        // MAX_OUTPUT_POWER indicates the max Tx power value (for CW only) in quarters of dBm
-        MAX_OUTPUT_POWER: 68
-    },
-
-    // CFG_TX_PACKET: additional configuration for tx_packet mode
-    CFG_TX_PACKET: {
-        // FRAME_SIZE_BYTE frame size in byte (without CRC) from 25 to 4091
-        FRAME_SIZE_BYTE: 3000,
-        // IFS_US interframe spacing in us from 0 to 255
-        IFS_US: 0,
-        // HT_PARAM HT format (mixed mode or greenfield), enum: 'MM' or 'GF'
-        HT_PARAM: MM,
-        // RATE rate selection, enum: B_1Mbps, B_2Mbps, B_5_5Mbps,
-        //     B_11Mbps, G_6Mbps, G_9Mbps, G_12Mbps, G_18Mbps,
-        //     G_24Mbps, G_36Mbps, G_48Mbps, G_54Mbps, N_MCS0,
-        //     N_MCS1, N_MCS2, N_MCS3, N_MCS4, N_MCS5, N_MCS6, N_MCS7
-        RATE: N_MCS7,
-        // NB_FRAME number of frames to send before stopping. Integer from 0 to 65535 (0 means infinite)
-        NB_FRAME: 0,
-        // (REGION) REGULATORY MODE: the WFM200 can be certified for US (FCC), Europe (ETSI) or Japan
-        // and thus its Tx power is limited internally to fulfill these radio transmission specifications.
-        // It is possible to select here the regulatory mode for test purposes. Selection has no impact on channel usage limitation.
-        // enum: CERTIFIED_FCC, CERTIFIED_ETSI, CERTIFIED_JAPAN, CERTIFIED_Unrestricted (no power limitation), CERTIFIED_All (applies the most restrictive limitation)
-        REG_MODE: CERTIFIED_All
-    },
-
-    // RX: additional configuration for rx mode
-    RX: { }
-}
