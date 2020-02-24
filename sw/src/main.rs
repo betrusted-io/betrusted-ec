@@ -85,14 +85,22 @@ fn main() -> ! {
     let mut com_sentinel: u16 = 0;
     backlight.set_brightness(&mut i2c, 0); // make sure the backlight is off on boot
 
-    // init the wifi interface
-    if wfx_init() == SL_STATUS_OK {
-        sprintln!("Wifi ready");
-    } else {
-        sprintln!("Wifi init failed");
-    }
+    sprintln!("hello world!");
+    
+    let mut start_time: u32 = get_time_ms(&p);
 
     loop { 
+        if get_time_ms(&p) - start_time > 5000 {
+            sprintln!("initializing wifi!");
+            delay_ms(&p, 250); // let the message print
+            // init the wifi interface
+            if wfx_init() == SL_STATUS_OK {
+                sprintln!("Wifi ready");
+            } else {
+                sprintln!("Wifi init failed");
+            }
+            start_time = get_time_ms(&p);
+        }
         if wfx_rs::hal_wf200::wf200_event_get() {
             // first thing -- clear the event. So that if we get another event
             // while handling this packet, we have a chance of detecting that.

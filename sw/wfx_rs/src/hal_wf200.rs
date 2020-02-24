@@ -1,4 +1,5 @@
 #![allow(unused)]
+#![allow(nonstandard_style)]
 
 use crate::betrusted_hal::hal_time::delay_ms;
 use crate::betrusted_hal::hal_time::get_time_ms;
@@ -10,6 +11,9 @@ use core::str;
 
 #[macro_use]
 mod debug;
+
+#[macro_use]
+use core::include_bytes;
 
 pub use wfx_bindings::*;
 
@@ -193,42 +197,57 @@ pub unsafe extern "C" fn sl_wfx_host_spi_transfer_no_cs_assert(
     unsafe {
         let mut header_len_mtu = header_length / 2; // we do "MTU" in case header_len is odd. should never be but...this is their API
         let mut header_pos: usize = 0;
+//        sprintln!("headerlen: {}", header_length);
+        let headeru16: *mut u16 = header as *mut u16;
         while header_len_mtu > 0 {
-            let word: u16 = ((header.add(header_pos + 1).read() as u16) << 8) | (header.add(header_pos).read() as u16);
+            //let word: u16 = ((header.add(header_pos).read() as u16) << 8) | (header.add(header_pos + 1).read() as u16);
+            let word: u16 = headeru16.add(header_pos).read();
             betrusted_pac::Peripherals::steal().WIFI.tx.write(|w| w.bits(word as u32));
+//            sprintln!("header: {:02x} {:02x}", word >> 8, word & 0xff);
             header_len_mtu -= 1;
-            header_pos += 2;
+            header_pos += 1;
 
             betrusted_pac::Peripherals::steal().WIFI.control.write(|w| w.go().bit(true));
             while betrusted_pac::Peripherals::steal().WIFI.status.read().tip().bit_is_set() {}
+            betrusted_pac::Peripherals::steal().WIFI.control.write(|w| w.go().bit(false));
         }
         if type_ == sl_wfx_host_bus_transfer_type_t_SL_WFX_BUS_READ {
+//            sprintln!("rxlen: {}", buffer_length);
             let mut buffer_len_mtu = buffer_length / 2;
             let mut buffer_pos: usize = 0;
+            let mut bufferu16: *mut u16 = buffer as *mut u16;
             while buffer_len_mtu > 0 {
                 // transmit a dummy word to get the rx data
                 betrusted_pac::Peripherals::steal().WIFI.tx.write(|w| w.bits(0));
                 betrusted_pac::Peripherals::steal().WIFI.control.write(|w| w.go().bit(true));
                 while betrusted_pac::Peripherals::steal().WIFI.status.read().tip().bit_is_set() {}
+                betrusted_pac::Peripherals::steal().WIFI.control.write(|w| w.go().bit(false));
 
                 let word: u16 = betrusted_pac::Peripherals::steal().WIFI.rx.read().bits() as u16;
-                buffer.add(buffer_pos + 1).write((word >> 8) as u8);
-                buffer.add(buffer_pos).write((word & 0xff) as u8);
+//                sprintln!("rx: {:02x} {:02x}", word >> 8, word & 0xff);
+                bufferu16.add(buffer_pos).write(word);
+                //buffer.add(buffer_pos).write((word >> 8) as u8);
+                //buffer.add(buffer_pos+1).write((word & 0xff) as u8);
                 buffer_len_mtu -= 1;
-                buffer_pos += 2;
+                buffer_pos += 1;
             }
         } else {
+//            sprintln!("txlen: {}", buffer_length);
             // transmit the buffer
-            let mut buffer_len_mtu = buffer_length / 2;
+            let mut buffer_len_mtu: usize = buffer_length as usize / 2;
             let mut buffer_pos: usize = 0;
-            while buffer_len_mtu > 0 {
-                let word: u16 = ((buffer.add(buffer_pos + 1).read() as u16) << 8) | (buffer.add(buffer_pos).read() as u16);
+            let bufferu16: *mut u16 = buffer as *mut u16;
+            while buffer_pos < buffer_len_mtu {
+                //let word: u16 = ((buffer.add(buffer_pos).read() as u16) << 8) | (buffer.add(buffer_pos+1).read() as u16);
+                let word: u16 = bufferu16.add(buffer_pos).read();
                 betrusted_pac::Peripherals::steal().WIFI.tx.write(|w| w.bits(word as u32));
-                buffer_len_mtu -= 1;
-                buffer_pos += 2;
+//                sprintln!("tx: {:02x} {:02x}", word >> 8, word & 0xff);
+//                buffer_len_mtu -= 1;
+                buffer_pos += 1;
     
                 betrusted_pac::Peripherals::steal().WIFI.control.write(|w| w.go().bit(true));
                 while betrusted_pac::Peripherals::steal().WIFI.status.read().tip().bit_is_set() {}
+                betrusted_pac::Peripherals::steal().WIFI.control.write(|w| w.go().bit(false));
             }
         }
 
@@ -319,12 +338,35 @@ pub unsafe extern "C" fn sl_wfx_host_free_buffer(
 }
 
 /// clear the shitty allocator list if we're re-initializing the driver
+/// also clear all the static muts (e.g. "C globals") that the driver depends upon
 #[export_name = "sl_wfx_host_init"]
 pub unsafe extern "C" fn sl_wfx_host_init() -> sl_status_t {
     unsafe {
         WFX_RAM_ALLOC = WFX_RAM_OFFSET;
         WFX_PTR_COUNT = 0;
         WFX_PTR_LIST = [0; WFX_MAX_PTRS];
+    }
+    unsafe {
+        HOST_CONTEXT.sl_wfx_firmware_download_progress = 0;
+        HOST_CONTEXT.waited_event_id = 0;
+        HOST_CONTEXT.posted_event_id = 0;        
+    }
+    unsafe {
+        WF200_EVENT = false;
+    }
+    unsafe {
+        WIFI_CONTEXT = sl_wfx_context_t {
+            event_payload_buffer: [0; 512usize],
+            firmware_build: 0,
+            firmware_minor: 0,
+            firmware_major: 0,
+            data_frame_id: 0,
+            used_buffers: 0,
+            wfx_opn: [0; 14usize],
+            mac_addr_0: sl_wfx_mac_address_t{ octet: [0; 6usize]},
+            mac_addr_1: sl_wfx_mac_address_t{ octet: [0; 6usize]},
+            state: 0,
+        };
     }
     SL_STATUS_OK
 }
@@ -479,6 +521,34 @@ pub unsafe extern "C" fn strlen(__s: *const c_types::c_char) -> c_types::c_ulong
     len as c_types::c_ulong
 }
 
+#[export_name = "bt_ffi_dbg"]
+pub unsafe extern "C" fn bt_ffi_dbg(dbgstr: *const c_types::c_char) {
+    let mut length: usize = 0;
+    while(dbgstr).add(length).read() != 0 {
+        length += 1;
+    }
+    let s = unsafe{ str::from_utf8(slice::from_raw_parts(dbgstr as *const u8, length)).expect("unable to parse")};
+    sprintln!("***dbg: {}", s);
+}
+#[export_name = "bt_ffi_dbg_u16"]
+pub unsafe extern "C" fn bt_ffi_dbg_u16(dbgstr: *const c_types::c_char, val: u16) {
+    let mut length: usize = 0;
+    while(dbgstr).add(length).read() != 0 {
+        length += 1;
+    }
+    let s = unsafe{ str::from_utf8(slice::from_raw_parts(dbgstr as *const u8, length)).expect("unable to parse")};
+    sprintln!("***dbg: {}: 0x{:04x}", s, val);
+}
+#[export_name = "bt_ffi_dbg_u32"]
+pub unsafe extern "C" fn bt_ffi_dbg_u32(dbgstr: *const c_types::c_char, val: u32) {
+    let mut length: usize = 0;
+    while(dbgstr).add(length).read() != 0 {
+        length += 1;
+    }
+    let s = unsafe{ str::from_utf8(slice::from_raw_parts(dbgstr as *const u8, length)).expect("unable to parse")};
+    sprintln!("***dbg: {}: 0x{:08x}", s, val);
+}
+
 /// this is a hyper-targeted implementation of strtoul for the instance where it is called in
 /// referenced by sl_wfx.c:1527 (wfx-fullMAC-driver/wfx_fmac_driver/sl_wfx.c:1527):
 /// endptr is NULL, base is 16
@@ -499,3 +569,211 @@ pub unsafe extern "C" fn strtoul(
     usize::from_str_radix(s.trim_start_matches("0x"), 16).expect("unable to parse num") as c_types::c_ulong
 }
 
+#[doc = " @brief Driver hook to retrieve a PDS line"]
+#[doc = ""]
+#[doc = " @param pds_data is a pointer to the PDS data"]
+#[doc = " @param index is the index of the line requested by the driver"]
+#[doc = " @returns Returns SL_STATUS_OK if successful, SL_STATUS_FAIL otherwise"]
+#[doc = ""]
+#[doc = " @note Called multiple times during the driver initialization phase"]
+#[export_name = "sl_wfx_host_get_pds_data"]
+pub unsafe extern "C" fn sl_wfx_host_get_pds_data(
+    pds_data: *mut *const c_types::c_char,
+    index: u16,
+) -> sl_status_t {
+    assert!(index == 0); // should be only one ever requested
+
+    // pds should be static data so it will not go out of scope when this function terminates
+    // so weird! suspicious bunnie is suspicious.
+    let pds = include_bytes!("bt-wf200-pds.in");
+    *pds_data = (pds as *const u8) as *const c_types::c_char;
+
+    SL_STATUS_OK
+}
+
+#[doc = " @brief Driver hook to get the number of lines of the PDS"]
+#[doc = ""]
+#[doc = " @param pds_size is a pointer to the PDS size value"]
+#[doc = " @returns Returns SL_STATUS_OK if successful, SL_STATUS_FAIL otherwise"]
+#[doc = ""]
+#[doc = " @note Called once during the driver initialization phase"]
+#[export_name = "sl_wfx_host_get_pds_size"]
+pub unsafe extern "C" fn sl_wfx_host_get_pds_size(pds_size: *mut u16) -> sl_status_t {
+    *pds_size = 1;  // we have one line in the PDS, the way we generate it
+    
+    SL_STATUS_OK
+}
+
+fn sl_wfx_connect_callback(mac: [u8; 6usize], status: u32) {
+    match status {
+        sl_wfx_fmac_status_e_WFM_STATUS_SUCCESS => {
+            sprintln!("Connected");
+            unsafe{ WIFI_CONTEXT.state |= sl_wfx_state_t_SL_WFX_STA_INTERFACE_CONNECTED; }
+            // TODO: callback to lwip_set_sta_link_up -- setup the IP link
+            if unsafe{(WIFI_CONTEXT.state & sl_wfx_state_t_SL_WFX_AP_INTERFACE_UP)} == 0 {
+                unsafe { // wrap FFI C calls in unsafe
+                    sl_wfx_set_power_mode(sl_wfx_pm_mode_e_WFM_PM_MODE_PS, 0);
+                    sl_wfx_enable_device_power_save();
+                }
+            }
+        }
+        sl_wfx_fmac_status_e_WFM_STATUS_NO_MATCHING_AP => {
+            sprintln!("Connection failed, access point not found.")
+        }
+        sl_wfx_fmac_status_e_WFM_STATUS_CONNECTION_ABORTED => {
+            sprintln!("Connectiona aborted.")
+        }
+        sl_wfx_fmac_status_e_WFM_STATUS_CONNECTION_TIMEOUT => {
+            sprintln!("Connection timeout.")
+        }
+        sl_wfx_fmac_status_e_WFM_STATUS_CONNECTION_REJECTED_BY_AP => {
+            sprintln!("Connection rejected by the access point.")
+        }
+        sl_wfx_fmac_status_e_WFM_STATUS_CONNECTION_AUTH_FAILURE => {
+            sprintln!("Connection authenication failure.")
+        }
+        _ => {
+            sprintln!("Connection attempt error.")
+        }
+    }
+}
+
+fn sl_wfx_disconnect_callback(mac: [u8; 6usize], reason: u16) {
+    sprintln!("Disconnected");
+    unsafe{ WIFI_CONTEXT.state &= !sl_wfx_state_t_SL_WFX_STA_INTERFACE_CONNECTED; }
+    // TODO: callback to lwip_set_sta_link_down -- teardown the IP link
+}
+
+fn sl_wfx_start_ap_callback(status: u32) {
+    if status == 0 {
+        sprintln!("AP started");
+        unsafe{ WIFI_CONTEXT.state |= sl_wfx_state_t_SL_WFX_AP_INTERFACE_UP; }
+        // TODO: callback to lwip_set_ap_link_up() -- if we are to be an AP!!!
+        unsafe { // wrap FFI C calls in unsafe
+            sl_wfx_set_power_mode(sl_wfx_pm_mode_e_WFM_PM_MODE_ACTIVE, 0);
+            sl_wfx_disable_device_power_save();
+        } 
+    } else {
+        sprintln!("AP start failed");
+    }
+}
+
+fn sl_wfx_stop_ap_callback() {
+    // TODO: stop the DHCP server 
+    sprintln!("SoftAP stopped.");
+    unsafe{ WIFI_CONTEXT.state &= !sl_wfx_state_t_SL_WFX_AP_INTERFACE_UP; }
+    // TODO: lwip_set_ap_link_down -- bring the AP link down
+
+    if unsafe{ WIFI_CONTEXT.state & sl_wfx_state_t_SL_WFX_STA_INTERFACE_CONNECTED } != 0 {
+        unsafe { // wrap FFI C calls in unsafe
+            sl_wfx_set_power_mode(sl_wfx_pm_mode_e_WFM_PM_MODE_PS, 0);
+            sl_wfx_enable_device_power_save();
+        }
+    }
+}
+
+fn sl_wfx_host_received_frame_callback(rx_buffer: *const sl_wfx_received_ind_t) {
+    // TODO: do something with received ethernet frames!
+}
+
+fn sl_wfx_scan_result_callback(scan_result: *const sl_wfx_scan_result_ind_body_t) {
+    let ssid = unsafe { str::from_utf8(slice::from_raw_parts(&(*scan_result).ssid_def.ssid as *const u8, 32)).expect("unable to parse ssid") };
+    unsafe { // because raw pointer dereferences
+        sprintln!("scan-- ch:{} str:{} mac:{:02x}{:02x}{:02x}{:02x}{:02x}{:02x} ssid:{}",
+            (*scan_result).channel,
+            ((*scan_result).rcpi - 220) / 2,
+            (*scan_result).mac[0], (*scan_result).mac[1],
+            (*scan_result).mac[2], (*scan_result).mac[3],
+            (*scan_result).mac[4], (*scan_result).mac[5],
+            ssid
+        );
+    }
+}
+
+fn sl_wfx_scan_complete_callback(status: u32) {
+    // nothing for now
+}
+
+#[doc = " @brief Called when a message is received from the WFx chip"]
+#[doc = ""]
+#[doc = " @param event_payload is a pointer to the data received"]
+#[doc = " @returns Returns SL_STATUS_OK if successful, SL_STATUS_FAIL otherwise"]
+#[doc = ""]
+#[doc = " @note Called by ::sl_wfx_receive_frame function"]
+#[export_name = "sl_wfx_host_post_event"]
+pub unsafe extern "C" fn sl_wfx_host_post_event(event_payload: *mut sl_wfx_generic_message_t) -> sl_status_t {
+    let msg_type: u32 = (*event_payload).header.id as u32;
+
+    match msg_type {
+        sl_wfx_indications_ids_e_SL_WFX_CONNECT_IND_ID => {
+            let connect_indication: sl_wfx_connect_ind_t = *(event_payload as *const sl_wfx_connect_ind_t);
+            sl_wfx_connect_callback(connect_indication.body.mac, connect_indication.body.status);
+        }
+        sl_wfx_indications_ids_e_SL_WFX_DISCONNECT_IND_ID => {
+            let disconnect_indication: sl_wfx_disconnect_ind_t = *(event_payload as *const sl_wfx_disconnect_ind_t);
+            sl_wfx_disconnect_callback(disconnect_indication.body.mac, disconnect_indication.body.reason);
+        }
+        sl_wfx_indications_ids_e_SL_WFX_START_AP_IND_ID => {
+            let start_ap_indication: sl_wfx_start_ap_ind_t = *(event_payload as *const sl_wfx_start_ap_ind_t);
+            sl_wfx_start_ap_callback(start_ap_indication.body.status);
+        }
+        sl_wfx_indications_ids_e_SL_WFX_STOP_AP_IND_ID => {
+            sl_wfx_stop_ap_callback();
+        }
+        sl_wfx_indications_ids_e_SL_WFX_RECEIVED_IND_ID => {
+            let ethernet_frame: *const sl_wfx_received_ind_t = event_payload as *const sl_wfx_received_ind_t;
+            if (*ethernet_frame).body.frame_type == 0 {
+                sl_wfx_host_received_frame_callback( ethernet_frame );
+            }
+        }
+        sl_wfx_indications_ids_e_SL_WFX_SCAN_RESULT_IND_ID => {
+            let scan_result: *const sl_wfx_scan_result_ind_t = event_payload as *const sl_wfx_scan_result_ind_t;
+            sl_wfx_scan_result_callback(&(*scan_result).body);
+        }
+        sl_wfx_indications_ids_e_SL_WFX_SCAN_COMPLETE_IND_ID => {
+            let scan_complete: *const sl_wfx_scan_complete_ind_t = event_payload as *const sl_wfx_scan_complete_ind_t;
+            sl_wfx_scan_complete_callback((*scan_complete).body.status);
+        }
+        sl_wfx_indications_ids_e_SL_WFX_AP_CLIENT_CONNECTED_IND_ID => {
+            unimplemented!();
+        }
+        sl_wfx_indications_ids_e_SL_WFX_AP_CLIENT_REJECTED_IND_ID => {
+            unimplemented!();
+        }
+        sl_wfx_indications_ids_e_SL_WFX_AP_CLIENT_DISCONNECTED_IND_ID => {
+            unimplemented!();
+        }
+        sl_wfx_indications_ids_e_SL_WFX_GENERIC_IND_ID => {
+            // nothing to do here, huh.
+        }
+        sl_wfx_indications_ids_e_SL_WFX_EXCEPTION_IND_ID => {
+            sprintln!("Firmware exception");
+            let firmware_exception: *const sl_wfx_exception_ind_t = event_payload as *const sl_wfx_exception_ind_t;
+            sprintln!("Exeption data = ");
+            for i in 0..SL_WFX_EXCEPTION_DATA_SIZE {
+                sprint!("{:02x} ", (*firmware_exception).body.data[i as usize]);
+            }
+            sprintln!("End dump.");
+        }
+        sl_wfx_indications_ids_e_SL_WFX_ERROR_IND_ID => {
+            sprintln!("Firmware error");
+            let firmware_error: *const sl_wfx_error_ind_t = event_payload as *const sl_wfx_error_ind_t;
+            sprintln!("Error type = {}", (*firmware_error).body.type_);
+        }
+        _ => {
+            sprintln!("Unhandled return code from wfx200");
+        }
+    }
+
+    if HOST_CONTEXT.waited_event_id == (*event_payload).header.id {
+        if (*event_payload).header.length < 512usize as u16 {
+            unsafe {
+                for i in 0..(*event_payload).header.length {
+                    WIFI_CONTEXT.event_payload_buffer[i as usize] = (event_payload as *const u8).add(i as usize).read();
+                }
+                HOST_CONTEXT.posted_event_id = (*event_payload).header.id;
+            }
+        }
+    }
+    SL_STATUS_OK
+}
