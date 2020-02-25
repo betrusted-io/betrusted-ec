@@ -54,11 +54,15 @@ class SpiMaster(Module, AutoCSR, AutoDoc):
         ]
 
         self.submodules.ev = EventManager()
-        self.ev.spi_int = EventSourceProcess(description="Triggered on conclusion of each transaction")  # falling edge triggered
+        # self.ev.spi_int = EventSourceProcess(description="Triggered on conclusion of each transaction")  # falling edge triggered
         self.ev.wirq = EventSourcePulse(description="Interrupt request from wifi chip") # rising edge triggered
         self.ev.finalize()
-        self.comb += self.ev.spi_int.trigger.eq(self.status.fields.tip)
-        self.specials += MultiReg(pads.wirq, self.ev.wirq.trigger)
+        # self.comb += self.ev.spi_int.trigger.eq(self.status.fields.tip)
+        wirq_in = Signal()
+        wirq_r = Signal()
+        self.specials += MultiReg(pads.wirq, wirq_in)
+        self.sync += wirq_r.eq(wirq_in)
+        self.comb += self.ev.wirq.trigger.eq(wirq_in & ~wirq_r)
 
         tx_swab = Signal(16)
         self.comb += tx_swab.eq(Cat(self.tx.storage[8:], self.tx.storage[:8]))
