@@ -13,6 +13,10 @@ extern crate wfx_bindings;
 
 extern crate xous_nommu;
 use wfx_rs::hal_wf200::wfx_init;
+use wfx_rs::hal_wf200::wfx_scan_ongoing;
+use wfx_rs::hal_wf200::wfx_start_scan;
+use wfx_rs::hal_wf200::wfx_handle_event;
+use wfx_rs::hal_wf200::wf200_mutex_get;
 use wfx_bindings::*;
 
 #[macro_use]
@@ -85,13 +89,14 @@ fn main() -> ! {
     let mut com_sentinel: u16 = 0;
     backlight.set_brightness(&mut i2c, 0); // make sure the backlight is off on boot
 
-    sprintln!("hello world!");
+    sprintln!("bt-ec boot");
     
     let mut start_time: u32 = get_time_ms(&p);
     let mut wifi_ready: bool = false;
 
     loop { 
-        if (get_time_ms(&p) - start_time > 5000) && !wifi_ready {
+        // slight delay to allow for wishbone-tool to connect for debuggening
+        if (get_time_ms(&p) - start_time > 1500) && !wifi_ready {
             sprintln!("initializing wifi!");
             delay_ms(&p, 250); // let the message print
             // init the wifi interface
@@ -103,16 +108,28 @@ fn main() -> ! {
             }
             start_time = get_time_ms(&p);
         }
+        if wifi_ready {
+            if get_time_ms(&p) - start_time > 6000 {
+                sprintln!("starting ssid scan");
+                wfx_start_scan();
+                start_time = get_time_ms(&p);
+            }
+        }
         if wfx_rs::hal_wf200::wf200_event_get() {
             // first thing -- clear the event. So that if we get another event
             // while handling this packet, we have a chance of detecting that.
             // we lack mutexes, so we need to think about this behavior very carefully.
-            wfx_rs::hal_wf200::wf200_event_clear();
 
-            // handle the Rx packet
+            if wf200_mutex_get() { // don't process events while the driver has locked us out
+                wfx_rs::hal_wf200::wf200_event_clear();
 
+                // handle the Rx packet
+                if wfx_scan_ongoing() {
+                    wfx_handle_event();
+                }
+            }
         }
-        if get_time_ms(&p) - last_time > 1000 {
+        if get_time_ms(&p) - last_time > 1000 {    
             last_time = get_time_ms(&p);
             if last_state {
                 chg_keepalive_ping(&mut i2c);

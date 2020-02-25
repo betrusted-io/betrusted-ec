@@ -21,8 +21,7 @@ use core::include_bytes;
 pub use wfx_bindings::*;
 
 static mut WF200_EVENT: bool = false;
-pub const WIFI_EVENT_SPI: u32 = 0x1;
-pub const WIFI_EVENT_WIRQ: u32 = 0x2;
+pub const WIFI_EVENT_WIRQ: u32 = 0x1;
 
 // locate firmware at SPI top minus 400kiB. Datasheet says reserve at least 350kiB for firmwares.
 pub const WFX_FIRMWARE_OFFSET: usize = 0x2000_0000 + 1024*1024 - 400*1024; // 0x2009_C000
@@ -42,6 +41,12 @@ pub fn wf200_event_set() { unsafe{ WF200_EVENT = true; } }
 pub fn wf200_event_get() -> bool { unsafe{ WF200_EVENT } }
 pub fn wf200_event_clear() { unsafe{ WF200_EVENT = false; } }
 
+/// TODO: totally wrong way to do this, fix later
+static mut WF200_MUTEX: bool = false;
+pub fn wf200_mutex_get() -> bool { unsafe{ WF200_MUTEX } }
+pub fn wf200_mutex_lock() { unsafe{ WF200_MUTEX = true; } }
+pub fn wf200_mutex_unlock() { unsafe{ WF200_MUTEX = false; } }
+
 /// a non-official structure that's baked into the sl_wfx_host.c file, and
 /// is used to pass data between various functions within the driver
 #[repr(C, packed)]
@@ -52,6 +57,41 @@ pub struct host_context {
     pub posted_event_id: u8,
 }
 static mut HOST_CONTEXT: host_context = host_context{ sl_wfx_firmware_download_progress: 0, waited_event_id: 0, posted_event_id: 0 };
+
+pub const MAX_SCAN_RESULTS: usize = 50;
+
+#[repr(C, packed)]
+#[derive(Copy, Clone)]
+pub struct scan_result_list_t {
+    pub ssid_def: sl_wfx_ssid_def_t,
+    pub mac: [u8; 6usize],
+    pub channel: u16,
+//    pub security_mode: sl_wfx_security_mode_bitmask_t,
+    pub rcpi: u16,
+}
+
+pub struct scan_data {
+    pub scan_list: [scan_result_list_t; MAX_SCAN_RESULTS],
+    pub scan_count: u8,
+    pub scan_count_web: u8,
+    pub scan_ongoing: bool,
+}
+
+static mut SCAN_LIST: scan_data = scan_data {
+    scan_list: [
+        scan_result_list_t { 
+            ssid_def: sl_wfx_ssid_def_s { ssid_length: 0, ssid: [0; 32usize]},
+            mac: [0; 6usize],
+            channel: 0,
+//            security_mode: sl_wfx_security_mode_bitmask_s { _bitfield_1: sl_wfx_capabilities_s::new_bitfield_1(0,0) },
+            rcpi: 0,
+        } ; MAX_SCAN_RESULTS ],
+    scan_count: 0,
+    scan_count_web: 0,
+    scan_ongoing: false,
+};
+
+static mut SCAN_ONGOING: bool = false;
 
 trait Empty<T> {
     fn empty() -> T;
@@ -119,11 +159,13 @@ pub unsafe extern "C" fn sl_wfx_host_deinit_bus()-> sl_status_t {
 #[export_name = "sl_wfx_host_enable_platform_interrupt"]
 pub unsafe extern "C" fn sl_wfx_host_enable_platform_interrupt() -> sl_status_t {
    sys_interrupt_claim(betrusted_pac::Interrupt::WIFI as usize, |_| {
+       let ev: u32 = betrusted_pac::Peripherals::steal().WIFI.ev_pending.read().bits() as u32;
        wf200_event_set();
         // clear the interrupt
-        unsafe{ betrusted_pac::Peripherals::steal().WIFI.ev_pending.write(|w| w.bits(WIFI_EVENT_WIRQ)); }
+        unsafe{ betrusted_pac::Peripherals::steal().WIFI.ev_pending.write(|w| w.bits(ev)); }
     })
     .unwrap();
+    sprintln!("enabling interrupt: mask {} channel {}", WIFI_EVENT_WIRQ, betrusted_pac::Interrupt::WIFI as u8);
     unsafe{ betrusted_pac::Peripherals::steal().WIFI.ev_enable.write(|w| unsafe{w.bits(WIFI_EVENT_WIRQ)} ); }
     SL_STATUS_OK    
 }
@@ -177,9 +219,15 @@ pub unsafe extern "C" fn sl_wfx_host_set_wake_up_pin(state: u8) -> sl_status_t {
 
 /// no locking because we're single threaded and one process only to drive all of this
 #[export_name = "sl_wfx_host_lock"]
-pub unsafe extern "C" fn sl_wfx_host_lock() -> sl_status_t { SL_STATUS_OK }
+pub unsafe extern "C" fn sl_wfx_host_lock() -> sl_status_t { 
+    wf200_mutex_lock();
+    SL_STATUS_OK 
+}
 #[export_name = "sl_wfx_host_unlock"]
-pub unsafe extern "C" fn sl_wfx_host_unlock() -> sl_status_t { SL_STATUS_OK }
+pub unsafe extern "C" fn sl_wfx_host_unlock() -> sl_status_t { 
+    wf200_mutex_unlock();
+    SL_STATUS_OK 
+}
 
 #[doc = " @brief Send data on the SPI bus"]
 #[doc = ""]
@@ -442,7 +490,7 @@ pub unsafe extern "C" fn sl_wfx_host_setup_waited_event(event_id: u8) -> sl_stat
 #[export_name = "sl_wfx_host_transmit_frame"]
 pub unsafe extern "C" fn sl_wfx_host_transmit_frame(frame: *mut c_types::c_void, frame_len: u32) -> sl_status_t {
     let mut ret: sl_status_t = SL_STATUS_OK;
-    
+    /*
     let u8frame: *const u8 = frame as *const u8;
     sprint!("TX> 0x{:x}: ", frame as u32);
     for i in 0 .. frame_len {
@@ -458,7 +506,7 @@ pub unsafe extern "C" fn sl_wfx_host_transmit_frame(frame: *mut c_types::c_void,
             }
         }
     }
-    sprintln!("");
+    sprintln!("");*/
     unsafe{ ret = sl_wfx_data_write( frame, frame_len ); }
     ret
 }
@@ -702,8 +750,45 @@ fn sl_wfx_scan_result_callback(scan_result: *const sl_wfx_scan_result_ind_body_t
     }
 }
 
+pub fn wfx_start_scan() {
+    unsafe {
+        let result = sl_wfx_send_scan_command(sl_wfx_scan_mode_e_WFM_SCAN_MODE_ACTIVE as u16, 
+            0 as *const u8, 0, 0 as *const sl_wfx_ssid_def_t, 0, 0 as *const u8, 0, 0 as *const u8);
+
+        if result == SL_STATUS_OK || result == SL_STATUS_WIFI_WARNING {
+            SCAN_ONGOING = true;
+        } else{
+            SCAN_ONGOING = false;
+        }
+    }
+}
+
+pub fn wfx_scan_ongoing() -> bool {
+    unsafe{ SCAN_ONGOING }
+}
+fn sl_wfx_scan_start_flag() {
+    unsafe{ SCAN_ONGOING = true; }
+}
 fn sl_wfx_scan_complete_callback(status: u32) {
     // nothing for now
+    unsafe{ SCAN_ONGOING = false; }
+}
+
+pub fn wfx_handle_event() -> sl_status_t {
+    let control_register: *mut u16 = 0 as *mut u16;
+    let mut cr: u16 = 0;
+    let mut result: sl_status_t = SL_STATUS_OK;
+    loop {
+        unsafe {
+            result = sl_wfx_receive_frame(control_register);
+            cr = *control_register;
+        }
+        sprintln!("event cr: 0x{:x}", cr);
+        if (cr & (SL_WFX_CONT_NEXT_LEN_MASK as u16)) == 0 {
+            break;
+        }
+    }
+    result
 }
 
 #[doc = " @brief Called when a message is received from the WFx chip"]
@@ -716,49 +801,50 @@ fn sl_wfx_scan_complete_callback(status: u32) {
 pub unsafe extern "C" fn sl_wfx_host_post_event(event_payload: *mut sl_wfx_generic_message_t) -> sl_status_t {
     let msg_type: u32 = (*event_payload).header.id as u32;
 
+//    sprintln!("msg_type: 0x{:x}", msg_type);
     match msg_type {
         sl_wfx_indications_ids_e_SL_WFX_CONNECT_IND_ID => {
             let connect_indication: sl_wfx_connect_ind_t = *(event_payload as *const sl_wfx_connect_ind_t);
             sl_wfx_connect_callback(connect_indication.body.mac, connect_indication.body.status);
-        }
+        },
         sl_wfx_indications_ids_e_SL_WFX_DISCONNECT_IND_ID => {
             let disconnect_indication: sl_wfx_disconnect_ind_t = *(event_payload as *const sl_wfx_disconnect_ind_t);
             sl_wfx_disconnect_callback(disconnect_indication.body.mac, disconnect_indication.body.reason);
-        }
+        },
         sl_wfx_indications_ids_e_SL_WFX_START_AP_IND_ID => {
             let start_ap_indication: sl_wfx_start_ap_ind_t = *(event_payload as *const sl_wfx_start_ap_ind_t);
             sl_wfx_start_ap_callback(start_ap_indication.body.status);
-        }
+        },
         sl_wfx_indications_ids_e_SL_WFX_STOP_AP_IND_ID => {
             sl_wfx_stop_ap_callback();
-        }
+        },
         sl_wfx_indications_ids_e_SL_WFX_RECEIVED_IND_ID => {
             let ethernet_frame: *const sl_wfx_received_ind_t = event_payload as *const sl_wfx_received_ind_t;
             if (*ethernet_frame).body.frame_type == 0 {
                 sl_wfx_host_received_frame_callback( ethernet_frame );
             }
-        }
+        },
         sl_wfx_indications_ids_e_SL_WFX_SCAN_RESULT_IND_ID => {
             let scan_result: *const sl_wfx_scan_result_ind_t = event_payload as *const sl_wfx_scan_result_ind_t;
             sl_wfx_scan_result_callback(&(*scan_result).body);
-        }
+        },
         sl_wfx_indications_ids_e_SL_WFX_SCAN_COMPLETE_IND_ID => {
             let scan_complete: *const sl_wfx_scan_complete_ind_t = event_payload as *const sl_wfx_scan_complete_ind_t;
             sl_wfx_scan_complete_callback((*scan_complete).body.status);
-        }
+        },
         sl_wfx_indications_ids_e_SL_WFX_AP_CLIENT_CONNECTED_IND_ID => {
             unimplemented!();
-        }
+        },
         sl_wfx_indications_ids_e_SL_WFX_AP_CLIENT_REJECTED_IND_ID => {
             unimplemented!();
-        }
+        },
         sl_wfx_indications_ids_e_SL_WFX_AP_CLIENT_DISCONNECTED_IND_ID => {
             unimplemented!();
-        }
-        sl_wfx_indications_ids_e_SL_WFX_GENERIC_IND_ID => {
+        },
+        sl_wfx_general_indications_ids_e_SL_WFX_GENERIC_IND_ID => {
             // nothing to do here, huh.
-        }
-        sl_wfx_indications_ids_e_SL_WFX_EXCEPTION_IND_ID => {
+        },
+        sl_wfx_general_indications_ids_e_SL_WFX_EXCEPTION_IND_ID => {
             sprintln!("Firmware exception");
             let firmware_exception: *const sl_wfx_exception_ind_t = event_payload as *const sl_wfx_exception_ind_t;
             sprintln!("Exeption data = ");
@@ -766,15 +852,27 @@ pub unsafe extern "C" fn sl_wfx_host_post_event(event_payload: *mut sl_wfx_gener
                 sprint!("{:02x} ", (*firmware_exception).body.data[i as usize]);
             }
             sprintln!("End dump.");
-        }
-        sl_wfx_indications_ids_e_SL_WFX_ERROR_IND_ID => {
+        },
+        sl_wfx_general_indications_ids_e_SL_WFX_ERROR_IND_ID => {
             sprintln!("Firmware error");
             let firmware_error: *const sl_wfx_error_ind_t = event_payload as *const sl_wfx_error_ind_t;
             sprintln!("Error type = {}", (*firmware_error).body.type_);
-        }
+        },
+        sl_wfx_general_indications_ids_e_SL_WFX_STARTUP_IND_ID => {
+            sprintln!("wf200 started!");
+        },
+        sl_wfx_general_confirmations_ids_e_SL_WFX_CONFIGURATION_CNF_ID => {
+            // this occurs during configuration, and is handled specially
+        },
+        sl_wfx_confirmations_ids_e_SL_WFX_START_SCAN_CNF_ID => {
+            sprintln!("scan start confirmation.");
+        },
+        sl_wfx_confirmations_ids_e_SL_WFX_STOP_SCAN_CNF_ID => {
+            sprintln!("scan stop confirmation.");
+        },
         _ => {
-            sprintln!("Unhandled return code from wfx200");
-        }
+            sprintln!("Unhandled return code from wfx200: {}", msg_type);
+        },
     }
 
     if HOST_CONTEXT.waited_event_id == (*event_payload).header.id {
