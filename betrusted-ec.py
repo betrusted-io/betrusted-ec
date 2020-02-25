@@ -132,6 +132,8 @@ _io = [
 
 _connectors = []
 
+sysclkfreq=18e6
+
 class BetrustedPlatform(LatticePlatform):
     def __init__(self, toolchain="icestorm", revision="evt"):
         self.revision = revision
@@ -148,7 +150,7 @@ class BetrustedPlatform(LatticePlatform):
             self.clock_domains.cd_sys = ClockDomain()
             self.comb += self.cd_sys.clk.eq(clk12)
 
-            platform.add_period_constraint(clk12_raw, 1e9/12e6)
+            platform.add_period_constraint(clk12_raw, 1e9/sysclkfreq)
 
             # POR reset logic- POR generated from sys clk, POR logic feeds sys clk
             # reset. Just need a pulse one cycle wide to get things working right.
@@ -166,7 +168,7 @@ class BetrustedPlatform(LatticePlatform):
             # generate a >1us-wide pulse at 1Hz based on clk12 for display extcomm signal
             # count down from 12e6 to 0 so that first extcomm pulse comes after lcd_disp is high
             extcomm = platform.request("extcommin", 0)
-            extcomm_div = Signal(24, reset=int(12e6))
+            extcomm_div = Signal(24, reset=int(12e6)) # this is "fast" with the faster clock but datasheet range is 0.5Hz - 5Hz
             self.sync += [
                 If(extcomm_div == 0,
                    extcomm_div.eq(int(12e6))
@@ -190,7 +192,7 @@ class BetrustedPlatform(LatticePlatform):
                 "SB_PLL40_2_PAD",
                 # Parameters
                 p_DIVR = 0,
-                p_DIVF = 52,  # 63 for 24 MHz, 52 for 20 MHz NOTE: timing seems marginal @ 24MHz, bus fails when oscope probe is present
+                p_DIVF = 47,  # 47 for 18MHz, 63 for 24 MHz, 52 for 20 MHz NOTE: timing seems marginal @ 24MHz, bus fails when oscope probe is present
                 p_DIVQ = 5,   # 5
                 p_FILTER_RANGE = 1,
                 p_FEEDBACK_PATH = "SIMPLE",
@@ -204,11 +206,12 @@ class BetrustedPlatform(LatticePlatform):
                 p_ENABLE_ICEGATE_PORTB = 0,
                 # IO
                 i_PACKAGEPIN = clk12_raw,
-                o_PLLOUTGLOBALA = clk12,    # from input pin
+#                o_PLLOUTGLOBALA = clk12,    # from input pin
                 o_PLLOUTGLOBALB = clkspi,   # from PLL
                 i_BYPASS = 0,
                 i_RESETB = 1,
             )
+            self.comb += clk12.eq(clkspi)
             # global buffer for input SPI clock
             self.clock_domains.cd_spislave = ClockDomain()
             clk_spislave = Signal()
@@ -229,7 +232,8 @@ class BetrustedPlatform(LatticePlatform):
             # it chooses the timing for this net, annotate period constraints for
             # all wires.
             platform.add_period_constraint(clk_spislave, 1e9/24e6)
-            platform.add_period_constraint(clkspi, 1e9/24e6)
+            platform.add_period_constraint(clkspi, 1e9/18e6)
+            platform.add_period_constraint(clk12, 1e9/18e6)
 
 
 class CocotbPlatform(SimPlatform):
@@ -442,10 +446,10 @@ class BaseSoC(SoCCore):
 
 
     interrupt_map = {
-        "timer0": 2,
-        "i2c": 3,
-        "wifi" : 4,
-        "com" : 5,
+        "timer0": 1,
+        "i2c": 2,
+        "wifi" : 3,
+        "com" : 4,
     }
     interrupt_map.update(SoCCore.interrupt_map)
 
@@ -456,7 +460,7 @@ class BaseSoC(SoCCore):
 
         self.output_dir = output_dir
 
-        clk_freq = int(12e6)
+        clk_freq = int(sysclkfreq)
         self.submodules.crg = platform._CRG(platform)
 
         SoCCore.__init__(self, platform, clk_freq, integrated_sram_size=0, uart_name="crossover", csr_data_width=32, **kwargs) # with_uart=False
