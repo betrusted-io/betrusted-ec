@@ -142,7 +142,7 @@ HIF_PINS_CFG: {
         SLEW_RATE: 4
     },
     SDIO_D0_SPI_MISO: {
-        SLEW_RATE: 4,
+        SLEW_RATE: 6,
         SLEEP_CFG: none
     },
     SDIO_D1_SPI_WIRQ: {
