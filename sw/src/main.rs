@@ -88,14 +88,16 @@ fn main() -> ! {
     sprintln!("hello world!");
     
     let mut start_time: u32 = get_time_ms(&p);
+    let mut wifi_ready: bool = false;
 
     loop { 
-        if get_time_ms(&p) - start_time > 5000 {
+        if (get_time_ms(&p) - start_time > 5000) && !wifi_ready {
             sprintln!("initializing wifi!");
             delay_ms(&p, 250); // let the message print
             // init the wifi interface
             if wfx_init() == SL_STATUS_OK {
                 sprintln!("Wifi ready");
+                wifi_ready = true;
             } else {
                 sprintln!("Wifi init failed");
             }

@@ -12,6 +12,9 @@ use core::str;
 #[macro_use]
 mod debug;
 
+mod bt_wf200_pds;
+use bt_wf200_pds::*;
+
 #[macro_use]
 use core::include_bytes;
 
@@ -348,7 +351,7 @@ pub unsafe extern "C" fn sl_wfx_host_init() -> sl_status_t {
     }
     unsafe {
         HOST_CONTEXT.sl_wfx_firmware_download_progress = 0;
-        HOST_CONTEXT.waited_event_id = 0;
+//        HOST_CONTEXT.waited_event_id = 0;  // this is apparently side-effected elsewhere
         HOST_CONTEXT.posted_event_id = 0;        
     }
     unsafe {
@@ -411,6 +414,7 @@ pub unsafe extern "C" fn sl_wfx_host_wait_for_confirmation(
             }
             return SL_STATUS_OK;
         } else {
+//            sprintln!("confid: {}", HOST_CONTEXT.posted_event_id);
             delay_ms(unsafe{&betrusted_pac::Peripherals::steal()}, 1);
         }
     }
@@ -439,13 +443,22 @@ pub unsafe extern "C" fn sl_wfx_host_setup_waited_event(event_id: u8) -> sl_stat
 pub unsafe extern "C" fn sl_wfx_host_transmit_frame(frame: *mut c_types::c_void, frame_len: u32) -> sl_status_t {
     let mut ret: sl_status_t = SL_STATUS_OK;
     
-    let rframe: &str = unsafe {str::from_utf8(slice::from_raw_parts(frame as *const u8, frame_len as usize)).expect("unable to create string from parts") };
-    let u8frame: *const u8 = rframe.as_ptr();
-    sprint!("TX> {:02x}{:02x} {:02x}{:02x} ", u8frame.add(0).read(), u8frame.add(1).read(), u8frame.add(2).read(), u8frame.add(3).read());
-    for i in 4..frame_len {
-        sprint!("{:02x} ", u8frame.add(i as usize).read());
+    let u8frame: *const u8 = frame as *const u8;
+    sprint!("TX> 0x{:x}: ", frame as u32);
+    for i in 0 .. frame_len {
+        if i < 4 {
+            sprint!("{:02x}", u8frame.add(i as usize).read());
+        } else if i >= 4 && i < 6 {
+            sprint!(" {:02x} ", u8frame.add(i as usize).read());
+        } else {
+            if u8frame.add(i as usize).read() != 0 {
+                sprint!("{}", u8frame.add(i as usize).read() as char);
+            } else {
+                sprint!("NULL");
+            }
+        }
     }
-    sprint!("\r\n");
+    sprintln!("");
     unsafe{ ret = sl_wfx_data_write( frame, frame_len ); }
     ret
 }
@@ -581,12 +594,11 @@ pub unsafe extern "C" fn sl_wfx_host_get_pds_data(
     pds_data: *mut *const c_types::c_char,
     index: u16,
 ) -> sl_status_t {
-    assert!(index == 0); // should be only one ever requested
-
     // pds should be static data so it will not go out of scope when this function terminates
     // so weird! suspicious bunnie is suspicious.
-    let pds = include_bytes!("bt-wf200-pds.in");
-    *pds_data = (pds as *const u8) as *const c_types::c_char;
+    //let pds = include_bytes!("bt-wf200-pds.in");
+    //*pds_data = (&pds).as_ptr().add(0) as *const c_types::c_char;
+    *pds_data = (&PDS_DATA[index as usize]).as_ptr() as *const c_types::c_char;
 
     SL_STATUS_OK
 }
@@ -599,7 +611,7 @@ pub unsafe extern "C" fn sl_wfx_host_get_pds_data(
 #[doc = " @note Called once during the driver initialization phase"]
 #[export_name = "sl_wfx_host_get_pds_size"]
 pub unsafe extern "C" fn sl_wfx_host_get_pds_size(pds_size: *mut u16) -> sl_status_t {
-    *pds_size = 1;  // we have one line in the PDS, the way we generate it
+    *pds_size = PDS_DATA.len() as u16;
     
     SL_STATUS_OK
 }
