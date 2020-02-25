@@ -32,5 +32,5 @@
 	branch = master
 [submodule "sw/wfx_sys/wfx-fullMAC-driver"]
 	path = sw/wfx_sys/wfx-fullMAC-driver
-	url = https://github.com/SiliconLabs/wfx-fullMAC-driver.git
+	url = https://github.com/betrusted-io/wfx-fullMAC-driver.git
 	branch = master
