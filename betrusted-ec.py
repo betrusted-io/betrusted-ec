@@ -145,12 +145,12 @@ class BetrustedPlatform(LatticePlatform):
     class _CRG(Module):
         def __init__(self, platform):
             clk12_raw = platform.request("clk12")
-            clk12 = Signal()
+            clk18 = Signal()
 
             self.clock_domains.cd_sys = ClockDomain()
-            self.comb += self.cd_sys.clk.eq(clk12)
+            self.comb += self.cd_sys.clk.eq(clk18)
 
-            platform.add_period_constraint(clk12_raw, 1e9/sysclkfreq)
+            platform.add_period_constraint(clk12_raw, 1e9/12e6)  # this is fixed and comes from external crystal
 
             # POR reset logic- POR generated from sys clk, POR logic feeds sys clk
             # reset. Just need a pulse one cycle wide to get things working right.
@@ -165,10 +165,12 @@ class BetrustedPlatform(LatticePlatform):
                 self.cd_sys.rst.eq(reset_cascade),
             ]
 
-            # generate a >1us-wide pulse at 1Hz based on clk12 for display extcomm signal
+            # generate a >1us-wide pulse at ~1Hz based on sysclk for display extcomm signal
             # count down from 12e6 to 0 so that first extcomm pulse comes after lcd_disp is high
+            # note: going to a 25-bit counter makes this the critical path at speeds > 12 MHz, so stay with
+            # 24 bits but a faster extcomm clock.
             extcomm = platform.request("extcommin", 0)
-            extcomm_div = Signal(24, reset=int(12e6)) # this is "fast" with the faster clock but datasheet range is 0.5Hz - 5Hz
+            extcomm_div = Signal(24, reset=int(12e6)) # datasheet range is 0.5Hz - 5Hz, so actual speed is 1.5Hz
             self.sync += [
                 If(extcomm_div == 0,
                    extcomm_div.eq(int(12e6))
@@ -184,7 +186,7 @@ class BetrustedPlatform(LatticePlatform):
             ]
             self.comb += platform.request("lcd_disp", 0).eq(1)  # force display on for now
 
-            # make a 24 MHz clock for the SPI bus master
+            # make an 18 MHz clock for the SPI bus master
             clkspi = Signal()
             self.clock_domains.cd_spi = ClockDomain()
             self.comb += self.cd_spi.clk.eq(clkspi)
@@ -192,8 +194,8 @@ class BetrustedPlatform(LatticePlatform):
                 "SB_PLL40_2_PAD",
                 # Parameters
                 p_DIVR = 0,
-                p_DIVF = 47,  # 47 for 18MHz, 63 for 24 MHz, 52 for 20 MHz NOTE: timing seems marginal @ 24MHz, bus fails when oscope probe is present
-                p_DIVQ = 5,   # 5
+                p_DIVF = 47,
+                p_DIVQ = 5,
                 p_FILTER_RANGE = 1,
                 p_FEEDBACK_PATH = "SIMPLE",
                 p_DELAY_ADJUSTMENT_MODE_FEEDBACK = "FIXED",
@@ -206,12 +208,11 @@ class BetrustedPlatform(LatticePlatform):
                 p_ENABLE_ICEGATE_PORTB = 0,
                 # IO
                 i_PACKAGEPIN = clk12_raw,
-#                o_PLLOUTGLOBALA = clk12,    # from input pin
                 o_PLLOUTGLOBALB = clkspi,   # from PLL
                 i_BYPASS = 0,
                 i_RESETB = 1,
             )
-            self.comb += clk12.eq(clkspi)
+            self.comb += clk18.eq(clkspi) # merge clkspi and clk18 domains - originally design had them separate
             # global buffer for input SPI clock
             self.clock_domains.cd_spislave = ClockDomain()
             clk_spislave = Signal()
@@ -232,8 +233,8 @@ class BetrustedPlatform(LatticePlatform):
             # it chooses the timing for this net, annotate period constraints for
             # all wires.
             platform.add_period_constraint(clk_spislave, 1e9/24e6)
-            platform.add_period_constraint(clkspi, 1e9/18e6)
-            platform.add_period_constraint(clk12, 1e9/18e6)
+            platform.add_period_constraint(clkspi, 1e9/sysclkfreq)
+            platform.add_period_constraint(clk18, 1e9/sysclkfreq)
 
 
 class CocotbPlatform(SimPlatform):
