@@ -25,6 +25,7 @@ from litex.soc.integration.soc_core import SoCCore
 from litex.soc.integration.builder import Builder
 from litex.soc.interconnect import wishbone
 from litex.soc.interconnect.csr import *
+from litex.soc.cores.uart import UARTWishboneBridge
 
 from rtl.rtl_i2c import RtlI2C
 from rtl.hard_i2c import HardI2C
@@ -464,15 +465,30 @@ class BaseSoC(SoCCore):
         clk_freq = int(sysclkfreq)
         self.submodules.crg = platform._CRG(platform)
 
+        # Core -------------------------------------------------------------------------------------------
         SoCCore.__init__(self, platform, clk_freq, integrated_sram_size=0, uart_name="crossover", csr_data_width=32, **kwargs) # with_uart=False
 
-        from litex.soc.cores.uart import UARTWishboneBridge
+        # Power management -------------------------------------------------------------------------------
+        # Betrusted Power management interface
+        self.submodules.power = BtPower(platform.request("power"))
+
+        # Keyboard power-on + debug mux ------------------------------------------------------------------
         serialpads = platform.request("serial")
         fake_tx = Signal()
         dbgpads = Record([('rx', 1), ('tx', 1)], name="serial")
         dbgpads.rx = serialpads.rx
         dbgpads.tx = fake_tx
         drive_kbd = Signal()
+
+        self.comb += self.power.mon1.eq(platform.request("up5k_keyrow1"))
+        self.comb += self.power.mon0.eq(platform.request("up5k_keyrow0"))
+        self.comb += drive_kbd.eq(self.power.power.fields.kbdscan)
+
+        # serialpad TX is what we use to test for keyboard hit to power on the SOC
+        # only allow test keyboard hit patterns when the SOC is powered off
+        self.comb += serialpads.tx.eq( (~self.power.soc_on & drive_kbd) | (self.power.soc_on & dbgpads.tx) )
+
+        # Debug block ------------------------------------------------------------------------------------
         self.submodules.uart_bridge = UARTWishboneBridge(dbgpads, clk_freq, baudrate=115200)
         self.add_wb_master(self.uart_bridge.wishbone)
         if hasattr(self, "cpu"):
@@ -480,8 +496,7 @@ class BaseSoC(SoCCore):
             os.path.join(output_dir, "gateware")
             self.register_mem("vexriscv_debug", 0xf00f0000, self.cpu.debug_bus, 0x100)
 
-        # SPRAM- UP5K has single port RAM, might as well use it as SRAM to
-        # free up scarce block RAM.
+        # RAM/ROM/reset cluster --------------------------------------------------------------------------
         spram_size = 128*1024
         self.submodules.spram = up5kspram.Up5kSPRAM(size=spram_size)
         self.register_mem("sram", self.mem_map["sram"], self.spram.bus, spram_size)
@@ -501,53 +516,29 @@ class BaseSoC(SoCCore):
                 i_externalResetVector=self.reboot.addr.storage,
             )
 
-        # add I2C interface
-        # self.submodules.i2c = RtlI2C(platform, platform.request("i2c", 0))
+        # I2C --------------------------------------------------------------------------------------------
         self.submodules.i2c = HardI2C(platform, platform.request("i2c", 0))
         self.add_wb_slave(self.mem_map["i2c"], self.i2c.bus, 16*4)
         self.add_memory_region("i2c", self.mem_map["i2c"], 16*4, type='io')
 
-        # Messible for debug
+        # Messible (debug) -------------------------------------------------------------------------------
         self.submodules.messible = Messible()
 
-        # Betrusted Power management interface
-        self.submodules.power = BtPower(platform.request("power"))
-
-        # make a power on key. monitor "key4", if depressed, send the power_on signal to the SOC
-        # but only when the soc power state is "off"
-        # counting on mon1 to provide the signal
-        #key4 = Signal()
-        #self.comb += key4.eq(platform.request("up5k_keyrow1"))  # keyrow1 input is connected to keyboard signal "key4"
-        #key4_in = Signal()
-        #self.specials += Instance(
-        #    "SB_IO",
-        #    p_PIN_TYPE=1,
-        #    p_PULLUP=0,  # leave this here in case I want to try a pullup later on this pin
-        #    i_PACKAGE_PIN=key4,
-        #    o_D_IN_0=key4_in,
-        #)
-        self.comb += self.power.mon1.eq(platform.request("up5k_keyrow1"))
-        self.comb += self.power.mon0.eq(platform.request("up5k_keyrow0"))
-        self.comb += drive_kbd.eq(self.power.power.fields.kbdscan)
-
-        # serialpad TX is what we use to test for keyboard hit to power on the SOC
-        # only allow test keyboard hit patterns when the SOC is powered off
-        self.comb += serialpads.tx.eq( (~self.power.soc_on & drive_kbd) | (self.power.soc_on & dbgpads.tx) )
-
-        # Tick timer
+        # High-resolution tick timer ---------------------------------------------------------------------
         self.submodules.ticktimer = TickTimer(1000, clk_freq, bits=40)
 
-        # COM port (spi slave to Artix)
+        # COM port (spi slave to Artix) ------------------------------------------------------------------
         self.submodules.com = SpiFifoSlave(platform.request("com"))
         self.add_wb_slave(self.mem_map["com"], self.com.bus, 4)
         self.add_memory_region("com", self.mem_map["com"], 4, type='io')
 
-        # SPI port to wifi (master)
+        # SPI port to wifi (master) ----------------------------------------------------------------------
         self.submodules.wifi = SpiMaster(platform.request("wifi"), gpio_cs=True)  # control CS with GPIO per wf200 API spec
 
 
-        #### Platform config & build below
 
+
+        #### Platform config & build below ---------------------------------------------------------------
         # Override default LiteX's yosys/build templates
         assert hasattr(platform.toolchain, "yosys_template")
         assert hasattr(platform.toolchain, "build_template")
