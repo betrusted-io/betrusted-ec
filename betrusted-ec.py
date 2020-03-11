@@ -70,8 +70,9 @@ _io = [
     ("i2c", 0,
      Subsignal("scl", Pins("23"), IOStandard("LVCMOS18")),
      Subsignal("sda", Pins("25"), IOStandard("LVCMOS18")),
-     Subsignal("gg_int_n", Pins("42"), IOStandard("LVCMOS18")),
+     Subsignal("gg_int_n", Pins("37"), IOStandard("LVCMOS18")),     # DVT / mux to LPCLK if we want to go very low power
      Subsignal("gyro_int_n", Pins("43"), IOStandard("LVCMOS18")),
+     Subsignal("usbcc_int_n", Pins("42"), IOStandard("LVCMOS18")),  # DVT
     ),
 
     ("clk12", 0, Pins("35"), IOStandard("LVCMOS18")),
@@ -191,7 +192,7 @@ class BetrustedPlatform(LatticePlatform):
             self.clock_domains.cd_spi = ClockDomain()
             self.comb += self.cd_spi.clk.eq(clkspi)
             self.specials += Instance(
-                "SB_PLL40_2_PAD",
+                "SB_PLL40_PAD",
                 # Parameters
                 p_DIVR = 0,
                 p_DIVF = 47,
@@ -203,12 +204,11 @@ class BetrustedPlatform(LatticePlatform):
                 p_DELAY_ADJUSTMENT_MODE_RELATIVE = "FIXED",
                 p_FDA_RELATIVE = 0,
                 p_SHIFTREG_DIV_MODE = 1,
-                p_PLLOUT_SELECT_PORTB = "GENCLK",
-                p_ENABLE_ICEGATE_PORTA = 0,
-                p_ENABLE_ICEGATE_PORTB = 0,
+                p_PLLOUT_SELECT = "GENCLK",
+                p_ENABLE_ICEGATE = 0,
                 # IO
                 i_PACKAGEPIN = clk12_raw,
-                o_PLLOUTGLOBALB = clkspi,   # from PLL
+                o_PLLOUTGLOBAL = clkspi,   # from PLL
                 i_BYPASS = 0,
                 i_RESETB = 1,
             )
@@ -448,9 +448,9 @@ class BaseSoC(SoCCore):
 
     interrupt_map = {
         "timer0": 1,
-        "i2c": 2,
-        "wifi" : 3,
-        "com" : 4,
+        "i2c"   : 2,
+        "wifi"  : 3,
+        "com"   : 4,
     }
     interrupt_map.update(SoCCore.interrupt_map)
 

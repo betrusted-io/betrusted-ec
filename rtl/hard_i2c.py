@@ -51,12 +51,28 @@ class HardI2C(Module, AutoCSR, AutoDoc):
         ]
 
         self.submodules.ev = EventManager()
-        self.ev.i2c_int = EventSourcePulse(description="I2C cycle completed")  # rising edge triggered
-        self.ev.gg_int = EventSourceProcess(description="Gas gauge interrupt") # falling edge
-        self.ev.gyro_int = EventSourceProcess(description="Gyro interrupt") # falling edge
+        self.ev.i2c_int = EventSourcePulse(description="I2C cycle completed")
+        self.ev.gg_int = EventSourcePulse(description="Gas gauge interrupt")
+        self.ev.gyro_int = EventSourcePulse(description="Gyro interrupt")
+        self.ev.usbcc_int = EventSourcePulse(description="USB CC register charged")
         self.ev.finalize()
-        self.specials += MultiReg(pads.gg_int_n, self.ev.gg_int.trigger)
-        self.specials += MultiReg(pads.gyro_int_n, self.ev.gyro_int.trigger)
+        usb_cc_int = Signal()
+        usb_cc_int_r = Signal()
+        gg_int = Signal()
+        gg_int_r = Signal()
+        gyro_int = Signal()
+        gyro_int_r = Signal()
+        self.specials += MultiReg(~pads.gg_int_n, gg_int)
+        self.specials += MultiReg(~pads.gyro_int_n, gyro_int)
+        self.specials += MultiReg(~pads.usbcc_int_n, usb_cc_int)
+        self.sync += [
+            usb_cc_int_r.eq(usb_cc_int),
+            self.ev.usbcc_int.trigger.eq(usb_cc_int & ~usb_cc_int_r),
+            gg_int_r.eq(gg_int),
+            self.ev.gg_int.trigger.eq(gg_int & ~gg_int_r),
+            gyro_int_r.eq(gyro_int),
+            self.ev.gyro_int.trigger.eq(gyro_int & ~gyro_int_r),
+        ]
 
         self.bus = bus = wishbone.Interface()
         platform.toolchain.attr_translate['I2C_LOCK'] = ("BEL", "X0/Y31/i2c_0") # lock position, because IP software address depend on placer decision
