@@ -402,7 +402,7 @@ class BtPower(Module, AutoCSR, AutoDoc):
             CSRField("self", description="Writing `1` to this keeps the EC powered on", reset=1),
             CSRField("soc_on", description="Writing `1` to this powers on the SoC", reset=1),
             CSRField("discharge", description="Writing `1` to this connects a low-value resistor across FPGA domain supplies to force a full discharge"),
-            CSRField("kbdscan", description="Writing `1` to this forces the power-down keyboard scan event")
+            CSRField("kbdscan", size=2, description="Writing `1` to this forces the power-down keyboard scan event on the respective mon bit"),
         ])
 
         self.stats = CSRStatus(8, fields=[
@@ -474,19 +474,27 @@ class BaseSoC(SoCCore):
 
         # Keyboard power-on + debug mux ------------------------------------------------------------------
         serialpads = platform.request("serial")
-        fake_tx = Signal()
+        # serialpad RX needs to drive a scan signal so we can detect it on the other side of the matrix
+        keycol0_ts = TSTriple(1)
+        self.specials += keycol0_ts.get_tristate(serialpads.rx)
+
+        dbguart_tx = Signal()
+        dbguart_rx = Signal()
         dbgpads = Record([('rx', 1), ('tx', 1)], name="serial")
-        dbgpads.rx = serialpads.rx
-        dbgpads.tx = fake_tx
-        drive_kbd = Signal()
+        dbgpads.rx = dbguart_rx
+        dbgpads.tx = dbguart_tx
+        self.comb += dbgpads.rx.eq(keycol0_ts.i)
+        drive_kbd = Signal(2)
 
         self.comb += self.power.mon1.eq(platform.request("up5k_keyrow1"))
         self.comb += self.power.mon0.eq(platform.request("up5k_keyrow0"))
-        self.comb += drive_kbd.eq(self.power.power.fields.kbdscan)
+        self.comb += drive_kbd.eq(self.power.power.fields.kbdscan) # two-bit assign
 
         # serialpad TX is what we use to test for keyboard hit to power on the SOC
         # only allow test keyboard hit patterns when the SOC is powered off
-        self.comb += serialpads.tx.eq( (~self.power.soc_on & drive_kbd) | (self.power.soc_on & dbgpads.tx) )
+        self.comb += serialpads.tx.eq( (~self.power.soc_on & drive_kbd[0]) | (self.power.soc_on & dbgpads.tx) )
+        self.comb += keycol0_ts.oe.eq( drive_kbd[1] & ~self.power.soc_on ) # force signal on the rx pin when in power off & scan
+        self.comb += keycol0_ts.o.eq(1) # drive a '1' for scan
 
         # Debug block ------------------------------------------------------------------------------------
         self.submodules.uart_bridge = UARTWishboneBridge(dbgpads, clk_freq, baudrate=115200)
