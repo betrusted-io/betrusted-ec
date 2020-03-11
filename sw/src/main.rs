@@ -89,8 +89,6 @@ fn main() -> ! {
     let mut com_sentinel: u16 = 0;
     backlight.set_brightness(&mut i2c, 0); // make sure the backlight is off on boot
 
-    sprintln!("bt-ec boot");
-    
     let mut start_time: u32 = get_time_ms(&p);
     let mut wifi_ready: bool = false;
 

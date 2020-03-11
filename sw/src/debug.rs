@@ -6,6 +6,7 @@ pub const CROSSOVER_UART: Uart = Uart {
     base: 0xE000_1800 as *mut u32,
 };
 
+#[cfg(feature = "debug_uart")]
 impl Uart {
     pub fn putc(&self, c: u8) {
         unsafe {
@@ -15,6 +16,12 @@ impl Uart {
             }
             self.base.add(0).write_volatile(c as u32)
         };
+    }
+}
+
+#[cfg(not(feature = "debug_uart"))]
+impl Uart {
+    pub fn putc(&self, _c: u8) {
     }
 }
 

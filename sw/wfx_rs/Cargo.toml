@@ -13,3 +13,6 @@ betrusted-hal = { path = "../betrusted-hal" }
 betrusted-pac = { path = "../betrusted-pac" }
 wfx_bindings = { path = "../wfx_bindings" }
 xous-nommu = { path = "../xous-nommu" }
+
+[features]
+debug_uart = []
