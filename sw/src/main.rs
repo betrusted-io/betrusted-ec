@@ -158,11 +158,11 @@ fn main() -> ! {
             if get_time_ms(&p) - pd_time > 2000 { // delay for power-off to settle
                 
                 if get_time_ms(&p) - pd_interval > 50 { // every 50ms check key state
-                    // briefly turn on scan, while keeping discharge and self on
-                    unsafe{ p.POWER.power.write(|w| w.self_().bit(true).discharge().bit(true).soc_on().bit(false).kbdscan().bits(1)); }
                     pd_interval = get_time_ms(&p);
-                    
-                    if (p.POWER.stats.read().monkey().bits() & 0x2) != 0 { // MON1 key is high/pressed
+
+                    // check one key
+                    unsafe{ p.POWER.power.write(|w| w.self_().bit(true).discharge().bit(true).soc_on().bit(false).kbdscan().bits(0)); }
+                    if p.POWER.stats.read().monkey().bits() == 0 {
                         // power on the SOC
                         unsafe{ p.POWER.power.write(|w| w.self_().bit(true).soc_on().bit(false).kbdscan().bits(0)); } // first disengage discharge
                         soc_on = true;
