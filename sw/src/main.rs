@@ -141,6 +141,7 @@ fn main() -> ! {
                 // soc turns on automatically if the charger comes up
                 if chg_is_charging(&mut i2c) || (p.POWER.stats.read().state().bits() & 0x2 != 0) {
                     soc_on = true;
+                    unsafe{ p.POWER.power.write(|w| w.self_().bit(true).soc_on().bit(true).discharge().bit(false).kbdscan().bits(0) ); } // turn off discharge if the soc is up
                 }
 
                 if !soc_on {
@@ -158,20 +159,20 @@ fn main() -> ! {
                 
                 if get_time_ms(&p) - pd_interval > 50 { // every 50ms check key state
                     // briefly turn on scan, while keeping discharge and self on
-                    unsafe{ p.POWER.power.write(|w| w.bits(0xd)); } // 0xd
+                    unsafe{ p.POWER.power.write(|w| w.self_().bit(true).discharge().bit(true).soc_on().bit(false).kbdscan().bits(1)); }
                     pd_interval = get_time_ms(&p);
                     
                     if (p.POWER.stats.read().monkey().bits() & 0x2) != 0 { // MON1 key is high/pressed
                         // power on the SOC
-                        unsafe{ p.POWER.power.write(|w| w.bits(0x1)); } // first disengage discharge
+                        unsafe{ p.POWER.power.write(|w| w.self_().bit(true).soc_on().bit(false).kbdscan().bits(0)); } // first disengage discharge
                         soc_on = true;
-                        unsafe{ p.POWER.power.write(|w| w.bits(0x3)); } // then try to power on the SoC
+                        unsafe{ p.POWER.power.write(|w| w.self_().bit(true).soc_on().bit(true).kbdscan().bits(0)); } // then try to power on the SoC
                         pd_time = get_time_ms(&p);
                     }
 
                     if !soc_on {
                         // turn off scan, revert discharge to true
-                        unsafe { p.POWER.power.write(|w| w.bits(0x5)); }
+                        unsafe{ p.POWER.power.write(|w| w.self_().bit(true).discharge().bit(true).soc_on().bit(false).kbdscan().bits(0)); }
                     }
                 }
             }
@@ -194,7 +195,7 @@ fn main() -> ! {
                     comstate = ComState::Power;
                     // ignore rapid, successive power down requests
                     if get_time_ms(&p) - pd_time > 2000 {
-                        unsafe{ p.POWER.power.write(|w| w.bits(0x5 as u32)); } 
+                        unsafe{ p.POWER.power.write(|w| w.self_().bit(true).discharge().bit(true).soc_on().bit(false).kbdscan().bits(0)); }
                         pd_time = get_time_ms(&p);
                         pd_interval = get_time_ms(&p);
                         soc_on = false;
