@@ -68,6 +68,11 @@ pub fn chg_set_safety(i2c: &mut Hardi2c) {
     while i2c.i2c_master(BQ24157_ADDR, Some(&txbuf), None, CHG_TIMEOUT_MS) != 0 {}
 }
 
+pub fn chg_boost(i2c: &mut Hardi2c) {
+    let txbuf: [u8; 2] = [BQ24157_CTRL_ADR, 0xB5]; // turn on boost
+    while i2c.i2c_master(BQ24157_ADDR, Some(&txbuf), None, CHG_TIMEOUT_MS) != 0 {}
+}
+
 // 50 F8 8E 51 6B 03 70 - dump from known good charging system
 pub fn chg_set_autoparams(i2c: &mut Hardi2c) {
     // set battery voltage

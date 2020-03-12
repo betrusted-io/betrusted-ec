@@ -87,6 +87,7 @@ fn main() -> ! {
     let mut soc_on: bool = true;
     let mut backlight : BtBacklight = BtBacklight::new();
     let mut com_sentinel: u16 = 0;
+
     backlight.set_brightness(&mut i2c, 0); // make sure the backlight is off on boot
 
     let mut start_time: u32 = get_time_ms(&p);
@@ -153,7 +154,7 @@ fn main() -> ! {
         }
 
         // monitor the keyboard inputs if the soc is in the off state
-        // FIXME: thar be dragins in the code down here
+        // FIXME: isolate FPGA inputs on powerdown
         if !soc_on {
             if get_time_ms(&p) - pd_time > 2000 { // delay for power-off to settle
                 
@@ -184,6 +185,12 @@ fn main() -> ! {
 
             let mut tx: u16 = 0;
             match rx {
+                0x5A00 => { // charging mode
+                    chg_start(&mut i2c);
+                }
+                0x5AFE => { // boost mode
+                    chg_boost(&mut i2c);
+                },
                 0x6800..=0x681F => {
                         let bl_level: u8 = (rx & 0x1F) as u8;
                         backlight.set_brightness(&mut i2c, bl_level);
