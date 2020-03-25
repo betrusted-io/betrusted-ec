@@ -93,6 +93,8 @@ fn main() -> ! {
     let mut start_time: u32 = get_time_ms(&p);
     let mut wifi_ready: bool = false;
 
+    let mut chg_reset_time: u32 = get_time_ms(&p);
+
     loop { 
         // slight delay to allow for wishbone-tool to connect for debuggening
         if (get_time_ms(&p) - start_time > 1500) && !wifi_ready {
@@ -128,6 +130,14 @@ fn main() -> ! {
                 }
             }
         }
+
+        // workaround: for some reason the charger is leaving its maintenance state
+        if get_time_ms(&p) - chg_reset_time > 1000 * 60 * 30 {  // every half hour reset the charger
+            chg_reset_time = get_time_ms(&p);
+            chg_set_autoparams(&mut i2c);
+            chg_start(&mut i2c);
+        }
+
         if get_time_ms(&p) - last_time > 1000 {    
             last_time = get_time_ms(&p);
             if last_state {
