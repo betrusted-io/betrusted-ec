@@ -28,3 +28,9 @@
 	path = sw/wfx_sys/wfx-fullMAC-driver
 	url = https://github.com/betrusted-io/wfx-fullMAC-driver.git
 	branch = master
+[submodule "deps/pythondata-cpu-vexriscv"]
+	path = deps/pythondata-cpu-vexriscv
+	url = https://github.com/litex-hub/pythondata-cpu-vexriscv.git
+[submodule "deps/compiler_rt"]
+	path = deps/compiler_rt
+	url = https://github.com/litex-hub/pythondata-software-compiler_rt.git
