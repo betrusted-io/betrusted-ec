@@ -10,12 +10,6 @@
 [submodule "deps/migen"]
 	path = deps/migen
 	url = https://github.com/m-labs/migen.git
-[submodule "deps/litex_boards"]
-	path = deps/litex_boards
-	url = https://github.com/litex-hub/litex-boards.git
-[submodule "deps/valentyusb"]
-	path = deps/valentyusb
-	url = https://github.com/im-tomu/valentyusb.git
 [submodule "deps/spibone"]
 	path = deps/spibone
 	url = https://github.com/xobs/spibone.git
