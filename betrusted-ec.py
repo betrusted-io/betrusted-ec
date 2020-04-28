@@ -609,8 +609,7 @@ class BaseSoC(SoCCore):
         self.submodules.spram = up5kspram.Up5kSPRAM(size=spram_size)
         self.register_mem("sram", self.mem_map["sram"], self.spram.bus, spram_size)
 
-        kwargs['cpu_reset_address']=self.mem_map["spiflash"]+GATEWARE_SIZE
-        self.add_memory_region("rom", 0, 0) # Required to keep litex happy
+        self.cpu.reset_address=self.mem_map["spiflash"]+GATEWARE_SIZE
 
         # Add a simple bit-banged SPI Flash module
         spi_pads = platform.request("spiflash")
@@ -618,7 +617,7 @@ class BaseSoC(SoCCore):
         self.register_mem("spiflash", self.mem_map["spiflash"],
             self.picorvspi.bus, size=SPI_FLASH_SIZE)
 
-        self.submodules.reboot = SBWarmBoot(self, reset_vector=kwargs['cpu_reset_address'])
+        self.submodules.reboot = SBWarmBoot(self, reset_vector=self.cpu.reset_address)
         if hasattr(self, "cpu"):
             self.cpu.cpu_params.update(
                 i_externalResetVector=self.reboot.addr.storage,
