@@ -33,4 +33,6 @@ lto = true
 
 [features]
 # debug_uart = [ "wfx_rs/debug_uart" ]
-default = []  # "debug_uart" to turn on uart debugging
+dvt = []
+evt = []
+default = ["evt"]  # "debug_uart" to turn on uart debugging

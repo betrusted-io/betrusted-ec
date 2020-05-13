@@ -45,8 +45,9 @@ fn main() -> ! {
     use betrusted_hal::hal_hardi2c::*;
     use betrusted_hal::hal_time::*;
     use betrusted_hal::api_gasgauge::*;
-    use betrusted_hal::api_charger::*;
     use betrusted_hal::api_lm3509::*;
+//    use betrusted_hal::api_charger::*;    // for EVT
+    use betrusted_hal::api_bq25618::*;  // for DVT
 
     // Initialize the no-MMU version of Xous, which will give us
     // basic access to tasks and interrupts.
@@ -59,7 +60,8 @@ fn main() -> ! {
 
     i2c.i2c_init(CONFIG_CLOCK_FREQUENCY);
 
-    let mut charger : BtCharger = BtCharger::new();
+    let mut charger: BtCharger = BtCharger::new();
+
     // this needs to be one of the first things called after I2C comes up
     charger.chg_set_safety(&mut i2c);
 

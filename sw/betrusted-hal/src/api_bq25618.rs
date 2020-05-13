@@ -274,7 +274,7 @@ impl BtCharger {
         self
     }
 
-    pub fn chg_is_charging(i2c: &mut Hardi2c) -> bool {
+    pub fn chg_is_charging(&mut self, i2c: &mut Hardi2c) -> bool {
         let txbuf: [u8; 1] = [BQ25618_08_CHG_STAT0 as u8];
         let mut rxbuf: [u8; 2] = [0, 0];
 
@@ -292,7 +292,7 @@ impl BtCharger {
         }
     }
 
-    pub fn chg_keepalive_ping(i2c: &mut Hardi2c) {
+    pub fn chg_keepalive_ping(&mut self, i2c: &mut Hardi2c) {
         let txbuf: [u8; 1] = [BQ25618_01_CHG_CTL as u8];
         let mut rxbuf: [u8; 2] = [0, 0];
         while i2c.i2c_master(BQ25618_ADDR, Some(&txbuf), Some(&mut rxbuf), CHG_TIMEOUT_MS) != 0 {}
@@ -396,7 +396,7 @@ impl BtCharger {
         while i2c.i2c_master(BQ25618_ADDR, Some(&txbuf), None, CHG_TIMEOUT_MS) != 0 {}
     }
 
-    pub fn chg_set_safety(_i2c: &mut Hardi2c) {
+    pub fn chg_set_safety(&mut self, _i2c: &mut Hardi2c) {
         // function does nothing in this implementation
     }
 }

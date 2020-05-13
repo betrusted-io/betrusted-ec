@@ -11,3 +11,7 @@ betrusted-pac = { path = "../betrusted-pac" }
 bitflags = "1.2.1"
 volatile = "0.2.6"
 c_types = { path = "../c_types" }
+
+[features]
+evt = []
+dvt = []
