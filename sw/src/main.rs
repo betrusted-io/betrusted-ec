@@ -58,25 +58,26 @@ fn main() -> ! {
     time_init(&p);
 
     i2c.i2c_init(CONFIG_CLOCK_FREQUENCY);
+
+    let mut charger : BtCharger = BtCharger::new();
     // this needs to be one of the first things called after I2C comes up
-    chg_set_safety(&mut i2c);
+    charger.chg_set_safety(&mut i2c);
 
     gg_start(&mut i2c);
 
-    chg_set_autoparams(&mut i2c);
-    chg_start(&mut i2c);
+    charger.chg_set_autoparams(&mut i2c);
+    charger.chg_start(&mut i2c);
 
     use volatile::Volatile;
-    let com_ptr: *mut u32 = 0xD000_0000 as *mut u32; 
+    let com_ptr: *mut u32 = 0xD000_0000 as *mut u32;
     let com_fifo = com_ptr as *mut Volatile<u32>;
     let com_rd_ptr: *mut u32 = 0xD000_0000 as *mut u32;
     let com_rd = com_rd_ptr as *mut Volatile<u32>;
 
     unsafe{ (*com_fifo).write(2020); } // load a dummy entry in so we can respond on the first txrx
-    
+
     let mut last_time : u32 = get_time_ms(&p);
     let mut last_state : bool = false;
-    let mut charger : BtCharger = BtCharger::new();
     let mut voltage : i16 = 0;
     let mut current: i16 = 0;
     let mut stby_current: i16 = 0;
@@ -95,7 +96,7 @@ fn main() -> ! {
 
     let mut chg_reset_time: u32 = get_time_ms(&p);
 
-    loop { 
+    loop {
         // slight delay to allow for wishbone-tool to connect for debuggening
         if (get_time_ms(&p) - start_time > 1500) && !wifi_ready {
             sprintln!("initializing wifi!");
@@ -134,14 +135,14 @@ fn main() -> ! {
         // workaround: for some reason the charger is leaving its maintenance state
         if get_time_ms(&p) - chg_reset_time > 1000 * 60 * 30 {  // every half hour reset the charger
             chg_reset_time = get_time_ms(&p);
-            chg_set_autoparams(&mut i2c);
-            chg_start(&mut i2c);
+            charger.chg_set_autoparams(&mut i2c);
+            charger.chg_start(&mut i2c);
         }
 
-        if get_time_ms(&p) - last_time > 1000 {    
+        if get_time_ms(&p) - last_time > 1000 {
             last_time = get_time_ms(&p);
             if last_state {
-                chg_keepalive_ping(&mut i2c);
+                charger.chg_keepalive_ping(&mut i2c);
                 charger.update_regs(&mut i2c);
                 // sprintln!("registers: {:?}", charger);
             } else {
@@ -150,7 +151,7 @@ fn main() -> ! {
                 current = gg_avg_current(&mut i2c);
 
                 // soc turns on automatically if the charger comes up
-                if chg_is_charging(&mut i2c) || (p.POWER.stats.read().state().bits() & 0x2 != 0) {
+                if charger.chg_is_charging(&mut i2c) || (p.POWER.stats.read().state().bits() & 0x2 != 0) {
                     soc_on = true;
                     unsafe{ p.POWER.power.write(|w| w.self_().bit(true).soc_on().bit(true).discharge().bit(false).kbdscan().bits(0) ); } // turn off discharge if the soc is up
                 }
@@ -167,7 +168,7 @@ fn main() -> ! {
         // FIXME: isolate FPGA inputs on powerdown
         if !soc_on {
             if get_time_ms(&p) - pd_time > 2000 { // delay for power-off to settle
-                
+
                 if get_time_ms(&p) - pd_interval > 50 { // every 50ms check key state
                     pd_interval = get_time_ms(&p);
 
@@ -196,10 +197,10 @@ fn main() -> ! {
             let mut tx: u16 = 0;
             match rx {
                 0x5A00 => { // charging mode
-                    chg_start(&mut i2c);
+                    charger.chg_start(&mut i2c);
                 }
                 0x5AFE => { // boost mode
-                    chg_boost(&mut i2c);
+                    charger.chg_boost(&mut i2c);
                 },
                 0x6800..=0x681F => {
                         let bl_level: u8 = (rx & 0x1F) as u8;
@@ -239,7 +240,7 @@ fn main() -> ! {
                 }
                 _ => {
                     tx = rx;
-                    unsafe{ (*com_fifo).write(tx as u32); }                    
+                    unsafe{ (*com_fifo).write(tx as u32); }
                     continue;
                 },
             }
@@ -283,6 +284,6 @@ fn main() -> ! {
             linkindex = linkindex + 1;
             unsafe{ (*com_fifo).write(tx as u32); }
         }
-        
+
     }
 }
