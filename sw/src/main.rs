@@ -1,6 +1,8 @@
 #![no_main]
 #![no_std]
 
+// note: to get vscode to reload the PAC, do shift-ctrl-p, 'reload window'. developer:Reload window
+
 use core::panic::PanicInfo;
 use riscv_rt::entry;
 
@@ -38,6 +40,8 @@ enum ComState {
     Stat,
     Power,
     GasGauge,
+    LoopTest,
+    Error,
 }
 
 #[entry]
@@ -96,11 +100,13 @@ fn main() -> ! {
     let mut start_time: u32 = get_time_ms(&p);
     let mut wifi_ready: bool = false;
 
-    let mut chg_reset_time: u32 = get_time_ms(&p);
-
+    //let mut chg_reset_time: u32 = get_time_ms(&p);
+    charger.update_regs(&mut i2c);
+    // sprintln!("registers: {:?}", charger);
+    let use_wifi: bool = false;
     loop {
         // slight delay to allow for wishbone-tool to connect for debuggening
-        if (get_time_ms(&p) - start_time > 1500) && !wifi_ready {
+        if (get_time_ms(&p) - start_time > 1500) && !wifi_ready && use_wifi {
             sprintln!("initializing wifi!");
             delay_ms(&p, 250); // let the message print
             // init the wifi interface
@@ -112,14 +118,14 @@ fn main() -> ! {
             }
             start_time = get_time_ms(&p);
         }
-        if wifi_ready {
-            if get_time_ms(&p) - start_time > 6000 {
+        if wifi_ready && use_wifi {
+            if get_time_ms(&p) - start_time > 600_000 {
                 sprintln!("starting ssid scan");
                 wfx_start_scan();
                 start_time = get_time_ms(&p);
             }
         }
-        if wfx_rs::hal_wf200::wf200_event_get() {
+        if wfx_rs::hal_wf200::wf200_event_get() && use_wifi {
             // first thing -- clear the event. So that if we get another event
             // while handling this packet, we have a chance of detecting that.
             // we lack mutexes, so we need to think about this behavior very carefully.
@@ -135,18 +141,16 @@ fn main() -> ! {
         }
 
         // workaround: for some reason the charger is leaving its maintenance state
-        if get_time_ms(&p) - chg_reset_time > 1000 * 60 * 30 {  // every half hour reset the charger
-            chg_reset_time = get_time_ms(&p);
-            charger.chg_set_autoparams(&mut i2c);
-            charger.chg_start(&mut i2c);
-        }
+        //if get_time_ms(&p) - chg_reset_time > 1000 * 60 * 30 {  // every half hour reset the charger
+        //    chg_reset_time = get_time_ms(&p);
+        //    charger.chg_set_autoparams(&mut i2c);
+        //    charger.chg_start(&mut i2c);
+        //}
 
-        if get_time_ms(&p) - last_time > 1000 {
+        if get_time_ms(&p) + 10 - last_time > 1000 {
             last_time = get_time_ms(&p);
             if last_state {
                 charger.chg_keepalive_ping(&mut i2c);
-                charger.update_regs(&mut i2c);
-                // sprintln!("registers: {:?}", charger);
             } else {
                 // once every second run these routines
                 voltage = gg_voltage(&mut i2c);
@@ -198,9 +202,14 @@ fn main() -> ! {
 
             let mut tx: u16 = 0;
             match rx {
+                0x4000 => {
+                    linkindex = 0;
+                    comstate = ComState::LoopTest;
+                    com_sentinel = 0;
+                },
                 0x5A00 => { // charging mode
                     charger.chg_start(&mut i2c);
-                }
+                },
                 0x5AFE => { // boost mode
                     charger.chg_boost(&mut i2c);
                 },
@@ -209,7 +218,8 @@ fn main() -> ! {
                         backlight.set_brightness(&mut i2c, bl_level);
                     },
                 0x7000 => {linkindex = 0; comstate = ComState::GasGauge;},
-                0x8000 => {linkindex = 0; comstate = ComState::Stat;},
+                0x8000 => {charger.update_regs(&mut i2c);
+                    linkindex = 0; comstate = ComState::Stat;},
                 0x9000..=0x90FF => {
                     linkindex = 0;
                     comstate = ComState::Power;
@@ -227,23 +237,14 @@ fn main() -> ! {
                 }
                 0xFFFF => {
                     // reset link command, when received, empty all the FIFOs, and prime Tx with dummy data
-                    tx = 0;
-                    while p.COM.status.read().rx_avail().bit_is_set() {
-                        unsafe{ tx += (*com_rd).read() as u16; }
-                    }
-                    while !p.COM.status.read().tx_empty().bit_is_set() {
-                        p.COM.control.write( |w| w.pump().bit(true));
-                    }
+                    p.COM.control.write( |w| w.reset().bit(true) ); // reset fifos
                     p.COM.control.write( |w| w.clrerr().bit(true) ); // clear all error flags
-                    unsafe { p.COM.control.write( |w| w.bits(0) ); } // reset the bits.
-                    com_sentinel = com_sentinel + 1; // for debugging only, right now no output
-                    unsafe{ (*com_fifo).write(tx as u32); }
+                    com_sentinel = com_sentinel + 1;
+                    unsafe{ (*com_fifo).write(com_sentinel as u32); }
                     continue;
                 }
                 _ => {
-                    tx = rx;
-                    unsafe{ (*com_fifo).write(tx as u32); }
-                    continue;
+                    comstate = ComState::Error;
                 },
             }
 
@@ -280,7 +281,13 @@ fn main() -> ! {
                     } else {
                         comstate = ComState::Idle;
                     }
-                }
+                },
+                ComState::LoopTest => {
+                    tx = (rx & 0xFF) | ((linkindex as u16 & 0xFF) << 8);
+                },
+                ComState::Error => {
+                    tx = 0xEEEE;
+                },
                 _ => tx = 8888,
             }
             linkindex = linkindex + 1;

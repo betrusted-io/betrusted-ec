@@ -316,7 +316,7 @@ class BetrustedPlatform(LatticePlatform):
                 i_USER_SIGNAL_TO_GLOBAL_BUFFER=clk_spislave_pin,
                 o_GLOBAL_BUFFER_OUTPUT=clk_spislave,
             )
-            platform.add_period_constraint(clk_spislave_pin, 1e9/24e6)  # 24 MHz according to Artix betrusted-soc config
+            platform.add_period_constraint(clk_spislave_pin, 1e9/20e6)  # 24 MHz according to Artix betrusted-soc config
 
             # Add a period constraint for each clock wire.
             # NextPNR picks the clock domain's name randomly from one of the wires
@@ -324,7 +324,7 @@ class BetrustedPlatform(LatticePlatform):
             # to NextPNR in a file called `top_pre_pack.py`.  In order to ensure
             # it chooses the timing for this net, annotate period constraints for
             # all wires.
-            platform.add_period_constraint(clk_spislave, 1e9/24e6)
+            platform.add_period_constraint(clk_spislave, 1e9/20e6)
             platform.add_period_constraint(clkspi, 1e9/sysclkfreq)
             platform.add_period_constraint(clk18, 1e9/sysclkfreq)
 
