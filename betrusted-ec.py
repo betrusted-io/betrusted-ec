@@ -592,7 +592,7 @@ class BaseSoC(SoCCore):
 
         # serialpad TX is what we use to test for keyboard hit to power on the SOC
         # only allow test keyboard hit patterns when the SOC is powered off
-        self.comb += serialpads.tx.eq( (~self.power.soc_on & drive_kbd[0]) | (self.power.soc_on & dbgpads.tx) )
+        self.comb += serialpads.tx.eq( (~self.power.soc_on & ~drive_kbd[0]) | (self.power.soc_on & dbgpads.tx) )
         self.comb += keycol0_ts.oe.eq( drive_kbd[1] & ~self.power.soc_on ) # force signal on the rx pin when in power off & scan
         self.comb += keycol0_ts.o.eq(0) # drive a '0' for scan
 

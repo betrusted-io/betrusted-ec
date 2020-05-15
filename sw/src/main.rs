@@ -41,7 +41,16 @@ enum ComState {
     Power,
     GasGauge,
     LoopTest,
+    ReadChargeState,
     Error,
+    Pass,
+}
+
+const POWER_MASK_FPGA_ON: u32 = 0b10;
+const POWER_MASK_SHUTDOWN_OK: u32 = 0b01;
+
+pub fn debug_power(p: &betrusted_pac::Peripherals) {
+    sprintln!("power: 0x{:04x}", p.POWER.power.read().bits());
 }
 
 #[entry]
@@ -82,15 +91,15 @@ fn main() -> ! {
 
     unsafe{ (*com_fifo).write(2020); } // load a dummy entry in so we can respond on the first txrx
 
-    let mut last_time : u32 = get_time_ms(&p);
-    let mut last_state : bool = false;
+    let mut last_run_time : u32 = get_time_ms(&p);
+    let mut loopcounter: u32 = 0; // in seconds, so this will last ~125 years
     let mut voltage : i16 = 0;
     let mut current: i16 = 0;
     let mut stby_current: i16 = 0;
     let mut linkindex : usize = 0;
     let mut comstate: ComState = ComState::Idle;
-    let mut pd_time: u32 = 0;
-    let mut pd_interval: u32 = 0;
+    let mut pd_loop_timer: u32 = 0;
+    let mut pd_discharge_timer: u32 = 0;
     let mut soc_on: bool = true;
     let mut backlight : BtBacklight = BtBacklight::new();
     let mut com_sentinel: u16 = 0;
@@ -103,7 +112,9 @@ fn main() -> ! {
     //let mut chg_reset_time: u32 = get_time_ms(&p);
     charger.update_regs(&mut i2c);
     // sprintln!("registers: {:?}", charger);
+
     let use_wifi: bool = true;
+    let do_power: bool = false;
     loop {
         if !use_wifi && (get_time_ms(&p) - start_time > 1500) {
             delay_ms(&p, 250); // force just a delay, so requests queue up
@@ -144,60 +155,86 @@ fn main() -> ! {
             }
         }
 
-        // workaround: for some reason the charger is leaving its maintenance state
-        //if get_time_ms(&p) - chg_reset_time > 1000 * 60 * 30 {  // every half hour reset the charger
-        //    chg_reset_time = get_time_ms(&p);
-        //    charger.chg_set_autoparams(&mut i2c);
-        //    charger.chg_start(&mut i2c);
-        //}
+        if get_time_ms(&p) - last_run_time > 1000 {
+            last_run_time = get_time_ms(&p);
+            loopcounter += 1;
 
-        if get_time_ms(&p) + 10 - last_time > 1000 {
-            last_time = get_time_ms(&p);
-            if last_state {
+            // routine pings & housekeeping
+            if loopcounter % 2 == 0 {
                 charger.chg_keepalive_ping(&mut i2c);
             } else {
-                // once every second run these routines
                 voltage = gg_voltage(&mut i2c);
-                current = gg_avg_current(&mut i2c);
-
-                // soc turns on automatically if the charger comes up
-                if charger.chg_is_charging(&mut i2c) || (p.POWER.stats.read().state().bits() & 0x2 != 0) {
-                    soc_on = true;
-                    unsafe{ p.POWER.power.write(|w| w.self_().bit(true).soc_on().bit(true).discharge().bit(false).kbdscan().bits(0) ); } // turn off discharge if the soc is up
-                }
-
-                if !soc_on {
+                if soc_on {
+                    current = gg_avg_current(&mut i2c);
+                } else {
                     stby_current = gg_avg_current(&mut i2c);
                 }
-
             }
-            last_state = ! last_state;
+
+            // check if we should turn the SoC on or not
+            if charger.chg_is_charging(&mut i2c, false) || (p.POWER.stats.read().state().bits() & 0x2 != 0) && do_power {
+                soc_on = true;
+                sprintln!("charger insert or soc on event!");
+                unsafe{ p.POWER.power.write(|w| w
+                    .self_().bit(true)
+                    .soc_on().bit(true)
+                    .discharge().bit(false)
+                    .kbdscan().bits(0)
+                ); } // turn off discharge if the soc is up
+            } else if charger.chg_is_charging(&mut i2c, false) {
+                soc_on = true;
+                sprintln!("charger charging!");
+                unsafe{
+                    p.POWER.power.write(|w| w
+                                                .self_().bit(true)
+                                                .soc_on().bit(true)
+                                                .discharge().bit(false)
+                                                .kbdscan().bits(0)
+                    );
+                }
+            }
         }
 
-        // monitor the keyboard inputs if the soc is in the off state
-        // FIXME: isolate FPGA inputs on powerdown
+        // fast-monitor the keyboard inputs if the soc is in the off state
         if !soc_on {
-            if get_time_ms(&p) - pd_time > 2000 { // delay for power-off to settle
-
-                if get_time_ms(&p) - pd_interval > 50 { // every 50ms check key state
-                    pd_interval = get_time_ms(&p);
-
-                    // check one key
-                    unsafe{ p.POWER.power.write(|w| w.self_().bit(true).discharge().bit(true).soc_on().bit(false).kbdscan().bits(0)); }
-                    if p.POWER.stats.read().monkey().bits() == 0 {
-                        // power on the SOC
-                        unsafe{ p.POWER.power.write(|w| w.self_().bit(true).soc_on().bit(false).kbdscan().bits(0)); } // first disengage discharge
-                        soc_on = true;
-                        unsafe{ p.POWER.power.write(|w| w.self_().bit(true).soc_on().bit(true).kbdscan().bits(0)); } // then try to power on the SoC
-                        pd_time = get_time_ms(&p);
+            if get_time_ms(&p) - pd_discharge_timer < 2000 {
+                // wait 2 seconds after PD before checking anything
+            } else {
+                if get_time_ms(&p) - pd_loop_timer > 50 { // every 50ms check key state
+                    pd_loop_timer = get_time_ms(&p);
+                    // re-affirm "neutral" power settings (including disabling the discharge FET)
+                    unsafe{
+                        p.POWER.power.write(|w| w
+                                                    .self_().bit(true)
+                                                    .soc_on().bit(false)
+                                                    .discharge().bit(false)
+                                                    .kbdscan().bits(0)
+                        );
                     }
-
-                    if !soc_on {
-                        // turn off scan, revert discharge to true
-                        unsafe{ p.POWER.power.write(|w| w.self_().bit(true).discharge().bit(true).soc_on().bit(false).kbdscan().bits(0)); }
+                    // turn on the scanning
+                    unsafe{ p.POWER.power.write(|w| w
+                        .self_().bit(true)
+                        .discharge().bit(false)
+                        .soc_on().bit(false)
+                        .kbdscan().bits(3)); }
+                    if p.POWER.stats.read().monkey().bits() == 0 { // both keys have to be hit
+                        // power on the SOC
+                        unsafe{ p.POWER.power.write(|w| w
+                            .self_().bit(true)
+                            .soc_on().bit(false)
+                            .discharge().bit(false)
+                            .kbdscan().bits(0)); } // first disengage discharge & scan
+                        soc_on = true;
+                        unsafe{ p.POWER.power.write(|w| w
+                            .self_().bit(true)
+                            .soc_on().bit(true)
+                            .discharge().bit(false)
+                            .kbdscan().bits(0)); } // then try to power on the SoC
+                        debug_power(&p);
                     }
                 }
             }
+            debug_power(&p);
         }
 
         // p.WIFI.ev_enable.write(|w| unsafe{w.bits(0)} ); // disable wifi interrupts, entering a critical section
@@ -207,53 +244,36 @@ fn main() -> ! {
             unsafe{ rx = (*com_rd).read() as u16; }
 
             let mut tx: u16 = 0;
+            // first parse rx and try to stuff a tx response as fast as possible
             match rx {
                 0x4000 => {
                     linkindex = 0;
                     comstate = ComState::LoopTest;
                     com_sentinel = 0;
                 },
-                0x5A00 => { // charging mode
-                    charger.chg_start(&mut i2c);
-                },
-                0x5AFE => { // boost mode
-                    charger.chg_boost(&mut i2c);
-                },
-                0x6800..=0x681F => {
-                        let bl_level: u8 = (rx & 0x1F) as u8;
-                        backlight.set_brightness(&mut i2c, bl_level);
-                    },
                 0x7000 => {linkindex = 0; comstate = ComState::GasGauge;},
-                0x8000 => {charger.update_regs(&mut i2c);
-                    linkindex = 0; comstate = ComState::Stat;},
-                0x9000..=0x90FF => {
-                    linkindex = 0;
-                    comstate = ComState::Power;
-                    // ignore rapid, successive power down requests
-                    if get_time_ms(&p) - pd_time > 2000 {
-                        unsafe{ p.POWER.power.write(|w| w.self_().bit(true).discharge().bit(true).soc_on().bit(false).kbdscan().bits(0)); }
-                        pd_time = get_time_ms(&p);
-                        pd_interval = get_time_ms(&p);
-                        soc_on = false;
-                    }
-                },
+                0x8000 => {linkindex = 0; comstate = ComState::Stat;},
+                0x9000 => {comstate = ComState::Power;},
+                0x9100 => {comstate = ComState::ReadChargeState},
                 0xF0F0 => {
                     // this a "read continuation" command, in other words, return read data
-                    // based on the current state. Do nothing here, check "comstate".
-                }
+                    // based on the current ComState
+                },
                 0xFFFF => {
                     // reset link command, when received, empty all the FIFOs, and prime Tx with dummy data
                     p.COM.control.write( |w| w.reset().bit(true) ); // reset fifos
                     p.COM.control.write( |w| w.clrerr().bit(true) ); // clear all error flags
                     com_sentinel = com_sentinel + 1;
                     unsafe{ (*com_fifo).write(com_sentinel as u32); }
-                    continue;
-                }
-                _ => {
                     comstate = ComState::Error;
+                    continue;
+                },
+                _ => {
+                    comstate = ComState::Pass;
                 },
             }
 
+            // these responses should all be "on-hand", e.g. not requiring an I2C transaction to retrieve
             match comstate {
                 ComState::Stat => {
                     if linkindex < 7 {
@@ -291,16 +311,59 @@ fn main() -> ! {
                 ComState::LoopTest => {
                     tx = (rx & 0xFF) | ((linkindex as u16 & 0xFF) << 8);
                 },
+                ComState::ReadChargeState => {
+                    if charger.chg_is_charging(&mut i2c, true) { // use "cached" version so this is safe in a fast loop
+                        tx = 1;
+                    } else {
+                        tx = 0;
+                    }
+                }
                 ComState::Error => {
                     tx = 0xEEEE;
                 },
+                ComState::Pass => {
+                    tx = 0x1111;
+                }
                 _ => tx = 8888,
             }
             linkindex = linkindex + 1;
             unsafe{ (*com_fifo).write(tx as u32); }
+
+            // now that TX has been handled, go deeper into rx codes and run things that can take longer to respond to
+            // pub const WIFI_EVENT_WIRQ: u32 = 0x1;
+            // p.WIFI.ev_enable.write(|w| unsafe{w.bits(0x1)} ); // re-enable wifi interrupts
+
+            match rx {
+                0x5A00 => { // charging mode
+                    charger.chg_start(&mut i2c);
+                },
+                0x5AFE => { // boost mode
+                    charger.chg_boost(&mut i2c);
+                },
+                0x6800..=0x681F => {
+                        let bl_level: u8 = (rx & 0x1F) as u8;
+                        backlight.set_brightness(&mut i2c, bl_level);
+                    },
+                0x8000 => {charger.update_regs(&mut i2c);},
+                0x9000 => {
+                    linkindex = 0;
+                    // ignore rapid, successive power down requests
+                    if get_time_ms(&p) - pd_loop_timer > 1500 {
+                        unsafe{ p.POWER.power.write(|w| w.
+                            self_().bit(true).
+                            discharge().bit(true).
+                            soc_on().bit(false).
+                            kbdscan().bits(0)
+                        ); }
+                        pd_loop_timer = get_time_ms(&p);
+                        pd_discharge_timer = get_time_ms(&p);
+                        soc_on = false;
+                        debug_power(&p);
+                    }
+                },
+                _ => {},
+            }
         }
-        // pub const WIFI_EVENT_WIRQ: u32 = 0x1;
-        // p.WIFI.ev_enable.write(|w| unsafe{w.bits(0x1)} ); // re-enable wifi interrupts
 
     }
 }

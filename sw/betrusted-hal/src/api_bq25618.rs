@@ -274,18 +274,24 @@ impl BtCharger {
         self
     }
 
-    pub fn chg_is_charging(&mut self, i2c: &mut Hardi2c) -> bool {
+    pub fn chg_is_charging(&mut self, i2c: &mut Hardi2c, use_cached: bool) -> bool {
         let txbuf: [u8; 1] = [BQ25618_08_CHG_STAT0 as u8];
         let mut rxbuf: [u8; 2] = [0, 0];
 
-        while i2c.i2c_master(BQ25618_ADDR, Some(&txbuf), Some(&mut rxbuf), CHG_TIMEOUT_MS) != 0 {}
-        if (rxbuf[0] & ChargerStatus0::CHG_MASK.bits()) == ChargerStatus0::CHG_NOT_CHARGING.bits() {
+        let chgstat0: u8;
+        if !use_cached {
+            while i2c.i2c_master(BQ25618_ADDR, Some(&txbuf), Some(&mut rxbuf), CHG_TIMEOUT_MS) != 0 {}
+            chgstat0 = rxbuf[0];
+        } else {
+            chgstat0 = self.registers[BQ25618_08_CHG_STAT0];
+        }
+        if (chgstat0 & ChargerStatus0::CHG_MASK.bits()) == ChargerStatus0::CHG_NOT_CHARGING.bits() {
             false
-        } else if (rxbuf[0] & ChargerStatus0::CHG_MASK.bits()) == ChargerStatus0::CHG_PRECHARGING.bits() {
+        } else if (chgstat0 & ChargerStatus0::CHG_MASK.bits()) == ChargerStatus0::CHG_PRECHARGING.bits() {
             true
-        } else if (rxbuf[0] & ChargerStatus0::CHG_MASK.bits()) == ChargerStatus0::CHG_FASTCHARGING.bits() {
+        } else if (chgstat0 & ChargerStatus0::CHG_MASK.bits()) == ChargerStatus0::CHG_FASTCHARGING.bits() {
             true
-        } else if (rxbuf[0] & ChargerStatus0::CHG_MASK.bits()) == ChargerStatus0::CHG_CHARGETERM.bits() {
+        } else if (chgstat0 & ChargerStatus0::CHG_MASK.bits()) == ChargerStatus0::CHG_CHARGETERM.bits() {
             false
         } else {
             false
