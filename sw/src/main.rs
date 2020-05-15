@@ -103,12 +103,16 @@ fn main() -> ! {
     //let mut chg_reset_time: u32 = get_time_ms(&p);
     charger.update_regs(&mut i2c);
     // sprintln!("registers: {:?}", charger);
-    let use_wifi: bool = false;
+    let use_wifi: bool = true;
     loop {
+        if !use_wifi && (get_time_ms(&p) - start_time > 1500) {
+            delay_ms(&p, 250); // force just a delay, so requests queue up
+            start_time = get_time_ms(&p);
+        }
         // slight delay to allow for wishbone-tool to connect for debuggening
         if (get_time_ms(&p) - start_time > 1500) && !wifi_ready && use_wifi {
             sprintln!("initializing wifi!");
-            delay_ms(&p, 250); // let the message print
+            // delay_ms(&p, 250); // let the message print
             // init the wifi interface
             if wfx_init() == SL_STATUS_OK {
                 sprintln!("Wifi ready");
@@ -196,6 +200,8 @@ fn main() -> ! {
             }
         }
 
+        // p.WIFI.ev_enable.write(|w| unsafe{w.bits(0)} ); // disable wifi interrupts, entering a critical section
+        // unsafe{ betrusted_pac::Peripherals::steal().WIFI.ev_pending.write(|w| w.bits(0x1)); }
         while p.COM.status.read().rx_avail().bit_is_set() {
             let rx: u16;
             unsafe{ rx = (*com_rd).read() as u16; }
@@ -293,6 +299,8 @@ fn main() -> ! {
             linkindex = linkindex + 1;
             unsafe{ (*com_fifo).write(tx as u32); }
         }
+        // pub const WIFI_EVENT_WIRQ: u32 = 0x1;
+        // p.WIFI.ev_enable.write(|w| unsafe{w.bits(0x1)} ); // re-enable wifi interrupts
 
     }
 }

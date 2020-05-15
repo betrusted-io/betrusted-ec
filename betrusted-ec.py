@@ -635,6 +635,7 @@ class BaseSoC(SoCCore):
         self.submodules.ticktimer = TickTimer(1000, clk_freq, bits=40)
 
         # COM port (spi slave to Artix) ------------------------------------------------------------------
+        # TODO: this block does not seem to be be working correctly, it loses data when the CPU is busy
         self.submodules.com = SpiFifoSlave(platform.request("com"))
         self.add_wb_slave(self.mem_map["com"], self.com.bus, 4)
         self.add_memory_region("com", self.mem_map["com"], 4, type='io')
