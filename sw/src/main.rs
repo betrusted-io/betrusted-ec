@@ -167,6 +167,8 @@ fn main() -> ! {
                 if soc_on {
                     current = gg_avg_current(&mut i2c);
                 } else {
+                    // TODO: need more fine control over this
+                    // at the moment, system can power on for 1 full second prior to getting this reading
                     stby_current = gg_avg_current(&mut i2c);
                 }
             }
