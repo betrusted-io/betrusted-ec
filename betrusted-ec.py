@@ -494,6 +494,7 @@ class BtPower(Module, AutoCSR, AutoDoc):
             CSRField("soc_on", description="Writing `1` to this powers on the SoC", reset=1),
             CSRField("discharge", description="Writing `1` to this connects a low-value resistor across FPGA domain supplies to force a full discharge"),
             CSRField("kbdscan", size=2, description="Writing `1` to this forces the power-down keyboard scan event on the respective mon bit"),
+            CSRField("kbddrive", description="Writing `1` to this drives the input scan row to 0. Do this prior to reading to mitigate noise")
         ])
 
         self.stats = CSRStatus(8, fields=[
@@ -577,24 +578,33 @@ class BaseSoC(SoCCore):
         self.comb += dbgpads.rx.eq(keycol0_ts.i)
         drive_kbd = Signal(2)
 
-        up5k_keyrow0 = Signal()
-        up5k_keyrow1 = Signal()
+        # up5k_keyrow0 = Signal()
+        # up5k_keyrow1 = Signal()
         # add weak pullups to prevent triggering from noise
-        self.specials += Instance(
-            "SB_IO", p_PIN_TYPE=1, p_PULLUP=1,
-            i_PACKAGE_PIN=platform.request("up5k_keyrow0"), o_D_IN_0=up5k_keyrow0)
-        self.specials += Instance(
-            "SB_IO", p_PIN_TYPE=1, p_PULLUP=1,
-            i_PACKAGE_PIN=platform.request("up5k_keyrow1"), o_D_IN_0=up5k_keyrow1)
-        self.comb += self.power.mon1.eq(up5k_keyrow1)
-        self.comb += self.power.mon0.eq(up5k_keyrow0)
+        #self.specials += Instance(
+        #    "SB_IO", p_PIN_TYPE=1, p_PULLUP=1,
+        #    i_PACKAGE_PIN=platform.request("up5k_keyrow0"), o_D_IN_0=up5k_keyrow0)
+        #self.specials += Instance(
+        #    "SB_IO", p_PIN_TYPE=1, p_PULLUP=1,
+        #    i_PACKAGE_PIN=platform.request("up5k_keyrow1"), o_D_IN_0=up5k_keyrow1)
+        keyrow0_ts = TSTriple(1)
+        self.specials += keyrow0_ts.get_tristate(platform.request("up5k_keyrow0"))
+        self.comb += keyrow0_ts.o.eq(0)
+        self.comb += keyrow0_ts.oe.eq(self.power.power.fields.kbddrive)
+        keyrow1_ts = TSTriple(1)
+        self.specials += keyrow1_ts.get_tristate(platform.request("up5k_keyrow1"))
+        self.comb += keyrow1_ts.o.eq(0)
+        self.comb += keyrow1_ts.oe.eq(self.power.power.fields.kbddrive)
+
+        self.comb += self.power.mon1.eq(keyrow1_ts.i)
+        self.comb += self.power.mon0.eq(keyrow0_ts.i)
         self.comb += drive_kbd.eq(self.power.power.fields.kbdscan) # two-bit assign
 
         # serialpad TX is what we use to test for keyboard hit to power on the SOC
         # only allow test keyboard hit patterns when the SOC is powered off
-        self.comb += serialpads.tx.eq( (~self.power.soc_on & ~drive_kbd[0]) | (self.power.soc_on & dbgpads.tx) )
+        self.comb += serialpads.tx.eq( (~self.power.soc_on & drive_kbd[0]) | (self.power.soc_on & dbgpads.tx) )
         self.comb += keycol0_ts.oe.eq( drive_kbd[1] & ~self.power.soc_on ) # force signal on the rx pin when in power off & scan
-        self.comb += keycol0_ts.o.eq(0) # drive a '0' for scan
+        self.comb += keycol0_ts.o.eq(1) # drive a '1' for scan
 
         # Debug block ------------------------------------------------------------------------------------
         self.submodules.uart_bridge = UARTWishboneBridge(dbgpads, clk_freq, baudrate=115200)

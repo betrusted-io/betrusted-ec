@@ -211,13 +211,21 @@ fn main() -> ! {
                                                     .kbdscan().bits(0)
                         );
                     }
-                    // turn on the scanning
+                    // discharge stray noise on sense lines
                     unsafe{ p.POWER.power.write(|w| w
                         .self_().bit(true)
                         .discharge().bit(false)
                         .soc_on().bit(false)
+                        .kbddrive().bit(true)
                         .kbdscan().bits(3)); }
-                    if p.POWER.stats.read().monkey().bits() == 0 { // both keys have to be hit
+                    // prep for sensing
+                    unsafe{ p.POWER.power.write(|w| w
+                        .self_().bit(true)
+                        .discharge().bit(false)
+                        .soc_on().bit(false)
+                        .kbddrive().bit(false)
+                        .kbdscan().bits(3)); }
+                    if p.POWER.stats.read().monkey().bits() == 3 { // both keys have to be hit
                         // power on the SOC
                         unsafe{ p.POWER.power.write(|w| w
                             .self_().bit(true)
