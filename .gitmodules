@@ -34,3 +34,6 @@
 [submodule "deps/compiler_rt"]
 	path = deps/compiler_rt
 	url = https://github.com/litex-hub/pythondata-software-compiler_rt.git
+[submodule "sw/STMems_Standard_C_drivers"]
+	path = sw/gyro_sys/STMems_Standard_C_drivers
+	url = https://github.com/STMicroelectronics/STMems_Standard_C_drivers.git

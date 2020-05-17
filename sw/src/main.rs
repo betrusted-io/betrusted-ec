@@ -21,6 +21,8 @@ use wfx_rs::hal_wf200::wfx_handle_event;
 use wfx_rs::hal_wf200::wf200_mutex_get;
 use wfx_bindings::*;
 
+use gyro_rs::hal_gyro::BtGyro;
+
 #[macro_use]
 mod debug;
 
@@ -44,6 +46,7 @@ enum ComState {
     ReadChargeState,
     Error,
     Pass,
+    GyroRead,
 }
 
 const POWER_MASK_FPGA_ON: u32 = 0b10;
@@ -83,6 +86,9 @@ fn main() -> ! {
     charger.chg_set_autoparams(&mut i2c);
     charger.chg_start(&mut i2c);
 
+    let mut gyro: BtGyro = BtGyro::new();
+    gyro.init();
+
     use volatile::Volatile;
     let com_ptr: *mut u32 = 0xD000_0000 as *mut u32;
     let com_fifo = com_ptr as *mut Volatile<u32>;
@@ -104,7 +110,7 @@ fn main() -> ! {
     let mut backlight : BtBacklight = BtBacklight::new();
     let mut com_sentinel: u16 = 0;
 
-    backlight.set_brightness(&mut i2c, 0); // make sure the backlight is off on boot
+    backlight.set_brightness(&mut i2c, 0, 0); // make sure the backlight is off on boot
 
     let mut start_time: u32 = get_time_ms(&p);
     let mut wifi_ready: bool = false;
@@ -265,6 +271,9 @@ fn main() -> ! {
                 0x8000 => {linkindex = 0; comstate = ComState::Stat;},
                 0x9000 => {comstate = ComState::Power;},
                 0x9100 => {comstate = ComState::ReadChargeState},
+                // 0x9200 shipmode
+                // 0xA000 fetch latest gyro XYZ data
+                0xA100 => {linkindex = 0; comstate = ComState::GyroRead},
                 0xF0F0 => {
                     // this a "read continuation" command, in other words, return read data
                     // based on the current ComState
@@ -327,7 +336,16 @@ fn main() -> ! {
                     } else {
                         tx = 0;
                     }
-                }
+                },
+                ComState::GyroRead => {
+                    match linkindex {
+                        0 => tx = gyro.x,
+                        1 => tx = gyro.y,
+                        2 => tx = gyro.z,
+                        3 => tx = gyro.id as u16,
+                        _ => tx = 0xEEEE,
+                    }
+                },
                 ComState::Error => {
                     tx = 0xEEEE;
                 },
@@ -350,9 +368,10 @@ fn main() -> ! {
                 0x5AFE => { // boost mode
                     charger.chg_boost(&mut i2c);
                 },
-                0x6800..=0x681F => {
-                        let bl_level: u8 = (rx & 0x1F) as u8;
-                        backlight.set_brightness(&mut i2c, bl_level);
+                0x6800..=0x6BFF => {
+                        let main_bl_level: u8 = (rx & 0x1F) as u8;
+                        let sec_bl_level: u8 = ((rx >> 5) & 0x1F) as u8;
+                        backlight.set_brightness(&mut i2c, main_bl_level, sec_bl_level);
                     },
                 0x8000 => {charger.update_regs(&mut i2c);},
                 0x9000 => {
@@ -370,6 +389,21 @@ fn main() -> ! {
                         soc_on = false;
                         debug_power(&p);
                     }
+                },
+                0x9200 => {
+                    charger.set_shipmode(&mut i2c);
+                    unsafe{ p.POWER.power.write(|w| w.
+                        self_().bit(true).
+                        discharge().bit(true).
+                        soc_on().bit(false).
+                        kbdscan().bits(0)
+                    ); }
+                    pd_loop_timer = get_time_ms(&p);
+                    pd_discharge_timer = get_time_ms(&p);
+                    soc_on = false;
+                },
+                0xA000 => {
+                    gyro.update_xyz();
                 },
                 _ => {},
             }

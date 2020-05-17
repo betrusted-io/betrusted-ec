@@ -1,10 +1,25 @@
 #![allow(dead_code)]
 
 use crate::hal_hardi2c::Hardi2c;
+use bitflags::*;
 
 const LM3509_ADDR: u8 = 0x36;
 
 const LM3509_GP_ADR: u8 = 0x10;
+bitflags! {
+    pub struct Config: u8 {
+        const  MAIN_ENABLE      = 0b0000_0001;
+        const  SEC_ENABLE       = 0b0000_0010;
+        const  UNISON_ENABLE    = 0b0000_0100;
+        const  UNISON_DISABLE   = 0b0000_0000;
+        const  RAMP_51US_STEP   = 0b0000_0000;
+        const  RAMP_26MS_STEP   = 0b0000_1000;
+        const  RAMP_13MS_STEP   = 0b0001_0000;
+        const  RAMP_52MS_STEP   = 0b0001_1000;
+        const  OLED_MODE        = 0b0010_0000;
+    }
+}
+
 const LM3509_BMAIN_ADR: u8 = 0xA0;
 const LM3509_BSUB_ADR: u8 = 0xB0;
 const LM3509_GPIO_ADR: u8 = 0x80;
@@ -19,7 +34,7 @@ pub struct BtBacklight {
 impl BtBacklight {
     pub fn new() -> Self {
         BtBacklight {
-            rate_of_change: 3,
+                rate_of_change: 3,
         }
     }
 
@@ -28,7 +43,6 @@ impl BtBacklight {
         if roc_local > 3 {
             roc_local = 3;
         }
-        
         self.rate_of_change = roc_local;
     }
 
@@ -36,18 +50,22 @@ impl BtBacklight {
         31 as u8
     }
 
-    pub fn set_brightness(&mut self, i2c: &mut Hardi2c, level: u8) {
-        let mut level_local: u8 = level;
+    // note: this is coded for now to only allow SEC to work
+    // once the actual backlight is available
+    pub fn set_brightness(&mut self, i2c: &mut Hardi2c, main_level: u8, sub_level: u8) {
+        let mut main_level_local: u8 = main_level;
+        let mut sub_level_local: u8 = sub_level;
+        let mut txbuf: [u8; 2] = [0;2];
 
-        // turn on main, sub, and unison mode
-        let mut txbuf: [u8; 2] = [LM3509_GP_ADR, 0xC7];
-
-        if level == 0 {
+        if main_level_local == 0 && sub_level_local == 0 {
             // first set the brightness control to 0
             txbuf[0] = LM3509_BMAIN_ADR;
-            txbuf[1] = level | 0xE0;
+            txbuf[1] = 0xE0;
             while i2c.i2c_master(LM3509_ADDR, Some(&txbuf), None, BL_TIMEOUT_MS) != 0 {}
-    
+            txbuf[0] = LM3509_BSUB_ADR;
+            txbuf[1] = 0xE0;
+            while i2c.i2c_master(LM3509_ADDR, Some(&txbuf), None, BL_TIMEOUT_MS) != 0 {}
+
             // then put the string into shutdown mode
             txbuf[0] = LM3509_GP_ADR;
             txbuf[1] = 0xC0 | ((self.rate_of_change & 0x3) << 3);
@@ -55,17 +73,29 @@ impl BtBacklight {
 
             return
         } else {
-            // activate BMAIN, BSUB and set ramp value
-            txbuf[1] = ((self.rate_of_change & 0x3) << 3) | 0xC7;
+            // turn sub-only, and DISABLE unison mode (BL not installed! testing only!)
+            txbuf[0] = LM3509_GP_ADR;
+            txbuf[1] = ((self.rate_of_change & 0x3) << 3) | 0xC0 | (Config::SEC_ENABLE | Config::UNISON_DISABLE).bits();
             while i2c.i2c_master(LM3509_ADDR, Some(&txbuf), None, BL_TIMEOUT_MS) != 0 {}
 
-            // clamp brightness level to 31
-            if level_local > 31 {
-                level_local = 31;
+            if false {
+                // clamp brightness level to 31
+                if main_level_local > 31 {
+                    main_level_local = 31;
+                }
+
+                txbuf[0] = LM3509_BMAIN_ADR;
+                txbuf[1] = main_level_local | 0xE0;
+                while i2c.i2c_master(LM3509_ADDR, Some(&txbuf), None, BL_TIMEOUT_MS) != 0 {}
             }
 
-            txbuf[0] = LM3509_BMAIN_ADR;
-            txbuf[1] = level_local | 0xE0;
+            // clamp brightness level to 31
+            if sub_level_local > 31 {
+                sub_level_local = 31;
+            }
+
+            txbuf[0] = LM3509_BSUB_ADR;
+            txbuf[1] = sub_level_local | 0xE0;
 
             while i2c.i2c_master(LM3509_ADDR, Some(&txbuf), None, BL_TIMEOUT_MS) != 0 {}
         }

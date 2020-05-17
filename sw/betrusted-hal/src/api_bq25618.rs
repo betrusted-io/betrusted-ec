@@ -274,6 +274,16 @@ impl BtCharger {
         self
     }
 
+    pub fn set_shipmode(&mut self, i2c: &mut Hardi2c) {
+        let txbuf: [u8; 2] = [BQ25618_07_CHG_CTL3 as u8,
+        (ChargeControl3::BATFET_DLY_10S |
+            ChargeControl3::BATFET_RST_WAIT_VBUS |
+            ChargeControl3::BATFET_OFF_ALLOW |
+            ChargeControl3::BATFET_RST_EN).bits() as u8];
+
+        i2c.i2c_master(BQ25618_ADDR, Some(&txbuf), None, CHG_TIMEOUT_MS);
+    }
+
     pub fn chg_is_charging(&mut self, i2c: &mut Hardi2c, use_cached: bool) -> bool {
         let txbuf: [u8; 1] = [BQ25618_08_CHG_STAT0 as u8];
         let mut rxbuf: [u8; 2] = [0, 0];

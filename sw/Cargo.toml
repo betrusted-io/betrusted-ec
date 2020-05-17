@@ -17,6 +17,9 @@ volatile = "0.2.6"
 wfx_sys = { path = "wfx_sys" }
 wfx_rs = { path = "wfx_rs" }
 wfx_bindings = { path = "wfx_bindings" }
+gyro_sys = { path = "gyro_sys" }
+gyro_rs = { path = "gyro_rs" }
+gyro_bindings = { path = "gyro_bindings" }
 xous-nommu = { path = "xous-nommu" }
 
 # this lets you use `cargo fix`!
