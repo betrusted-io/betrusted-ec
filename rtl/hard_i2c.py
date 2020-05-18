@@ -54,7 +54,7 @@ class HardI2C(Module, AutoCSR, AutoDoc):
         self.ev.i2c_int = EventSourcePulse(description="I2C cycle completed")
         self.ev.gg_int = EventSourcePulse(description="Gas gauge interrupt")
         self.ev.gyro_int = EventSourcePulse(description="Gyro interrupt")
-        self.ev.usbcc_int = EventSourcePulse(description="USB CC register charged")
+        self.ev.usbcc_int = EventSourcePulse(description="USB CC register changed")
         self.ev.finalize()
         usb_cc_int = Signal()
         usb_cc_int_r = Signal()
