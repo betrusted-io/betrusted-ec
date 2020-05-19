@@ -112,9 +112,7 @@ pub const __GNU_LIBRARY__: u32 = 6;
 pub const __GLIBC__: u32 = 2;
 pub const __GLIBC_MINOR__: u32 = 23;
 pub const _SYS_CDEFS_H: u32 = 1;
-pub const __WORDSIZE: u32 = 64;
-pub const __WORDSIZE_TIME64_COMPAT32: u32 = 1;
-pub const __SYSCALL_WORDSIZE: u32 = 64;
+pub const __WORDSIZE: u32 = 32;
 pub const _BITS_WCHAR_H: u32 = 1;
 pub const INT8_MIN: i32 = -128;
 pub const INT16_MIN: i32 = -32768;
@@ -135,22 +133,22 @@ pub const UINT_LEAST8_MAX: u32 = 255;
 pub const UINT_LEAST16_MAX: u32 = 65535;
 pub const UINT_LEAST32_MAX: u32 = 4294967295;
 pub const INT_FAST8_MIN: i32 = -128;
-pub const INT_FAST16_MIN: i64 = -9223372036854775808;
-pub const INT_FAST32_MIN: i64 = -9223372036854775808;
+pub const INT_FAST16_MIN: i32 = -2147483648;
+pub const INT_FAST32_MIN: i32 = -2147483648;
 pub const INT_FAST8_MAX: u32 = 127;
-pub const INT_FAST16_MAX: u64 = 9223372036854775807;
-pub const INT_FAST32_MAX: u64 = 9223372036854775807;
+pub const INT_FAST16_MAX: u32 = 2147483647;
+pub const INT_FAST32_MAX: u32 = 2147483647;
 pub const UINT_FAST8_MAX: u32 = 255;
-pub const UINT_FAST16_MAX: i32 = -1;
-pub const UINT_FAST32_MAX: i32 = -1;
-pub const INTPTR_MIN: i64 = -9223372036854775808;
-pub const INTPTR_MAX: u64 = 9223372036854775807;
-pub const UINTPTR_MAX: i32 = -1;
-pub const PTRDIFF_MIN: i64 = -9223372036854775808;
-pub const PTRDIFF_MAX: u64 = 9223372036854775807;
+pub const UINT_FAST16_MAX: u32 = 4294967295;
+pub const UINT_FAST32_MAX: u32 = 4294967295;
+pub const INTPTR_MIN: i32 = -2147483648;
+pub const INTPTR_MAX: u32 = 2147483647;
+pub const UINTPTR_MAX: u32 = 4294967295;
+pub const PTRDIFF_MIN: i32 = -2147483648;
+pub const PTRDIFF_MAX: u32 = 2147483647;
 pub const SIG_ATOMIC_MIN: i32 = -2147483648;
 pub const SIG_ATOMIC_MAX: u32 = 2147483647;
-pub const SIZE_MAX: i32 = -1;
+pub const SIZE_MAX: u32 = 4294967295;
 pub const WINT_MIN: u32 = 0;
 pub const WINT_MAX: u32 = 4294967295;
 pub const _MATH_H: u32 = 1;
@@ -308,21 +306,21 @@ pub const LSM6DS3_MAG_OFFZ_H: u32 = 50;
 pub type int_least8_t = c_types::c_schar;
 pub type int_least16_t = c_types::c_short;
 pub type int_least32_t = c_types::c_int;
-pub type int_least64_t = c_types::c_long;
+pub type int_least64_t = c_types::c_longlong;
 pub type uint_least8_t = c_types::c_uchar;
 pub type uint_least16_t = c_types::c_ushort;
 pub type uint_least32_t = c_types::c_uint;
-pub type uint_least64_t = c_types::c_ulong;
+pub type uint_least64_t = c_types::c_ulonglong;
 pub type int_fast8_t = c_types::c_schar;
-pub type int_fast16_t = c_types::c_long;
-pub type int_fast32_t = c_types::c_long;
-pub type int_fast64_t = c_types::c_long;
+pub type int_fast16_t = c_types::c_int;
+pub type int_fast32_t = c_types::c_int;
+pub type int_fast64_t = c_types::c_longlong;
 pub type uint_fast8_t = c_types::c_uchar;
-pub type uint_fast16_t = c_types::c_ulong;
-pub type uint_fast32_t = c_types::c_ulong;
-pub type uint_fast64_t = c_types::c_ulong;
-pub type intmax_t = c_types::c_long;
-pub type uintmax_t = c_types::c_ulong;
+pub type uint_fast16_t = c_types::c_uint;
+pub type uint_fast32_t = c_types::c_uint;
+pub type uint_fast64_t = c_types::c_ulonglong;
+pub type intmax_t = c_types::c_longlong;
+pub type uintmax_t = c_types::c_ulonglong;
 pub type float_t = f32;
 pub type double_t = f64;
 extern "C" {
@@ -644,10 +642,10 @@ extern "C" {
     pub fn __nextafter(__x: f64, __y: f64) -> f64;
 }
 extern "C" {
-    pub fn nexttoward(__x: f64, __y: u128) -> f64;
+    pub fn nexttoward(__x: f64, __y: f64) -> f64;
 }
 extern "C" {
-    pub fn __nexttoward(__x: f64, __y: u128) -> f64;
+    pub fn __nexttoward(__x: f64, __y: f64) -> f64;
 }
 extern "C" {
     pub fn remainder(__x: f64, __y: f64) -> f64;
@@ -1076,10 +1074,10 @@ extern "C" {
     pub fn __nextafterf(__x: f32, __y: f32) -> f32;
 }
 extern "C" {
-    pub fn nexttowardf(__x: f32, __y: u128) -> f32;
+    pub fn nexttowardf(__x: f32, __y: f64) -> f32;
 }
 extern "C" {
-    pub fn __nexttowardf(__x: f32, __y: u128) -> f32;
+    pub fn __nexttowardf(__x: f32, __y: f64) -> f32;
 }
 extern "C" {
     pub fn remainderf(__x: f32, __y: f32) -> f32;
@@ -1190,436 +1188,436 @@ extern "C" {
     pub fn __scalbf(__x: f32, __n: f32) -> f32;
 }
 extern "C" {
-    pub fn acosl(__x: u128) -> u128;
+    pub fn acosl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn __acosl(__x: u128) -> u128;
+    pub fn __acosl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn asinl(__x: u128) -> u128;
+    pub fn asinl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn __asinl(__x: u128) -> u128;
+    pub fn __asinl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn atanl(__x: u128) -> u128;
+    pub fn atanl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn __atanl(__x: u128) -> u128;
+    pub fn __atanl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn atan2l(__y: u128, __x: u128) -> u128;
+    pub fn atan2l(__y: f64, __x: f64) -> f64;
 }
 extern "C" {
-    pub fn __atan2l(__y: u128, __x: u128) -> u128;
+    pub fn __atan2l(__y: f64, __x: f64) -> f64;
 }
 extern "C" {
-    pub fn cosl(__x: u128) -> u128;
+    pub fn cosl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn __cosl(__x: u128) -> u128;
+    pub fn __cosl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn sinl(__x: u128) -> u128;
+    pub fn sinl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn __sinl(__x: u128) -> u128;
+    pub fn __sinl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn tanl(__x: u128) -> u128;
+    pub fn tanl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn __tanl(__x: u128) -> u128;
+    pub fn __tanl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn coshl(__x: u128) -> u128;
+    pub fn coshl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn __coshl(__x: u128) -> u128;
+    pub fn __coshl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn sinhl(__x: u128) -> u128;
+    pub fn sinhl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn __sinhl(__x: u128) -> u128;
+    pub fn __sinhl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn tanhl(__x: u128) -> u128;
+    pub fn tanhl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn __tanhl(__x: u128) -> u128;
+    pub fn __tanhl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn acoshl(__x: u128) -> u128;
+    pub fn acoshl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn __acoshl(__x: u128) -> u128;
+    pub fn __acoshl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn asinhl(__x: u128) -> u128;
+    pub fn asinhl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn __asinhl(__x: u128) -> u128;
+    pub fn __asinhl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn atanhl(__x: u128) -> u128;
+    pub fn atanhl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn __atanhl(__x: u128) -> u128;
+    pub fn __atanhl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn expl(__x: u128) -> u128;
+    pub fn expl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn __expl(__x: u128) -> u128;
+    pub fn __expl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn frexpl(__x: u128, __exponent: *mut c_types::c_int) -> u128;
+    pub fn frexpl(__x: f64, __exponent: *mut c_types::c_int) -> f64;
 }
 extern "C" {
-    pub fn __frexpl(__x: u128, __exponent: *mut c_types::c_int) -> u128;
+    pub fn __frexpl(__x: f64, __exponent: *mut c_types::c_int) -> f64;
 }
 extern "C" {
-    pub fn ldexpl(__x: u128, __exponent: c_types::c_int) -> u128;
+    pub fn ldexpl(__x: f64, __exponent: c_types::c_int) -> f64;
 }
 extern "C" {
-    pub fn __ldexpl(__x: u128, __exponent: c_types::c_int) -> u128;
+    pub fn __ldexpl(__x: f64, __exponent: c_types::c_int) -> f64;
 }
 extern "C" {
-    pub fn logl(__x: u128) -> u128;
+    pub fn logl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn __logl(__x: u128) -> u128;
+    pub fn __logl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn log10l(__x: u128) -> u128;
+    pub fn log10l(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn __log10l(__x: u128) -> u128;
+    pub fn __log10l(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn modfl(__x: u128, __iptr: *mut u128) -> u128;
+    pub fn modfl(__x: f64, __iptr: *mut f64) -> f64;
 }
 extern "C" {
-    pub fn __modfl(__x: u128, __iptr: *mut u128) -> u128;
+    pub fn __modfl(__x: f64, __iptr: *mut f64) -> f64;
 }
 extern "C" {
-    pub fn expm1l(__x: u128) -> u128;
+    pub fn expm1l(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn __expm1l(__x: u128) -> u128;
+    pub fn __expm1l(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn log1pl(__x: u128) -> u128;
+    pub fn log1pl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn __log1pl(__x: u128) -> u128;
+    pub fn __log1pl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn logbl(__x: u128) -> u128;
+    pub fn logbl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn __logbl(__x: u128) -> u128;
+    pub fn __logbl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn exp2l(__x: u128) -> u128;
+    pub fn exp2l(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn __exp2l(__x: u128) -> u128;
+    pub fn __exp2l(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn log2l(__x: u128) -> u128;
+    pub fn log2l(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn __log2l(__x: u128) -> u128;
+    pub fn __log2l(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn powl(__x: u128, __y: u128) -> u128;
+    pub fn powl(__x: f64, __y: f64) -> f64;
 }
 extern "C" {
-    pub fn __powl(__x: u128, __y: u128) -> u128;
+    pub fn __powl(__x: f64, __y: f64) -> f64;
 }
 extern "C" {
-    pub fn sqrtl(__x: u128) -> u128;
+    pub fn sqrtl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn __sqrtl(__x: u128) -> u128;
+    pub fn __sqrtl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn hypotl(__x: u128, __y: u128) -> u128;
+    pub fn hypotl(__x: f64, __y: f64) -> f64;
 }
 extern "C" {
-    pub fn __hypotl(__x: u128, __y: u128) -> u128;
+    pub fn __hypotl(__x: f64, __y: f64) -> f64;
 }
 extern "C" {
-    pub fn cbrtl(__x: u128) -> u128;
+    pub fn cbrtl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn __cbrtl(__x: u128) -> u128;
+    pub fn __cbrtl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn ceill(__x: u128) -> u128;
+    pub fn ceill(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn __ceill(__x: u128) -> u128;
+    pub fn __ceill(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn fabsl(__x: u128) -> u128;
+    pub fn fabsl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn __fabsl(__x: u128) -> u128;
+    pub fn __fabsl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn floorl(__x: u128) -> u128;
+    pub fn floorl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn __floorl(__x: u128) -> u128;
+    pub fn __floorl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn fmodl(__x: u128, __y: u128) -> u128;
+    pub fn fmodl(__x: f64, __y: f64) -> f64;
 }
 extern "C" {
-    pub fn __fmodl(__x: u128, __y: u128) -> u128;
+    pub fn __fmodl(__x: f64, __y: f64) -> f64;
 }
 extern "C" {
-    pub fn __isinfl(__value: u128) -> c_types::c_int;
+    pub fn __isinfl(__value: f64) -> c_types::c_int;
 }
 extern "C" {
-    pub fn __finitel(__value: u128) -> c_types::c_int;
+    pub fn __finitel(__value: f64) -> c_types::c_int;
 }
 extern "C" {
-    pub fn isinfl(__value: u128) -> c_types::c_int;
+    pub fn isinfl(__value: f64) -> c_types::c_int;
 }
 extern "C" {
-    pub fn finitel(__value: u128) -> c_types::c_int;
+    pub fn finitel(__value: f64) -> c_types::c_int;
 }
 extern "C" {
-    pub fn dreml(__x: u128, __y: u128) -> u128;
+    pub fn dreml(__x: f64, __y: f64) -> f64;
 }
 extern "C" {
-    pub fn __dreml(__x: u128, __y: u128) -> u128;
+    pub fn __dreml(__x: f64, __y: f64) -> f64;
 }
 extern "C" {
-    pub fn significandl(__x: u128) -> u128;
+    pub fn significandl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn __significandl(__x: u128) -> u128;
+    pub fn __significandl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn copysignl(__x: u128, __y: u128) -> u128;
+    pub fn copysignl(__x: f64, __y: f64) -> f64;
 }
 extern "C" {
-    pub fn __copysignl(__x: u128, __y: u128) -> u128;
+    pub fn __copysignl(__x: f64, __y: f64) -> f64;
 }
 extern "C" {
-    pub fn nanl(__tagb: *const c_types::c_char) -> u128;
+    pub fn nanl(__tagb: *const c_types::c_char) -> f64;
 }
 extern "C" {
-    pub fn __nanl(__tagb: *const c_types::c_char) -> u128;
+    pub fn __nanl(__tagb: *const c_types::c_char) -> f64;
 }
 extern "C" {
-    pub fn __isnanl(__value: u128) -> c_types::c_int;
+    pub fn __isnanl(__value: f64) -> c_types::c_int;
 }
 extern "C" {
-    pub fn isnanl(__value: u128) -> c_types::c_int;
+    pub fn isnanl(__value: f64) -> c_types::c_int;
 }
 extern "C" {
-    pub fn j0l(arg1: u128) -> u128;
+    pub fn j0l(arg1: f64) -> f64;
 }
 extern "C" {
-    pub fn __j0l(arg1: u128) -> u128;
+    pub fn __j0l(arg1: f64) -> f64;
 }
 extern "C" {
-    pub fn j1l(arg1: u128) -> u128;
+    pub fn j1l(arg1: f64) -> f64;
 }
 extern "C" {
-    pub fn __j1l(arg1: u128) -> u128;
+    pub fn __j1l(arg1: f64) -> f64;
 }
 extern "C" {
-    pub fn jnl(arg1: c_types::c_int, arg2: u128) -> u128;
+    pub fn jnl(arg1: c_types::c_int, arg2: f64) -> f64;
 }
 extern "C" {
-    pub fn __jnl(arg1: c_types::c_int, arg2: u128) -> u128;
+    pub fn __jnl(arg1: c_types::c_int, arg2: f64) -> f64;
 }
 extern "C" {
-    pub fn y0l(arg1: u128) -> u128;
+    pub fn y0l(arg1: f64) -> f64;
 }
 extern "C" {
-    pub fn __y0l(arg1: u128) -> u128;
+    pub fn __y0l(arg1: f64) -> f64;
 }
 extern "C" {
-    pub fn y1l(arg1: u128) -> u128;
+    pub fn y1l(arg1: f64) -> f64;
 }
 extern "C" {
-    pub fn __y1l(arg1: u128) -> u128;
+    pub fn __y1l(arg1: f64) -> f64;
 }
 extern "C" {
-    pub fn ynl(arg1: c_types::c_int, arg2: u128) -> u128;
+    pub fn ynl(arg1: c_types::c_int, arg2: f64) -> f64;
 }
 extern "C" {
-    pub fn __ynl(arg1: c_types::c_int, arg2: u128) -> u128;
+    pub fn __ynl(arg1: c_types::c_int, arg2: f64) -> f64;
 }
 extern "C" {
-    pub fn erfl(arg1: u128) -> u128;
+    pub fn erfl(arg1: f64) -> f64;
 }
 extern "C" {
-    pub fn __erfl(arg1: u128) -> u128;
+    pub fn __erfl(arg1: f64) -> f64;
 }
 extern "C" {
-    pub fn erfcl(arg1: u128) -> u128;
+    pub fn erfcl(arg1: f64) -> f64;
 }
 extern "C" {
-    pub fn __erfcl(arg1: u128) -> u128;
+    pub fn __erfcl(arg1: f64) -> f64;
 }
 extern "C" {
-    pub fn lgammal(arg1: u128) -> u128;
+    pub fn lgammal(arg1: f64) -> f64;
 }
 extern "C" {
-    pub fn __lgammal(arg1: u128) -> u128;
+    pub fn __lgammal(arg1: f64) -> f64;
 }
 extern "C" {
-    pub fn tgammal(arg1: u128) -> u128;
+    pub fn tgammal(arg1: f64) -> f64;
 }
 extern "C" {
-    pub fn __tgammal(arg1: u128) -> u128;
+    pub fn __tgammal(arg1: f64) -> f64;
 }
 extern "C" {
-    pub fn gammal(arg1: u128) -> u128;
+    pub fn gammal(arg1: f64) -> f64;
 }
 extern "C" {
-    pub fn __gammal(arg1: u128) -> u128;
+    pub fn __gammal(arg1: f64) -> f64;
 }
 extern "C" {
-    pub fn lgammal_r(arg1: u128, __signgamp: *mut c_types::c_int) -> u128;
+    pub fn lgammal_r(arg1: f64, __signgamp: *mut c_types::c_int) -> f64;
 }
 extern "C" {
-    pub fn __lgammal_r(arg1: u128, __signgamp: *mut c_types::c_int) -> u128;
+    pub fn __lgammal_r(arg1: f64, __signgamp: *mut c_types::c_int) -> f64;
 }
 extern "C" {
-    pub fn rintl(__x: u128) -> u128;
+    pub fn rintl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn __rintl(__x: u128) -> u128;
+    pub fn __rintl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn nextafterl(__x: u128, __y: u128) -> u128;
+    pub fn nextafterl(__x: f64, __y: f64) -> f64;
 }
 extern "C" {
-    pub fn __nextafterl(__x: u128, __y: u128) -> u128;
+    pub fn __nextafterl(__x: f64, __y: f64) -> f64;
 }
 extern "C" {
-    pub fn nexttowardl(__x: u128, __y: u128) -> u128;
+    pub fn nexttowardl(__x: f64, __y: f64) -> f64;
 }
 extern "C" {
-    pub fn __nexttowardl(__x: u128, __y: u128) -> u128;
+    pub fn __nexttowardl(__x: f64, __y: f64) -> f64;
 }
 extern "C" {
-    pub fn remainderl(__x: u128, __y: u128) -> u128;
+    pub fn remainderl(__x: f64, __y: f64) -> f64;
 }
 extern "C" {
-    pub fn __remainderl(__x: u128, __y: u128) -> u128;
+    pub fn __remainderl(__x: f64, __y: f64) -> f64;
 }
 extern "C" {
-    pub fn scalbnl(__x: u128, __n: c_types::c_int) -> u128;
+    pub fn scalbnl(__x: f64, __n: c_types::c_int) -> f64;
 }
 extern "C" {
-    pub fn __scalbnl(__x: u128, __n: c_types::c_int) -> u128;
+    pub fn __scalbnl(__x: f64, __n: c_types::c_int) -> f64;
 }
 extern "C" {
-    pub fn ilogbl(__x: u128) -> c_types::c_int;
+    pub fn ilogbl(__x: f64) -> c_types::c_int;
 }
 extern "C" {
-    pub fn __ilogbl(__x: u128) -> c_types::c_int;
+    pub fn __ilogbl(__x: f64) -> c_types::c_int;
 }
 extern "C" {
-    pub fn scalblnl(__x: u128, __n: c_types::c_long) -> u128;
+    pub fn scalblnl(__x: f64, __n: c_types::c_long) -> f64;
 }
 extern "C" {
-    pub fn __scalblnl(__x: u128, __n: c_types::c_long) -> u128;
+    pub fn __scalblnl(__x: f64, __n: c_types::c_long) -> f64;
 }
 extern "C" {
-    pub fn nearbyintl(__x: u128) -> u128;
+    pub fn nearbyintl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn __nearbyintl(__x: u128) -> u128;
+    pub fn __nearbyintl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn roundl(__x: u128) -> u128;
+    pub fn roundl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn __roundl(__x: u128) -> u128;
+    pub fn __roundl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn truncl(__x: u128) -> u128;
+    pub fn truncl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn __truncl(__x: u128) -> u128;
+    pub fn __truncl(__x: f64) -> f64;
 }
 extern "C" {
-    pub fn remquol(__x: u128, __y: u128, __quo: *mut c_types::c_int) -> u128;
+    pub fn remquol(__x: f64, __y: f64, __quo: *mut c_types::c_int) -> f64;
 }
 extern "C" {
-    pub fn __remquol(__x: u128, __y: u128, __quo: *mut c_types::c_int) -> u128;
+    pub fn __remquol(__x: f64, __y: f64, __quo: *mut c_types::c_int) -> f64;
 }
 extern "C" {
-    pub fn lrintl(__x: u128) -> c_types::c_long;
+    pub fn lrintl(__x: f64) -> c_types::c_long;
 }
 extern "C" {
-    pub fn __lrintl(__x: u128) -> c_types::c_long;
+    pub fn __lrintl(__x: f64) -> c_types::c_long;
 }
 extern "C" {
-    pub fn llrintl(__x: u128) -> c_types::c_longlong;
+    pub fn llrintl(__x: f64) -> c_types::c_longlong;
 }
 extern "C" {
-    pub fn __llrintl(__x: u128) -> c_types::c_longlong;
+    pub fn __llrintl(__x: f64) -> c_types::c_longlong;
 }
 extern "C" {
-    pub fn lroundl(__x: u128) -> c_types::c_long;
+    pub fn lroundl(__x: f64) -> c_types::c_long;
 }
 extern "C" {
-    pub fn __lroundl(__x: u128) -> c_types::c_long;
+    pub fn __lroundl(__x: f64) -> c_types::c_long;
 }
 extern "C" {
-    pub fn llroundl(__x: u128) -> c_types::c_longlong;
+    pub fn llroundl(__x: f64) -> c_types::c_longlong;
 }
 extern "C" {
-    pub fn __llroundl(__x: u128) -> c_types::c_longlong;
+    pub fn __llroundl(__x: f64) -> c_types::c_longlong;
 }
 extern "C" {
-    pub fn fdiml(__x: u128, __y: u128) -> u128;
+    pub fn fdiml(__x: f64, __y: f64) -> f64;
 }
 extern "C" {
-    pub fn __fdiml(__x: u128, __y: u128) -> u128;
+    pub fn __fdiml(__x: f64, __y: f64) -> f64;
 }
 extern "C" {
-    pub fn fmaxl(__x: u128, __y: u128) -> u128;
+    pub fn fmaxl(__x: f64, __y: f64) -> f64;
 }
 extern "C" {
-    pub fn __fmaxl(__x: u128, __y: u128) -> u128;
+    pub fn __fmaxl(__x: f64, __y: f64) -> f64;
 }
 extern "C" {
-    pub fn fminl(__x: u128, __y: u128) -> u128;
+    pub fn fminl(__x: f64, __y: f64) -> f64;
 }
 extern "C" {
-    pub fn __fminl(__x: u128, __y: u128) -> u128;
+    pub fn __fminl(__x: f64, __y: f64) -> f64;
 }
 extern "C" {
-    pub fn __fpclassifyl(__value: u128) -> c_types::c_int;
+    pub fn __fpclassifyl(__value: f64) -> c_types::c_int;
 }
 extern "C" {
-    pub fn __signbitl(__value: u128) -> c_types::c_int;
+    pub fn __signbitl(__value: f64) -> c_types::c_int;
 }
 extern "C" {
-    pub fn fmal(__x: u128, __y: u128, __z: u128) -> u128;
+    pub fn fmal(__x: f64, __y: f64, __z: f64) -> f64;
 }
 extern "C" {
-    pub fn __fmal(__x: u128, __y: u128, __z: u128) -> u128;
+    pub fn __fmal(__x: f64, __y: f64, __z: f64) -> f64;
 }
 extern "C" {
-    pub fn scalbl(__x: u128, __n: u128) -> u128;
+    pub fn scalbl(__x: f64, __n: f64) -> f64;
 }
 extern "C" {
-    pub fn __scalbl(__x: u128, __n: u128) -> u128;
+    pub fn __scalbl(__x: f64, __n: f64) -> f64;
 }
 extern "C" {
     pub static mut signgam: c_types::c_int;
@@ -1652,12 +1650,12 @@ pub struct exception {
 fn bindgen_test_layout_exception() {
     assert_eq!(
         ::core::mem::size_of::<exception>(),
-        40usize,
+        32usize,
         concat!("Size of: ", stringify!(exception))
     );
     assert_eq!(
         ::core::mem::align_of::<exception>(),
-        8usize,
+        4usize,
         concat!("Alignment of ", stringify!(exception))
     );
     assert_eq!(
@@ -1672,7 +1670,7 @@ fn bindgen_test_layout_exception() {
     );
     assert_eq!(
         unsafe { &(*(::core::ptr::null::<exception>())).name as *const _ as usize },
-        8usize,
+        4usize,
         concat!(
             "Offset of field: ",
             stringify!(exception),
@@ -1682,7 +1680,7 @@ fn bindgen_test_layout_exception() {
     );
     assert_eq!(
         unsafe { &(*(::core::ptr::null::<exception>())).arg1 as *const _ as usize },
-        16usize,
+        8usize,
         concat!(
             "Offset of field: ",
             stringify!(exception),
@@ -1692,7 +1690,7 @@ fn bindgen_test_layout_exception() {
     );
     assert_eq!(
         unsafe { &(*(::core::ptr::null::<exception>())).arg2 as *const _ as usize },
-        24usize,
+        16usize,
         concat!(
             "Offset of field: ",
             stringify!(exception),
@@ -1702,7 +1700,7 @@ fn bindgen_test_layout_exception() {
     );
     assert_eq!(
         unsafe { &(*(::core::ptr::null::<exception>())).retval as *const _ as usize },
-        32usize,
+        24usize,
         concat!(
             "Offset of field: ",
             stringify!(exception),
@@ -1894,12 +1892,12 @@ pub struct stmdev_ctx_t {
 fn bindgen_test_layout_stmdev_ctx_t() {
     assert_eq!(
         ::core::mem::size_of::<stmdev_ctx_t>(),
-        24usize,
+        12usize,
         concat!("Size of: ", stringify!(stmdev_ctx_t))
     );
     assert_eq!(
         ::core::mem::align_of::<stmdev_ctx_t>(),
-        8usize,
+        4usize,
         concat!("Alignment of ", stringify!(stmdev_ctx_t))
     );
     assert_eq!(
@@ -1914,7 +1912,7 @@ fn bindgen_test_layout_stmdev_ctx_t() {
     );
     assert_eq!(
         unsafe { &(*(::core::ptr::null::<stmdev_ctx_t>())).read_reg as *const _ as usize },
-        8usize,
+        4usize,
         concat!(
             "Offset of field: ",
             stringify!(stmdev_ctx_t),
@@ -1924,7 +1922,7 @@ fn bindgen_test_layout_stmdev_ctx_t() {
     );
     assert_eq!(
         unsafe { &(*(::core::ptr::null::<stmdev_ctx_t>())).handle as *const _ as usize },
-        16usize,
+        8usize,
         concat!(
             "Offset of field: ",
             stringify!(stmdev_ctx_t),
