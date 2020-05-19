@@ -9,6 +9,9 @@ use xous_nommu::syscalls::*;
 use core::slice;
 use core::str;
 
+pub const DEBUGGING: bool = false;
+pub const DEBUGGING2: bool = false;  // more verbose debugging
+
 #[macro_use]
 mod debug;
 
@@ -31,7 +34,7 @@ pub const WFX_FIRMWARE_SIZE: usize = 290896; // version C0, as burned to ROM
 /// this is all to avoid including the "alloc" crate, which is "nightly" and not "stable"
 // reserve top 32kiB for WFX FFI RAM buffers
 pub const WFX_RAM_LENGTH: usize = 32*1024;
-pub const WFX_RAM_OFFSET: usize = 0x1000_0000 + 128*1024 - WFX_RAM_LENGTH; // 1001_8000 
+pub const WFX_RAM_OFFSET: usize = 0x1000_0000 + 128*1024 - WFX_RAM_LENGTH; // 1001_8000
 static mut WFX_RAM_ALLOC: usize = WFX_RAM_OFFSET;
 pub const WFX_MAX_PTRS: usize = 16;
 static mut WFX_PTR_COUNT: u8 = 0;
@@ -79,7 +82,7 @@ pub struct scan_data {
 
 static mut SCAN_LIST: scan_data = scan_data {
     scan_list: [
-        scan_result_list_t { 
+        scan_result_list_t {
             ssid_def: sl_wfx_ssid_def_s { ssid_length: 0, ssid: [0; 32usize]},
             mac: [0; 6usize],
             channel: 0,
@@ -116,7 +119,7 @@ impl Empty<sl_wfx_context_t> for sl_wfx_context_t {
             mac_addr_0: sl_wfx_mac_address_t::empty(),
             mac_addr_1: sl_wfx_mac_address_t::empty(),
             state: 0,
-        }   
+        }
     }
 }
 
@@ -150,10 +153,11 @@ pub unsafe extern "C" fn sl_wfx_host_spi_cs_deassert() -> sl_status_t {
 }
 
 #[export_name = "sl_wfx_host_deinit_bus"]
-pub unsafe extern "C" fn sl_wfx_host_deinit_bus()-> sl_status_t { 
+pub unsafe extern "C" fn sl_wfx_host_deinit_bus()-> sl_status_t {
+    if DEBUGGING2 { sprintln!("deinit_bus"); }
     unsafe{ betrusted_pac::Peripherals::steal().WIFI.control.write(|w| w.bits(0)); }
     unsafe{ betrusted_pac::Peripherals::steal().WIFI.wifi.write(|w| w.bits(0)); }
-    SL_STATUS_OK 
+    SL_STATUS_OK
 }
 
 #[export_name = "sl_wfx_host_enable_platform_interrupt"]
@@ -167,7 +171,7 @@ pub unsafe extern "C" fn sl_wfx_host_enable_platform_interrupt() -> sl_status_t 
     .unwrap();
     sprintln!("enabling interrupt: mask {} channel {}", WIFI_EVENT_WIRQ, betrusted_pac::Interrupt::WIFI as u8);
     unsafe{ betrusted_pac::Peripherals::steal().WIFI.ev_enable.write(|w| unsafe{w.bits(WIFI_EVENT_WIRQ)} ); }
-    SL_STATUS_OK    
+    SL_STATUS_OK
 }
 
 #[export_name = "sl_wfx_host_disable_platform_interrupt"]
@@ -183,11 +187,13 @@ pub unsafe extern "C" fn sl_wfx_host_init_bus()-> sl_status_t {
         betrusted_pac::Peripherals::steal().WIFI.control.write(|w| unsafe{w.bits(0)});
         betrusted_pac::Peripherals::steal().WIFI.wifi.write(|w| unsafe{w.bits(0)});
     }
+    if DEBUGGING2 { sprintln!("init_bus"); }
     SL_STATUS_OK
 }
 
 #[export_name = "sl_wfx_host_reset_chip"]
 pub unsafe extern "C" fn sl_wfx_host_reset_chip() -> sl_status_t {
+    if DEBUGGING2 { sprintln!("reset_chip"); }
     betrusted_pac::Peripherals::steal().WIFI.wifi.write(|w| unsafe{w.reset().bit(true)});
     delay_ms(&betrusted_pac::Peripherals::steal(), 10);
     betrusted_pac::Peripherals::steal().WIFI.wifi.write(|w| unsafe{w.reset().bit(false)});
@@ -219,14 +225,14 @@ pub unsafe extern "C" fn sl_wfx_host_set_wake_up_pin(state: u8) -> sl_status_t {
 
 /// no locking because we're single threaded and one process only to drive all of this
 #[export_name = "sl_wfx_host_lock"]
-pub unsafe extern "C" fn sl_wfx_host_lock() -> sl_status_t { 
+pub unsafe extern "C" fn sl_wfx_host_lock() -> sl_status_t {
     wf200_mutex_lock();
-    SL_STATUS_OK 
+    SL_STATUS_OK
 }
 #[export_name = "sl_wfx_host_unlock"]
-pub unsafe extern "C" fn sl_wfx_host_unlock() -> sl_status_t { 
+pub unsafe extern "C" fn sl_wfx_host_unlock() -> sl_status_t {
     wf200_mutex_unlock();
-    SL_STATUS_OK 
+    SL_STATUS_OK
 }
 
 #[doc = " @brief Send data on the SPI bus"]
@@ -248,13 +254,13 @@ pub unsafe extern "C" fn sl_wfx_host_spi_transfer_no_cs_assert(
     unsafe {
         let mut header_len_mtu = header_length / 2; // we do "MTU" in case header_len is odd. should never be but...this is their API
         let mut header_pos: usize = 0;
-//        sprintln!("headerlen: {}", header_length);
+        if DEBUGGING { sprintln!("headerlen: {}", header_length); }
         let headeru16: *mut u16 = header as *mut u16;
         while header_len_mtu > 0 {
             //let word: u16 = ((header.add(header_pos).read() as u16) << 8) | (header.add(header_pos + 1).read() as u16);
             let word: u16 = headeru16.add(header_pos).read();
             betrusted_pac::Peripherals::steal().WIFI.tx.write(|w| w.bits(word as u32));
-//            sprintln!("header: {:02x} {:02x}", word >> 8, word & 0xff);
+            if DEBUGGING { sprintln!("header: {:02x} {:02x}", word >> 8, word & 0xff); }
             header_len_mtu -= 1;
             header_pos += 1;
 
@@ -263,7 +269,7 @@ pub unsafe extern "C" fn sl_wfx_host_spi_transfer_no_cs_assert(
             betrusted_pac::Peripherals::steal().WIFI.control.write(|w| w.go().bit(false));
         }
         if type_ == sl_wfx_host_bus_transfer_type_t_SL_WFX_BUS_READ {
-//            sprintln!("rxlen: {}", buffer_length);
+            if DEBUGGING { sprintln!("rxlen: {}", buffer_length); }
             let mut buffer_len_mtu = buffer_length / 2;
             let mut buffer_pos: usize = 0;
             let mut bufferu16: *mut u16 = buffer as *mut u16;
@@ -275,7 +281,7 @@ pub unsafe extern "C" fn sl_wfx_host_spi_transfer_no_cs_assert(
                 betrusted_pac::Peripherals::steal().WIFI.control.write(|w| w.go().bit(false));
 
                 let word: u16 = betrusted_pac::Peripherals::steal().WIFI.rx.read().bits() as u16;
-//                sprintln!("rx: {:02x} {:02x}", word >> 8, word & 0xff);
+                if DEBUGGING { sprintln!("rx: {:02x} {:02x}", word >> 8, word & 0xff); }
                 bufferu16.add(buffer_pos).write(word);
                 //buffer.add(buffer_pos).write((word >> 8) as u8);
                 //buffer.add(buffer_pos+1).write((word & 0xff) as u8);
@@ -283,7 +289,7 @@ pub unsafe extern "C" fn sl_wfx_host_spi_transfer_no_cs_assert(
                 buffer_pos += 1;
             }
         } else {
-//            sprintln!("txlen: {}", buffer_length);
+            if DEBUGGING { sprintln!("txlen: {}", buffer_length); }
             // transmit the buffer
             let mut buffer_len_mtu: usize = buffer_length as usize / 2;
             let mut buffer_pos: usize = 0;
@@ -292,10 +298,10 @@ pub unsafe extern "C" fn sl_wfx_host_spi_transfer_no_cs_assert(
                 //let word: u16 = ((buffer.add(buffer_pos).read() as u16) << 8) | (buffer.add(buffer_pos+1).read() as u16);
                 let word: u16 = bufferu16.add(buffer_pos).read();
                 betrusted_pac::Peripherals::steal().WIFI.tx.write(|w| w.bits(word as u32));
-//                sprintln!("tx: {:02x} {:02x}", word >> 8, word & 0xff);
+                if DEBUGGING { sprintln!("tx: {:02x} {:02x}", word >> 8, word & 0xff); }
 //                buffer_len_mtu -= 1;
                 buffer_pos += 1;
-    
+
                 betrusted_pac::Peripherals::steal().WIFI.control.write(|w| w.go().bit(true));
                 while betrusted_pac::Peripherals::steal().WIFI.status.read().tip().bit_is_set() {}
                 betrusted_pac::Peripherals::steal().WIFI.control.write(|w| w.go().bit(false));
@@ -400,7 +406,7 @@ pub unsafe extern "C" fn sl_wfx_host_init() -> sl_status_t {
     unsafe {
         HOST_CONTEXT.sl_wfx_firmware_download_progress = 0;
 //        HOST_CONTEXT.waited_event_id = 0;  // this is apparently side-effected elsewhere
-        HOST_CONTEXT.posted_event_id = 0;        
+        HOST_CONTEXT.posted_event_id = 0;
     }
     unsafe {
         WF200_EVENT = false;
@@ -462,7 +468,7 @@ pub unsafe extern "C" fn sl_wfx_host_wait_for_confirmation(
             }
             return SL_STATUS_OK;
         } else {
-//            sprintln!("confid: {}", HOST_CONTEXT.posted_event_id);
+            if DEBUGGING{ sprintln!("confid: {}", HOST_CONTEXT.posted_event_id); }
             delay_ms(unsafe{&betrusted_pac::Peripherals::steal()}, 1);
         }
     }
@@ -490,23 +496,24 @@ pub unsafe extern "C" fn sl_wfx_host_setup_waited_event(event_id: u8) -> sl_stat
 #[export_name = "sl_wfx_host_transmit_frame"]
 pub unsafe extern "C" fn sl_wfx_host_transmit_frame(frame: *mut c_types::c_void, frame_len: u32) -> sl_status_t {
     let mut ret: sl_status_t = SL_STATUS_OK;
-    /*
-    let u8frame: *const u8 = frame as *const u8;
-    sprint!("TX> 0x{:x}: ", frame as u32);
-    for i in 0 .. frame_len {
-        if i < 4 {
-            sprint!("{:02x}", u8frame.add(i as usize).read());
-        } else if i >= 4 && i < 6 {
-            sprint!(" {:02x} ", u8frame.add(i as usize).read());
-        } else {
-            if u8frame.add(i as usize).read() != 0 {
-                sprint!("{}", u8frame.add(i as usize).read() as char);
+    if DEBUGGING {
+        let u8frame: *const u8 = frame as *const u8;
+        sprint!("TX> 0x{:x}: ", frame as u32);
+        for i in 0 .. frame_len {
+            if i < 4 {
+                sprint!("{:02x}", u8frame.add(i as usize).read());
+            } else if i >= 4 && i < 6 {
+                sprint!(" {:02x} ", u8frame.add(i as usize).read());
             } else {
-                sprint!("NULL");
+                if u8frame.add(i as usize).read() != 0 {
+                    sprint!("{}", u8frame.add(i as usize).read() as char);
+                } else {
+                    sprint!("NULL");
+                }
             }
         }
+        sprintln!("");
     }
-    sprintln!("");*/
     unsafe{ ret = sl_wfx_data_write( frame, frame_len ); }
     ret
 }
@@ -660,7 +667,7 @@ pub unsafe extern "C" fn sl_wfx_host_get_pds_data(
 #[export_name = "sl_wfx_host_get_pds_size"]
 pub unsafe extern "C" fn sl_wfx_host_get_pds_size(pds_size: *mut u16) -> sl_status_t {
     *pds_size = PDS_DATA.len() as u16;
-    
+
     SL_STATUS_OK
 }
 
@@ -712,14 +719,14 @@ fn sl_wfx_start_ap_callback(status: u32) {
         unsafe { // wrap FFI C calls in unsafe
             sl_wfx_set_power_mode(sl_wfx_pm_mode_e_WFM_PM_MODE_ACTIVE, 0);
             sl_wfx_disable_device_power_save();
-        } 
+        }
     } else {
         sprintln!("AP start failed");
     }
 }
 
 fn sl_wfx_stop_ap_callback() {
-    // TODO: stop the DHCP server 
+    // TODO: stop the DHCP server
     sprintln!("SoftAP stopped.");
     unsafe{ WIFI_CONTEXT.state &= !sl_wfx_state_t_SL_WFX_AP_INTERFACE_UP; }
     // TODO: lwip_set_ap_link_down -- bring the AP link down
@@ -801,7 +808,9 @@ pub fn wfx_handle_event() -> sl_status_t {
 pub unsafe extern "C" fn sl_wfx_host_post_event(event_payload: *mut sl_wfx_generic_message_t) -> sl_status_t {
     let msg_type: u32 = (*event_payload).header.id as u32;
 
-//    sprintln!("msg_type: 0x{:x}", msg_type);
+    if DEBUGGING {
+        sprintln!("msg_type: 0x{:x}", msg_type);
+    }
     match msg_type {
         sl_wfx_indications_ids_e_SL_WFX_CONNECT_IND_ID => {
             let connect_indication: sl_wfx_connect_ind_t = *(event_payload as *const sl_wfx_connect_ind_t);

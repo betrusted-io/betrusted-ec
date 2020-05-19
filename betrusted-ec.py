@@ -280,9 +280,6 @@ class BetrustedPlatform(LatticePlatform):
             self.comb += platform.request("lcd_disp", 0).eq(1)  # force display on for now
 
             # make an 18 MHz clock for the SPI bus master
-            clkspi = Signal()
-            self.clock_domains.cd_spi = ClockDomain()
-            self.comb += self.cd_spi.clk.eq(clkspi)
             self.specials += Instance(
                 "SB_PLL40_PAD",
                 # Parameters
@@ -300,11 +297,10 @@ class BetrustedPlatform(LatticePlatform):
                 p_ENABLE_ICEGATE = 0,
                 # IO
                 i_PACKAGEPIN = clk12_raw,
-                o_PLLOUTGLOBAL = clkspi,   # from PLL
+                o_PLLOUTGLOBAL = clk18,   # from PLL
                 i_BYPASS = 0,
                 i_RESETB = 1,
             )
-            self.comb += clk18.eq(clkspi) # merge clkspi and clk18 domains - originally design had them separate
             # global buffer for input SPI clock
             self.clock_domains.cd_spislave = ClockDomain()
             clk_spislave = Signal()
@@ -316,7 +312,7 @@ class BetrustedPlatform(LatticePlatform):
                 i_USER_SIGNAL_TO_GLOBAL_BUFFER=clk_spislave_pin,
                 o_GLOBAL_BUFFER_OUTPUT=clk_spislave,
             )
-            platform.add_period_constraint(clk_spislave_pin, 1e9/20e6)  # 24 MHz according to Artix betrusted-soc config
+            platform.add_period_constraint(clk_spislave_pin, 1e9/20e6)  # 20 MHz according to Artix betrusted-soc config
 
             # Add a period constraint for each clock wire.
             # NextPNR picks the clock domain's name randomly from one of the wires
@@ -325,7 +321,6 @@ class BetrustedPlatform(LatticePlatform):
             # it chooses the timing for this net, annotate period constraints for
             # all wires.
             platform.add_period_constraint(clk_spislave, 1e9/20e6)
-            platform.add_period_constraint(clkspi, 1e9/sysclkfreq)
             platform.add_period_constraint(clk18, 1e9/sysclkfreq)
 
 
@@ -651,7 +646,7 @@ class BaseSoC(SoCCore):
         self.add_memory_region("com", self.mem_map["com"], 4, type='io')
 
         # SPI port to wifi (master) ----------------------------------------------------------------------
-        self.submodules.wifi = SpiMaster(platform.request("wifi"), gpio_cs=True)  # control CS with GPIO per wf200 API spec
+        self.submodules.wifi = ClockDomainsRenamer({'spi':'sys'})(SpiMaster(platform.request("wifi"), gpio_cs=True))  # control CS with GPIO per wf200 API spec
 
 
 
@@ -826,9 +821,9 @@ def main():
         cpu_variant = None
 
     if args.revision == 'evt':
-        io = io_dvt
-    elif args.revision == 'dvt':
         io = io_evt
+    elif args.revision == 'dvt':
+        io = io_dvt
     else:
         print("Invalid hardware revision")
         exit(1)
