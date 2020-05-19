@@ -54,25 +54,32 @@ impl BtGyro {
 
     pub fn init(&mut self) -> bool {
         let mut id: u8 = 0;
-        unsafe{ lsm6ds3_device_id_get(&mut self.context, &mut id); }
-        self.id = id;
+        //unsafe{ lsm6ds3_device_id_get(&mut self.context, &mut id); }
+        // self.id = id;
         unsafe {
-        //    lsm6ds3_reset_set(&mut self.context, PROPERTY_ENABLE as u8);
-        //    let mut rst: u8 = 1;
-        //    while rst != 0 {
-        //        lsm6ds3_reset_get(&mut self.context, &mut rst);
-        //    }
-        //   lsm6ds3_block_data_update_set(&mut self.context, PROPERTY_ENABLE as u8);
+            /*
+            lsm6ds3_reset_set(&mut self.context, PROPERTY_ENABLE as u8);
+            let mut rst: u8 = 1;
+            while rst != 0 {
+                lsm6ds3_reset_get(&mut self.context, &mut rst);
+            }
+           lsm6ds3_block_data_update_set(&mut self.context, PROPERTY_ENABLE as u8);
 
-        //    lsm6ds3_xl_full_scale_set(&mut self.context, lsm6ds3_xl_fs_t_LSM6DS3_2g);
-        //    lsm6ds3_gy_full_scale_set(&mut self.context, lsm6ds3_fs_g_t_LSM6DS3_2000dps);
+            lsm6ds3_xl_full_scale_set(&mut self.context, lsm6ds3_xl_fs_t_LSM6DS3_2g);
+            lsm6ds3_gy_full_scale_set(&mut self.context, lsm6ds3_fs_g_t_LSM6DS3_2000dps);
 
-        //    lsm6ds3_xl_data_rate_set(&mut self.context, lsm6ds3_odr_xl_t_LSM6DS3_XL_ODR_12Hz5);
-        //    lsm6ds3_gy_data_rate_set(&mut self.context, lsm6ds3_odr_g_t_LSM6DS3_GY_ODR_12Hz5);
+            lsm6ds3_xl_data_rate_set(&mut self.context, lsm6ds3_odr_xl_t_LSM6DS3_XL_ODR_12Hz5);
+            lsm6ds3_gy_data_rate_set(&mut self.context, lsm6ds3_odr_g_t_LSM6DS3_GY_ODR_12Hz5);
+            */
         }
 
         // the ffi calls from the example code is bunk. hard code some sane defaults, debug FFI some other day.
         let mut i2c = Hardi2c::new();
+        // get the ID code
+        let mut data: [u8; 1] = [0];
+        i2c.i2c_master_read_ffi((LSM6DS3_I2C_ADD_H >> 1) as u8, 0x0f, &mut data, GYRO_TIMEOUT_MS);
+        self.id = data[0];
+
         // reset ctrl3 to sane defaults
         let txbuf: [u8; 2] = [0x12, 0x4];
         i2c.i2c_master((LSM6DS3_I2C_ADD_H >> 1) as u8, Some(&txbuf), None, GYRO_TIMEOUT_MS);
