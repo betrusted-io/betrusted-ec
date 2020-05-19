@@ -391,13 +391,32 @@ impl BtCharger {
     }
 
     pub fn chg_boost(&mut self, i2c: &mut Hardi2c) {
+        // make sure BATFET_DIS is 0
+        self.registers[BQ25618_07_CHG_CTL3] =
+           (ChargeControl3::TMR2X_EN |
+            ChargeControl3::BATFET_DLY_10S |
+            ChargeControl3::VINDPM_TRACK_300MV |
+            ChargeControl3::BATFET_OFF_IGNORE)
+            .bits();
+        let txbuf: [u8; 2] = [BQ25618_07_CHG_CTL3 as u8, self.registers[BQ25618_07_CHG_CTL3]];
+        while i2c.i2c_master(BQ25618_ADDR, Some(&txbuf), None, CHG_TIMEOUT_MS) != 0 {}
+
+        // CHG_CONFIG = 0, BST_CONFIG = 1
         self.registers[BQ25618_01_CHG_CTL] =
            (ChargeControl::WD_RST |
-            ChargeControl::CHARGE_ON |
             ChargeControl::BOOST_ON |
-            ChargeControl::SYS_MIN_3400MV)
+            ChargeControl::SYS_MIN_3200MV)
             .bits();
         let txbuf: [u8; 2] = [BQ25618_01_CHG_CTL as u8, self.registers[BQ25618_01_CHG_CTL]];
+        while i2c.i2c_master(BQ25618_ADDR, Some(&txbuf), None, CHG_TIMEOUT_MS) != 0 {}
+
+        // set boost target voltage to 5V
+        self.registers[BQ25618_06_CHG_CTL2] =
+           ((((4500 - VINDPM_OFFSET_MV) / VINDPM_LSB_MV) << VINDPM_BITOFF) & VINDPM_MASK) as u8 |
+           (ChargeControl2::BOOSTV_5000MV |
+            ChargeControl2::OVP_14200MV)
+            .bits();
+        let txbuf: [u8; 2] = [BQ25618_06_CHG_CTL2 as u8, self.registers[BQ25618_06_CHG_CTL2]];
         while i2c.i2c_master(BQ25618_ADDR, Some(&txbuf), None, CHG_TIMEOUT_MS) != 0 {}
     }
 
