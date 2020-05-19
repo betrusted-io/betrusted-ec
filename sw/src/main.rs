@@ -47,6 +47,7 @@ enum ComState {
     Error,
     Pass,
     GyroRead,
+    PollUsbCc,
 }
 
 const POWER_MASK_FPGA_ON: u32 = 0b10;
@@ -64,6 +65,7 @@ fn main() -> ! {
     use betrusted_hal::api_lm3509::*;
 //    use betrusted_hal::api_charger::*;    // for EVT
     use betrusted_hal::api_bq25618::*;  // for DVT
+    use betrusted_hal::api_tusb320::*;
 
     // Initialize the no-MMU version of Xous, which will give us
     // basic access to tasks and interrupts.
@@ -85,6 +87,9 @@ fn main() -> ! {
 
     charger.chg_set_autoparams(&mut i2c);
     charger.chg_start(&mut i2c);
+
+    let mut usb_cc = BtUsbCc::new();
+    usb_cc.init(&mut i2c, &p);
 
     let mut gyro: BtGyro = BtGyro::new();
     gyro.init();
@@ -115,9 +120,9 @@ fn main() -> ! {
     let mut start_time: u32 = get_time_ms(&p);
     let mut wifi_ready: bool = false;
 
-    //let mut chg_reset_time: u32 = get_time_ms(&p);
     charger.update_regs(&mut i2c);
-    // sprintln!("registers: {:?}", charger);
+
+    let mut usb_cc_event = false;
 
     let use_wifi: bool = true;
     let do_power: bool = false;
@@ -168,6 +173,9 @@ fn main() -> ! {
             // routine pings & housekeeping
             if loopcounter % 2 == 0 {
                 charger.chg_keepalive_ping(&mut i2c);
+                if !usb_cc_event {
+                    usb_cc_event = usb_cc.check_event(&mut i2c, &p);
+                }
             } else {
                 voltage = gg_voltage(&mut i2c);
                 if soc_on {
@@ -274,6 +282,7 @@ fn main() -> ! {
                 // 0x9200 shipmode
                 // 0xA000 fetch latest gyro XYZ data
                 0xA100 => {linkindex = 0; comstate = ComState::GyroRead},
+                0xB000 => {linkindex = 0; comstate = ComState::PollUsbCc},
                 0xF0F0 => {
                     // this a "read continuation" command, in other words, return read data
                     // based on the current ComState
@@ -295,13 +304,15 @@ fn main() -> ! {
             // these responses should all be "on-hand", e.g. not requiring an I2C transaction to retrieve
             match comstate {
                 ComState::Stat => {
-                    if linkindex < 7 {
-                        tx = charger.registers[linkindex] as u16;
-                    } else if linkindex == 7 {
+                    if linkindex == 0 {
+                        tx = 0x8888; // first response is just to the initial command
+                    } else if linkindex > 0 && linkindex < 0xD {
+                        tx = charger.registers[linkindex - 1] as u16;
+                    } else if linkindex == 0xE {
                         tx = voltage as u16;
-                    } else if linkindex == 8 {
+                    } else if linkindex == 0xF {
                         tx = stby_current as u16;
-                    } else if linkindex == 9 {
+                    } else if linkindex == 0x10 {
                         tx = current as u16;
                     } else {
                         comstate = ComState::Idle;
@@ -346,6 +357,15 @@ fn main() -> ! {
                         _ => tx = 0xEEEE,
                     }
                 },
+                ComState::PollUsbCc => {
+                    match linkindex {
+                        0 => { if usb_cc_event { tx = 1 } else { tx = 0 } usb_cc_event = false; }, // clear the usb_cc_event pending flag as its been checked
+                        1 => tx = usb_cc.status[0] as u16,
+                        2 => tx = usb_cc.status[1] as u16,
+                        3 => tx = usb_cc.status[2] as u16,
+                        _ => tx= 0xEEEE,
+                    }
+                }
                 ComState::Error => {
                     tx = 0xEEEE;
                 },
@@ -365,8 +385,11 @@ fn main() -> ! {
                 0x5A00 => { // charging mode
                     charger.chg_start(&mut i2c);
                 },
-                0x5AFE => { // boost mode
+                0x5ABB => { // boost on
                     charger.chg_boost(&mut i2c);
+                },
+                0x5AFE => { // boost off
+                    charger.chg_boost_off(&mut i2c);
                 },
                 0x6800..=0x6BFF => {
                         let main_bl_level: u8 = (rx & 0x1F) as u8;
