@@ -19,6 +19,9 @@ use wfx_rs::hal_wf200::wfx_scan_ongoing;
 use wfx_rs::hal_wf200::wfx_start_scan;
 use wfx_rs::hal_wf200::wfx_handle_event;
 use wfx_rs::hal_wf200::wf200_mutex_get;
+use wfx_rs::hal_wf200::wf200_ssid_get_list;
+use wfx_rs::hal_wf200::wf200_ssid_updated;
+use wfx_rs::hal_wf200::SsidResult;
 use wfx_bindings::*;
 
 use gyro_rs::hal_gyro::BtGyro;
@@ -48,6 +51,8 @@ enum ComState {
     Pass,
     GyroRead,
     PollUsbCc,
+    SsidCheck,
+    SsidFetch,
 }
 
 const POWER_MASK_FPGA_ON: u32 = 0b10;
@@ -119,6 +124,7 @@ fn main() -> ! {
 
     let mut start_time: u32 = get_time_ms(&p);
     let mut wifi_ready: bool = false;
+    let mut ssid_list: [SsidResult; 6] = [SsidResult::default(); 6];
 
     charger.update_regs(&mut i2c);
 
@@ -145,7 +151,7 @@ fn main() -> ! {
             start_time = get_time_ms(&p);
         }
         if wifi_ready && use_wifi {
-            if get_time_ms(&p) - start_time > 600_000 {
+            if get_time_ms(&p) - start_time > 20_000 {
                 sprintln!("starting ssid scan");
                 wfx_start_scan();
                 start_time = get_time_ms(&p);
@@ -270,6 +276,14 @@ fn main() -> ! {
             let mut tx: u16 = 0;
             // first parse rx and try to stuff a tx response as fast as possible
             match rx {
+                0x2000 => {
+                    linkindex = 0;
+                    comstate = ComState::SsidCheck;
+                },
+                0x2100 => {
+                    linkindex = 0;
+                    comstate = ComState::SsidFetch;
+                },
                 0x4000 => {
                     linkindex = 0;
                     comstate = ComState::LoopTest;
@@ -303,6 +317,22 @@ fn main() -> ! {
 
             // these responses should all be "on-hand", e.g. not requiring an I2C transaction to retrieve
             match comstate {
+                ComState::SsidCheck => {
+                    if wf200_ssid_updated() {
+                        tx = 1;
+                    } else {
+                        tx = 0;
+                    }
+                },
+                ComState::SsidFetch => {
+                    if linkindex < 16 * 6 {
+                        tx = ssid_list[linkindex / 16].ssid[(linkindex % 16)*2] as u16 |
+                        ((ssid_list[linkindex / 16].ssid[(linkindex % 16)*2+1] as u16) << 8);
+                    } else {
+                        tx = 0;
+                        comstate = ComState::Idle;
+                    }
+                }
                 ComState::Stat => {
                     if linkindex == 0 {
                         tx = 0x8888; // first response is just to the initial command
@@ -382,6 +412,11 @@ fn main() -> ! {
             // p.WIFI.ev_enable.write(|w| unsafe{w.bits(0x1)} ); // re-enable wifi interrupts
 
             match rx {
+                0x2100 => { // ssid fetch
+                    if linkindex == 1 { // only grab it on the initial command request
+                        ssid_list = wf200_ssid_get_list();
+                    }
+                }
                 0x5A00 => { // charging mode
                     charger.chg_start(&mut i2c);
                 },

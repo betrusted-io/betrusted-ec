@@ -50,6 +50,48 @@ pub fn wf200_mutex_get() -> bool { unsafe{ WF200_MUTEX } }
 pub fn wf200_mutex_lock() { unsafe{ WF200_MUTEX = true; } }
 pub fn wf200_mutex_unlock() { unsafe{ WF200_MUTEX = false; } }
 
+#[derive(Copy, Clone)]
+pub struct SsidResult {
+    pub mac: [u8; 6],
+    pub ssid: [u8; 32],
+    pub rssi: u16,
+    pub channel: u8,
+}
+
+impl Default for SsidResult {
+    fn default() -> SsidResult {
+        SsidResult {
+            mac: [0; 6],
+            ssid: [0; 32],
+            rssi: 0,
+            channel: 0,
+        }
+    }
+}
+
+// can't use initializer because calls in statics aren't allowed. :-/ that was a waste of time
+static mut SSID_ARRAY: [SsidResult; 6] = [
+    SsidResult{mac: [0;6], ssid: [0; 32], rssi: 0, channel: 0},
+    SsidResult{mac: [0;6], ssid: [0; 32], rssi: 0, channel: 0},
+    SsidResult{mac: [0;6], ssid: [0; 32], rssi: 0, channel: 0},
+    SsidResult{mac: [0;6], ssid: [0; 32], rssi: 0, channel: 0},
+    SsidResult{mac: [0;6], ssid: [0; 32], rssi: 0, channel: 0},
+    SsidResult{mac: [0;6], ssid: [0; 32], rssi: 0, channel: 0},
+    ];
+static mut SSID_INDEX: usize = 0;
+static mut SSID_UPDATED: bool = false;
+
+pub fn wf200_ssid_updated() -> bool {
+    unsafe{ SSID_UPDATED }
+}
+
+pub fn wf200_ssid_get_list() -> [SsidResult; 6] {
+    unsafe{
+        SSID_UPDATED = false;
+        SSID_ARRAY
+    }
+}
+
 /// a non-official structure that's baked into the sl_wfx_host.c file, and
 /// is used to pass data between various functions within the driver
 #[repr(C, packed)]
@@ -754,12 +796,26 @@ fn sl_wfx_scan_result_callback(scan_result: *const sl_wfx_scan_result_ind_body_t
             (*scan_result).mac[4], (*scan_result).mac[5],
             ssid
         );
+        if SSID_INDEX < SSID_ARRAY.len() {
+            SSID_ARRAY[SSID_INDEX] = SsidResult {
+                mac: [(*scan_result).mac[0], (*scan_result).mac[1],
+                (*scan_result).mac[2], (*scan_result).mac[3],
+                (*scan_result).mac[4], (*scan_result).mac[5]],
+                rssi: (*scan_result).rcpi,
+                channel: (*scan_result).channel as u8,
+                ssid: [0; 32]
+            };
+            for i in 0..32 {
+                SSID_ARRAY[SSID_INDEX].ssid[i] = (*scan_result).ssid_def.ssid[i];
+            }
+        }
+        SSID_INDEX += 1;
     }
 }
 
 pub fn wfx_start_scan() {
     unsafe {
-        let result = sl_wfx_send_scan_command(sl_wfx_scan_mode_e_WFM_SCAN_MODE_ACTIVE as u16, 
+        let result = sl_wfx_send_scan_command(sl_wfx_scan_mode_e_WFM_SCAN_MODE_ACTIVE as u16,
             0 as *const u8, 0, 0 as *const sl_wfx_ssid_def_t, 0, 0 as *const u8, 0, 0 as *const u8);
 
         if result == SL_STATUS_OK || result == SL_STATUS_WIFI_WARNING {
@@ -777,6 +833,8 @@ fn sl_wfx_scan_start_flag() {
     unsafe{ SCAN_ONGOING = true; }
 }
 fn sl_wfx_scan_complete_callback(status: u32) {
+    sprintln!("scan completed");
+    unsafe{ SSID_UPDATED = true; }
     // nothing for now
     unsafe{ SCAN_ONGOING = false; }
 }
@@ -875,6 +933,7 @@ pub unsafe extern "C" fn sl_wfx_host_post_event(event_payload: *mut sl_wfx_gener
         },
         sl_wfx_confirmations_ids_e_SL_WFX_START_SCAN_CNF_ID => {
             sprintln!("scan start confirmation.");
+            SSID_INDEX = 0;
         },
         sl_wfx_confirmations_ids_e_SL_WFX_STOP_SCAN_CNF_ID => {
             sprintln!("scan stop confirmation.");
