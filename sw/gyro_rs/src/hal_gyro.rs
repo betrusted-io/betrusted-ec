@@ -54,7 +54,7 @@ impl BtGyro {
 
     pub fn init(&mut self) -> bool {
         let mut id: u8 = 0;
-        if true { // use ffi calls from ST micro
+        if false { // use ffi calls from ST micro
             unsafe{ lsm6ds3_device_id_get(&mut self.context, &mut id); }
             self.id = id;
             unsafe {
@@ -100,7 +100,7 @@ impl BtGyro {
     pub fn update_xyz(&mut self) -> bool {
         let mut data: [u8; 6] = [0xff; 6];
 
-        if true {
+        if false {
             // use FFI
             unsafe {
             lsm6ds3_acceleration_raw_get(&mut self.context, data.as_ptr() as *mut u8);
