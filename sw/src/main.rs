@@ -248,6 +248,7 @@ fn main() -> ! {
                         .kbddrive().bit(false)
                         .kbdscan().bits(3)); }
                     if p.POWER.stats.read().monkey().bits() == 3 { // both keys have to be hit
+                        sprintln!("detect power up event!");
                         // power on the SOC
                         unsafe{ p.POWER.power.write(|w| w
                             .self_().bit(true)
@@ -433,6 +434,7 @@ fn main() -> ! {
                     },
                 0x8000 => {charger.update_regs(&mut i2c);},
                 0x9000 => {
+                    sprintln!("got power down request from soc!");
                     linkindex = 0;
                     // ignore rapid, successive power down requests
                     if get_time_ms(&p) - pd_loop_timer > 1500 {
