@@ -43,7 +43,7 @@ fn i2c_tip_wait(p: &betrusted_pac::Peripherals, timeout_ms: u32) -> u32 {
 }
 
 #[doc = "The primary I2C interface call. This version currently blocks until the transaction is done."]
-pub fn i2c_master(p: &betrusted_pac::Peripherals, addr: u8, txbuf: Option<&[u8]>, rxbuf: Option<&mut [u8]>, timeout_ms: u32) -> u32 {
+pub fn i2c_controller(p: &betrusted_pac::Peripherals, addr: u8, txbuf: Option<&[u8]>, rxbuf: Option<&mut [u8]>, timeout_ms: u32) -> u32 {
     let mut ret: u32 = 0;
 
     // write half

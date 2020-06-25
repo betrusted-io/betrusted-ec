@@ -7,30 +7,30 @@ from migen.genlib.fifo import SyncFIFOBuffered
 from migen.genlib.cdc import MultiReg
 from migen.genlib.cdc import PulseSynchronizer
 
-class SpiMaster(Module, AutoCSR, AutoDoc):
+class SpiController(Module, AutoCSR, AutoDoc):
     def __init__(self, pads, gpio_cs=False):
-        self.intro = ModuleDoc("""Simple soft SPI master module optimized for Betrusted applications
+        self.intro = ModuleDoc("""Simple soft SPI controller module optimized for Betrusted applications
 
         Requires a clock domain 'spi', which runs at the speed of the SPI bus. 
         
         Simulation benchmarks 16.5us to transfer 16x16 bit words including setup overhead (sysclk=100MHz, spiclk=25MHz)
         which is about 15Mbps system-level performance, assuming the receiver can keep up.
         
-        Note that for the ICE40 master, timing simulations indicate the clock rate could go higher than 24MHz, although
+        Note that for the ICE40 controller, timing simulations indicate the clock rate could go higher than 24MHz, although
         there is some question if setup/hold times to the external can be met after all delays are counted.
         
         The gpio_cs parameter when true turns CS into a GPIO to be managed by software; when false,
-        it is automatically asserted/de-asserted by the SpiMaster machine.
+        it is automatically asserted/de-asserted by the SpiController machine.
         
         gpio_cs is {} in this instance. 
         """.format(gpio_cs))
 
-        self.miso = pads.miso
-        self.mosi = pads.mosi
+        self.cipo = pads.cipo
+        self.copi = pads.copi
         self.csn = pads.csn
 
-        self.tx = CSRStorage(16, name="tx", description="""Tx data, for MOSI""")
-        self.rx = CSRStatus(16, name="rx", description="""Rx data, from MISO""")
+        self.tx = CSRStorage(16, name="tx", description="""Tx data, for COPI""")
+        self.rx = CSRStatus(16, name="rx", description="""Rx data, from CIPO""")
         if gpio_cs:
             self.cs = CSRStorage(fields=[
                 CSRField("cs", description="Writing `1` to this asserts cs_n, that is, brings it low; writing `0`, brings it high")
@@ -105,8 +105,8 @@ class SpiMaster(Module, AutoCSR, AutoDoc):
                    NextValue(self.txfull_r, 0),
                    NextValue(self.tip_r, 1),
                    NextValue(self.csn_r, 0),
-                   NextValue(self.mosi, tx_swab[15]),
-                   NextValue(self.rx_r, Cat(self.miso, self.rx_r[:15])),
+                   NextValue(self.copi, tx_swab[15]),
+                   NextValue(self.rx_r, Cat(self.cipo, self.rx_r[:15])),
                    NextValue(spiclk_run, 1),
                 ).Else(
                     NextValue(spiclk_run, 0),
@@ -120,10 +120,10 @@ class SpiMaster(Module, AutoCSR, AutoDoc):
         fsm.act("RUN",
                 If(spicount > 0,
                    NextValue(spiclk_run, 1),
-                   NextValue(self.mosi, self.tx_r[15]),
+                   NextValue(self.copi, self.tx_r[15]),
                    NextValue(self.tx_r, Cat(0, self.tx_r[:15])),
                    NextValue(spicount, spicount - 1),
-                   NextValue(self.rx_r, Cat(self.miso, self.rx_r[:15])),
+                   NextValue(self.rx_r, Cat(self.cipo, self.rx_r[:15])),
                 ).Else(
                     NextValue(spiclk_run, 0),
                     NextValue(self.csn_r, 1),
@@ -168,9 +168,9 @@ class StickyBit(Module):
             )
         ]
 
-class SpiFifoSlave(Module, AutoCSR, AutoDoc):
+class SpiFifoPeripheral(Module, AutoCSR, AutoDoc):
     def __init__(self, pads):
-        self.intro = ModuleDoc("""Simple soft SPI slave module optimized for Betrusted-EC (UP5K arch) use
+        self.intro = ModuleDoc("""Simple soft SPI peripheral module optimized for Betrusted-EC (UP5K arch) use
 
         Assumes a free-running sclk and csn performs the function of framing bits
         Thus csn must go high between each frame, you cannot hold csn low for burst transfers.
@@ -190,8 +190,8 @@ class SpiFifoSlave(Module, AutoCSR, AutoDoc):
         run much faster, and also the implementation is extremely small.     
         """)
 
-        self.miso = pads.miso
-        self.mosi = pads.mosi
+        self.cipo = pads.cipo
+        self.copi = pads.copi
         self.csn = pads.csn
 
         ### clock is not wired up in this module, it's moved up to CRG for implementation-dependent buffering
@@ -273,7 +273,7 @@ class SpiFifoSlave(Module, AutoCSR, AutoDoc):
             rd_ack.eq(rd_ack_pipe),
         ]
 
-        # tx/write spislave
+        # tx/write spiperipheral
         self.submodules.tx_fifo = tx_fifo = ResetInserter(["sys"])(SyncFIFOBuffered(16, 1280))
         self.comb += self.tx_fifo.reset_sys.eq(self.control.fields.reset | ResetSignal())
         self.submodules.tx_over = StickyBit()
@@ -334,7 +334,7 @@ class SpiFifoSlave(Module, AutoCSR, AutoDoc):
         ]
 
         rx = Signal(16)
-        self.comb += self.miso.eq(self.txrx[15])
+        self.comb += self.cipo.eq(self.txrx[15])
         self.comb += [
             self.rx_fifo.din.eq(rx),
             self.rx_fifo.we.eq(donepulse),
@@ -346,11 +346,11 @@ class SpiFifoSlave(Module, AutoCSR, AutoDoc):
             If(self.tx_fifo.readable, tx_data.eq(self.tx_fifo.dout)
             ).Else(tx_data.eq(0xDDDD)) # in case of underflow send an error code
         ]
-        self.sync.spislave += [
+        self.sync.spi_peripheral += [
             # "Sloppy" clock boundary crossing allowed because rx is, in theory, static when donepulse happens
             If(self.csn == 0,
-               self.txrx.eq(Cat(self.mosi, self.txrx[0:15])),
-               rx.eq(Cat(self.mosi, self.txrx[0:15])),
+               self.txrx.eq(Cat(self.copi, self.txrx[0:15])),
+               rx.eq(Cat(self.copi, self.txrx[0:15])),
             ).Else(
                rx.eq(rx),
                self.txrx.eq(tx_data)
@@ -359,22 +359,22 @@ class SpiFifoSlave(Module, AutoCSR, AutoDoc):
 
 
 
-class SpiSlave(Module, AutoCSR, AutoDoc):
+class SpiPeripheral(Module, AutoCSR, AutoDoc):
     def __init__(self, pads):
-        self.intro = ModuleDoc("""Simple soft SPI slave module optimized for Betrusted-EC (UP5K arch) use
+        self.intro = ModuleDoc("""Simple soft SPI peripheral module optimized for Betrusted-EC (UP5K arch) use
 
         Assumes a free-running sclk and csn performs the function of framing bits
         Thus csn must go high between each frame, you cannot hold csn low for burst transfers
         """)
 
-        self.miso = pads.miso
-        self.mosi = pads.mosi
+        self.cipo = pads.cipo
+        self.copi = pads.copi
         self.csn = pads.csn
 
         ### clock is not wired up in this module, it's moved up to CRG for implementation-dependent buffering
 
-        self.tx = CSRStorage(16, name="tx", description="""Tx data, to MISO""")
-        self.rx = CSRStatus(16, name="rx", description="""Rx data, from MOSI""")
+        self.tx = CSRStorage(16, name="tx", description="""Tx data, to CIPO""")
+        self.rx = CSRStatus(16, name="rx", description="""Rx data, from COPI""")
         self.control = CSRStorage(fields=[
             CSRField("intena", description="Enable interrupt on transaction finished"),
             CSRField("clrerr", description="Clear Rx overrun error", pulse=True),
@@ -427,13 +427,13 @@ class SpiSlave(Module, AutoCSR, AutoDoc):
             )
         ]
 
-        self.comb += self.miso.eq(self.txrx[15])
+        self.comb += self.cipo.eq(self.txrx[15])
         csn_d = Signal()
-        self.sync.spislave += [
+        self.sync.spi_peripheral += [
             csn_d.eq(self.csn),
             # "Sloppy" clock boundary crossing allowed because "rxfull" is synchronized and CPU should grab data based on that
             If(self.csn == 0,
-               self.txrx.eq(Cat(self.mosi, self.txrx[0:15])),
+               self.txrx.eq(Cat(self.copi, self.txrx[0:15])),
                self.rx.status.eq(self.rx.status),
             ).Else(
                If(self.csn & ~csn_d,

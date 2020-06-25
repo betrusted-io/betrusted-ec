@@ -287,7 +287,7 @@ impl Hardi2c {
     /// The primary I2C interface call. This version currently blocks until the transaction is done.
     /// Due to a limitation of the hardware, rxbuf should either be None, or have a length >= 2!!
     /// So, for single-byte reads, read 2 bytes, ignore the second.
-    pub fn i2c_master(&mut self, addr: u8, txbuf: Option<&[u8]>, rxbuf: Option<&mut [u8]>, timeout_ms: u32) -> u32 {
+    pub fn i2c_controller(&mut self, addr: u8, txbuf: Option<&[u8]>, rxbuf: Option<&mut [u8]>, timeout_ms: u32) -> u32 {
         let mut ret: u32 = 0;
 
         // hoist this up to optimize performance a bit
@@ -401,7 +401,7 @@ impl Hardi2c {
 
     /// A special version for C-FFI access functions that assume a separate "register" and "data"
     /// fields.
-    pub fn i2c_master_write_ffi(&mut self, addr: u8, reg: u8, data: &[u8],  timeout_ms: u32) -> u32 {
+    pub fn i2c_controller_write_ffi(&mut self, addr: u8, reg: u8, data: &[u8],  timeout_ms: u32) -> u32 {
         let mut ret: u32 = 0;
 
         unsafe{ (*self.txd).write((addr << 1 | 0) as u32); }
@@ -447,7 +447,7 @@ impl Hardi2c {
 
     /// A special version for C-FFI access functions that assume a separate "register" and "data"
     /// fields.
-    pub fn i2c_master_read_ffi(&mut self, addr: u8, reg: u8, rxbuf_checked: &mut [u8], timeout_ms: u32) -> u32 {
+    pub fn i2c_controller_read_ffi(&mut self, addr: u8, reg: u8, rxbuf_checked: &mut [u8], timeout_ms: u32) -> u32 {
         let mut ret: u32 = 0;
 
         // write half

@@ -56,8 +56,8 @@ io_dvt = [
     ("spiflash", 0,
      Subsignal("cs_n", Pins("16"), IOStandard("LVCMOS18")),
      Subsignal("clk", Pins("15"), IOStandard("LVCMOS18")),
-     Subsignal("miso", Pins("17"), IOStandard("LVCMOS18")),
-     Subsignal("mosi", Pins("14"), IOStandard("LVCMOS18")),
+     Subsignal("cipo", Pins("17"), IOStandard("LVCMOS18")),
+     Subsignal("copi", Pins("14"), IOStandard("LVCMOS18")),
      Subsignal("wp", Pins("18"), IOStandard("LVCMOS18")),
      Subsignal("hold", Pins("13"), IOStandard("LVCMOS18")),
      ),
@@ -80,8 +80,8 @@ io_dvt = [
 
     ("com", 0,
         Subsignal("csn", Pins("11"), IOStandard("LVCMOS18")),
-        Subsignal("miso", Pins("10"), IOStandard("LVCMOS18")),
-        Subsignal("mosi", Pins("9"), IOStandard("LVCMOS18")),
+        Subsignal("cipo", Pins("10"), IOStandard("LVCMOS18")),
+        Subsignal("copi", Pins("9"), IOStandard("LVCMOS18")),
         Subsignal("irq", Pins("6"), IOStandard("LVCMOS18")), # ACTIVE HIGH
      ),
     ("com_sclk", 0, Pins("20"), IOStandard("LVCMOS18")),
@@ -104,8 +104,8 @@ io_dvt = [
      ),
 
     ("wifi", 0,
-         Subsignal("miso", Pins("27"), IOStandard("LVCMOS18")),
-         Subsignal("mosi", Pins("28"), IOStandard("LVCMOS18")),
+         Subsignal("cipo", Pins("27"), IOStandard("LVCMOS18")),
+         Subsignal("copi", Pins("28"), IOStandard("LVCMOS18")),
          Subsignal("csn", Pins("32"), IOStandard("LVCMOS18")),
          Subsignal("sclk", Pins("26"), IOStandard("LVCMOS18")),
          Subsignal("pa_enable", Pins("34"), IOStandard("LVCMOS18")),
@@ -147,8 +147,8 @@ io_evt = [
     ("spiflash", 0,
      Subsignal("cs_n", Pins("16"), IOStandard("LVCMOS18")),
      Subsignal("clk", Pins("15"), IOStandard("LVCMOS18")),
-     Subsignal("miso", Pins("17"), IOStandard("LVCMOS18")),
-     Subsignal("mosi", Pins("14"), IOStandard("LVCMOS18")),
+     Subsignal("cipo", Pins("17"), IOStandard("LVCMOS18")),
+     Subsignal("copi", Pins("14"), IOStandard("LVCMOS18")),
      Subsignal("wp", Pins("18"), IOStandard("LVCMOS18")),
      Subsignal("hold", Pins("13"), IOStandard("LVCMOS18")),
      ),
@@ -171,8 +171,8 @@ io_evt = [
 
     ("com", 0,
         Subsignal("csn", Pins("11"), IOStandard("LVCMOS18")),
-        Subsignal("miso", Pins("10"), IOStandard("LVCMOS18")),
-        Subsignal("mosi", Pins("9"), IOStandard("LVCMOS18")),
+        Subsignal("cipo", Pins("10"), IOStandard("LVCMOS18")),
+        Subsignal("copi", Pins("9"), IOStandard("LVCMOS18")),
         Subsignal("irq", Pins("6"), IOStandard("LVCMOS18")), # ACTIVE HIGH
      ),
     ("com_sclk", 0, Pins("20"), IOStandard("LVCMOS18")),
@@ -195,8 +195,8 @@ io_evt = [
      ),
 
     ("wifi", 0,
-         Subsignal("miso", Pins("32"), IOStandard("LVCMOS18")),
-         Subsignal("mosi", Pins("34"), IOStandard("LVCMOS18")),
+         Subsignal("cipo", Pins("32"), IOStandard("LVCMOS18")),
+         Subsignal("copi", Pins("34"), IOStandard("LVCMOS18")),
          Subsignal("csn", Pins("28"), IOStandard("LVCMOS18")),
          Subsignal("sclk", Pins("36"), IOStandard("LVCMOS18")),
          Subsignal("pa_enable", Pins("27"), IOStandard("LVCMOS18")),
@@ -279,7 +279,7 @@ class BetrustedPlatform(LatticePlatform):
             ]
             self.comb += platform.request("lcd_disp", 0).eq(1)  # force display on for now
 
-            # make an 18 MHz clock for the SPI bus master
+            # make an 18 MHz clock for the SPI bus controller
             self.specials += Instance(
                 "SB_PLL40_PAD",
                 # Parameters
@@ -302,17 +302,17 @@ class BetrustedPlatform(LatticePlatform):
                 i_RESETB = 1,
             )
             # global buffer for input SPI clock
-            self.clock_domains.cd_spislave = ClockDomain()
-            clk_spislave = Signal()
-            self.comb += self.cd_spislave.clk.eq(clk_spislave)
-            clk_spislave_pin = platform.request("com_sclk")
+            self.clock_domains.cd_spi_peripheral = ClockDomain()
+            clk_spi_peripheral = Signal()
+            self.comb += self.cd_spi_peripheral.clk.eq(clk_spi_peripheral)
+            clk_spi_peripheral_pin = platform.request("com_sclk")
 
             self.specials += Instance(
                 "SB_GB",
-                i_USER_SIGNAL_TO_GLOBAL_BUFFER=clk_spislave_pin,
-                o_GLOBAL_BUFFER_OUTPUT=clk_spislave,
+                i_USER_SIGNAL_TO_GLOBAL_BUFFER=clk_spi_peripheral_pin,
+                o_GLOBAL_BUFFER_OUTPUT=clk_spi_peripheral,
             )
-            platform.add_period_constraint(clk_spislave_pin, 1e9/20e6)  # 20 MHz according to Artix betrusted-soc config
+            platform.add_period_constraint(clk_spi_peripheral_pin, 1e9/20e6)  # 20 MHz according to Artix betrusted-soc config
 
             # Add a period constraint for each clock wire.
             # NextPNR picks the clock domain's name randomly from one of the wires
@@ -320,7 +320,7 @@ class BetrustedPlatform(LatticePlatform):
             # to NextPNR in a file called `top_pre_pack.py`.  In order to ensure
             # it chooses the timing for this net, annotate period constraints for
             # all wires.
-            platform.add_period_constraint(clk_spislave, 1e9/20e6)
+            platform.add_period_constraint(clk_spi_peripheral, 1e9/20e6)
             platform.add_period_constraint(clk18, 1e9/sysclkfreq)
 
 
@@ -402,14 +402,14 @@ class PicoRVSpi(Module, AutoCSR, AutoDoc):
             self.stat.status.eq(cfg_out),
         ]
 
-        mosi_pad = TSTriple()
-        miso_pad = TSTriple()
+        copi_pad = TSTriple()
+        cipo_pad = TSTriple()
         cs_n_pad = TSTriple()
         clk_pad  = TSTriple()
         wp_pad   = TSTriple()
         hold_pad = TSTriple()
-        self.specials += mosi_pad.get_tristate(pads.mosi)
-        self.specials += miso_pad.get_tristate(pads.miso)
+        self.specials += copi_pad.get_tristate(pads.copi)
+        self.specials += cipo_pad.get_tristate(pads.cipo)
         self.specials += cs_n_pad.get_tristate(pads.cs_n)
         self.specials += clk_pad.get_tristate(pads.clk)
         self.specials += wp_pad.get_tristate(pads.wp)
@@ -449,20 +449,20 @@ class PicoRVSpi(Module, AutoCSR, AutoDoc):
         self.comb += bus.dat_r.eq(o_rdata)
 
         self.specials += Instance("spimemio",
-            o_flash_io0_oe = mosi_pad.oe,
-            o_flash_io1_oe = miso_pad.oe,
+            o_flash_io0_oe = copi_pad.oe,
+            o_flash_io1_oe = cipo_pad.oe,
             o_flash_io2_oe = wp_pad.oe,
             o_flash_io3_oe = hold_pad.oe,
 
-            o_flash_io0_do = mosi_pad.o,
-            o_flash_io1_do = miso_pad.o,
+            o_flash_io0_do = copi_pad.o,
+            o_flash_io1_do = cipo_pad.o,
             o_flash_io2_do = wp_pad.o,
             o_flash_io3_do = hold_pad.o,
             o_flash_csb    = cs_n_pad.o,
             o_flash_clk    = clk_pad.o,
 
-            i_flash_io0_di = mosi_pad.i,
-            i_flash_io1_di = miso_pad.i,
+            i_flash_io0_di = copi_pad.i,
+            i_flash_io1_di = cipo_pad.i,
             i_flash_io2_di = wp_pad.i,
             i_flash_io3_di = hold_pad.i,
 
@@ -639,14 +639,14 @@ class BaseSoC(SoCCore):
         # High-resolution tick timer ---------------------------------------------------------------------
         self.submodules.ticktimer = TickTimer(1000, clk_freq, bits=40)
 
-        # COM port (spi slave to Artix) ------------------------------------------------------------------
+        # COM port (spi peripheral to Artix) ------------------------------------------------------------------
         # FIXME: we should have these RTL blocks come from a deps/gateware submodule, not rtl. This way sims are consistent with implementation
-        self.submodules.com = SpiFifoSlave(platform.request("com"))
+        self.submodules.com = SpiFifoPeripheral(platform.request("com"))
         self.add_wb_slave(self.mem_map["com"], self.com.bus, 4)
         self.add_memory_region("com", self.mem_map["com"], 4, type='io')
 
-        # SPI port to wifi (master) ----------------------------------------------------------------------
-        self.submodules.wifi = ClockDomainsRenamer({'spi':'sys'})(SpiMaster(platform.request("wifi"), gpio_cs=True))  # control CS with GPIO per wf200 API spec
+        # SPI port to wifi (controller) ------------------------------------------------------------------
+        self.submodules.wifi = ClockDomainsRenamer({'spi':'sys'})(SpiController(platform.request("wifi"), gpio_cs=True))  # control CS with GPIO per wf200 API spec
 
 
 

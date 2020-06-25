@@ -44,20 +44,20 @@ const GG_TIMEOUT_MS: u32 = 2;
 fn gg_set(i2c: &mut Hardi2c, cmd_code: u8, val: u16) {
     let txbuf: [u8; 3] = [cmd_code, (val & 0xff) as u8, ((val >> 8) & 0xff) as u8];
 
-    while i2c.i2c_master(BQ27421_ADDR, Some(&txbuf), None, GG_TIMEOUT_MS) != 0 {}
+    while i2c.i2c_controller(BQ27421_ADDR, Some(&txbuf), None, GG_TIMEOUT_MS) != 0 {}
 }
 
 fn gg_set_byte(i2c: &mut Hardi2c, cmd_code: u8, val: u8) {
     let txbuf: [u8; 2] = [cmd_code, val];
 
-    while i2c.i2c_master(BQ27421_ADDR, Some(&txbuf), None, GG_TIMEOUT_MS) != 0 {}
+    while i2c.i2c_controller(BQ27421_ADDR, Some(&txbuf), None, GG_TIMEOUT_MS) != 0 {}
 }
 
 fn gg_get(i2c: &mut Hardi2c, cmd_code: u8) -> i16 {
     let txbuf: [u8; 1] = [cmd_code];
     let mut rxbuf: [u8; 2] = [0, 0];
 
-    while i2c.i2c_master(BQ27421_ADDR, Some(&txbuf), Some(&mut rxbuf), GG_TIMEOUT_MS) != 0 {}
+    while i2c.i2c_controller(BQ27421_ADDR, Some(&txbuf), Some(&mut rxbuf), GG_TIMEOUT_MS) != 0 {}
 
     // don't do the sign conversion untl after the bytes are composited, sign extension of
     // of i8's would be inappropriate for this application
@@ -68,7 +68,7 @@ fn gg_get_byte(i2c: &mut Hardi2c, cmd_code: u8) -> u8 {
     let txbuf: [u8; 1] = [cmd_code];
     let mut rxbuf: [u8; 2] = [0, 0];
 
-    while i2c.i2c_master(BQ27421_ADDR, Some(&txbuf), Some(&mut rxbuf), GG_TIMEOUT_MS) != 0 {}
+    while i2c.i2c_controller(BQ27421_ADDR, Some(&txbuf), Some(&mut rxbuf), GG_TIMEOUT_MS) != 0 {}
     rxbuf[0]
 }   
 

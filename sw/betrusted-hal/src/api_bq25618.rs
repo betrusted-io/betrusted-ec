@@ -268,7 +268,7 @@ impl BtCharger {
 
         for i in 0..0xC {
             txbuf[0] = i as u8;
-            while i2c.i2c_master(BQ25618_ADDR, Some(&txbuf), Some(&mut rxbuf), CHG_TIMEOUT_MS) != 0 {}
+            while i2c.i2c_controller(BQ25618_ADDR, Some(&txbuf), Some(&mut rxbuf), CHG_TIMEOUT_MS) != 0 {}
             self.registers[i] = rxbuf[0] as u8;
         }
         self
@@ -281,7 +281,7 @@ impl BtCharger {
             ChargeControl3::BATFET_OFF_ALLOW |
             ChargeControl3::BATFET_RST_EN).bits() as u8];
 
-        i2c.i2c_master(BQ25618_ADDR, Some(&txbuf), None, CHG_TIMEOUT_MS);
+        i2c.i2c_controller(BQ25618_ADDR, Some(&txbuf), None, CHG_TIMEOUT_MS);
     }
 
     pub fn chg_is_charging(&mut self, i2c: &mut Hardi2c, use_cached: bool) -> bool {
@@ -290,7 +290,7 @@ impl BtCharger {
 
         let chgstat0: u8;
         if !use_cached {
-            while i2c.i2c_master(BQ25618_ADDR, Some(&txbuf), Some(&mut rxbuf), CHG_TIMEOUT_MS) != 0 {}
+            while i2c.i2c_controller(BQ25618_ADDR, Some(&txbuf), Some(&mut rxbuf), CHG_TIMEOUT_MS) != 0 {}
             chgstat0 = rxbuf[0];
         } else {
             chgstat0 = self.registers[BQ25618_08_CHG_STAT0];
@@ -311,10 +311,10 @@ impl BtCharger {
     pub fn chg_keepalive_ping(&mut self, i2c: &mut Hardi2c) {
         let txbuf: [u8; 1] = [BQ25618_01_CHG_CTL as u8];
         let mut rxbuf: [u8; 2] = [0, 0];
-        while i2c.i2c_master(BQ25618_ADDR, Some(&txbuf), Some(&mut rxbuf), CHG_TIMEOUT_MS) != 0 {}
+        while i2c.i2c_controller(BQ25618_ADDR, Some(&txbuf), Some(&mut rxbuf), CHG_TIMEOUT_MS) != 0 {}
 
         let txbuf: [u8; 2] = [BQ25618_01_CHG_CTL as u8, rxbuf[0] | ChargeControl::WD_RST.bits()];
-        while i2c.i2c_master(BQ25618_ADDR, Some(&txbuf), None, CHG_TIMEOUT_MS) != 0 {}
+        while i2c.i2c_controller(BQ25618_ADDR, Some(&txbuf), None, CHG_TIMEOUT_MS) != 0 {}
     }
 
     pub fn chg_set_autoparams(&mut self, i2c: &mut Hardi2c) {
@@ -364,7 +364,7 @@ impl BtCharger {
         for i in 0..8 {
             txbuf[i+1] = self.registers[i];
         }
-        while i2c.i2c_master(BQ25618_ADDR, Some(&txbuf), None, CHG_TIMEOUT_MS) != 0 {}
+        while i2c.i2c_controller(BQ25618_ADDR, Some(&txbuf), None, CHG_TIMEOUT_MS) != 0 {}
     }
 
     // this will override ilim, to attempt charge to run at full current
@@ -387,7 +387,7 @@ impl BtCharger {
         for i in 0..2 {
             txbuf[i+1] = self.registers[i];
         }
-        while i2c.i2c_master(BQ25618_ADDR, Some(&txbuf), None, CHG_TIMEOUT_MS) != 0 {}
+        while i2c.i2c_controller(BQ25618_ADDR, Some(&txbuf), None, CHG_TIMEOUT_MS) != 0 {}
     }
 
     pub fn chg_boost(&mut self, i2c: &mut Hardi2c) {
@@ -399,7 +399,7 @@ impl BtCharger {
             ChargeControl3::BATFET_OFF_IGNORE)
             .bits();
         let txbuf: [u8; 2] = [BQ25618_07_CHG_CTL3 as u8, self.registers[BQ25618_07_CHG_CTL3]];
-        while i2c.i2c_master(BQ25618_ADDR, Some(&txbuf), None, CHG_TIMEOUT_MS) != 0 {}
+        while i2c.i2c_controller(BQ25618_ADDR, Some(&txbuf), None, CHG_TIMEOUT_MS) != 0 {}
 
         // CHG_CONFIG = 0, BST_CONFIG = 1
         self.registers[BQ25618_01_CHG_CTL] =
@@ -408,7 +408,7 @@ impl BtCharger {
             ChargeControl::SYS_MIN_3200MV)
             .bits();
         let txbuf: [u8; 2] = [BQ25618_01_CHG_CTL as u8, self.registers[BQ25618_01_CHG_CTL]];
-        while i2c.i2c_master(BQ25618_ADDR, Some(&txbuf), None, CHG_TIMEOUT_MS) != 0 {}
+        while i2c.i2c_controller(BQ25618_ADDR, Some(&txbuf), None, CHG_TIMEOUT_MS) != 0 {}
 
         // set boost target voltage to 5V
         self.registers[BQ25618_06_CHG_CTL2] =
@@ -417,7 +417,7 @@ impl BtCharger {
             ChargeControl2::OVP_14200MV)
             .bits();
         let txbuf: [u8; 2] = [BQ25618_06_CHG_CTL2 as u8, self.registers[BQ25618_06_CHG_CTL2]];
-        while i2c.i2c_master(BQ25618_ADDR, Some(&txbuf), None, CHG_TIMEOUT_MS) != 0 {}
+        while i2c.i2c_controller(BQ25618_ADDR, Some(&txbuf), None, CHG_TIMEOUT_MS) != 0 {}
     }
 
     pub fn chg_boost_off(&mut self, i2c: &mut Hardi2c) {
@@ -428,7 +428,7 @@ impl BtCharger {
             ChargeControl::SYS_MIN_3400MV)
             .bits();
         let txbuf: [u8; 2] = [BQ25618_01_CHG_CTL as u8, self.registers[BQ25618_01_CHG_CTL]];
-        while i2c.i2c_master(BQ25618_ADDR, Some(&txbuf), None, CHG_TIMEOUT_MS) != 0 {}
+        while i2c.i2c_controller(BQ25618_ADDR, Some(&txbuf), None, CHG_TIMEOUT_MS) != 0 {}
     }
 
     pub fn chg_set_safety(&mut self, _i2c: &mut Hardi2c) {

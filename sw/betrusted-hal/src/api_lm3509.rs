@@ -61,24 +61,24 @@ impl BtBacklight {
             // first set the brightness control to 0
             txbuf[0] = LM3509_BMAIN_ADR;
             txbuf[1] = 0xE0;
-            while i2c.i2c_master(LM3509_ADDR, Some(&txbuf), None, BL_TIMEOUT_MS) != 0 {}
+            while i2c.i2c_controller(LM3509_ADDR, Some(&txbuf), None, BL_TIMEOUT_MS) != 0 {}
             txbuf[0] = LM3509_BSUB_ADR;
             txbuf[1] = 0xE0;
-            while i2c.i2c_master(LM3509_ADDR, Some(&txbuf), None, BL_TIMEOUT_MS) != 0 {}
+            while i2c.i2c_controller(LM3509_ADDR, Some(&txbuf), None, BL_TIMEOUT_MS) != 0 {}
 
             // then put the string into shutdown mode
             txbuf[0] = LM3509_GP_ADR;
             txbuf[1] = 0xC0 | ((self.rate_of_change & 0x3) << 3);
-            while i2c.i2c_master(LM3509_ADDR, Some(&txbuf), None, BL_TIMEOUT_MS) != 0 {}
+            while i2c.i2c_controller(LM3509_ADDR, Some(&txbuf), None, BL_TIMEOUT_MS) != 0 {}
 
             return
         } else {
             // turn sub-only, and DISABLE unison mode (BL not installed! testing only!)
             txbuf[0] = LM3509_GP_ADR;
-            txbuf[1] = ((self.rate_of_change & 0x3) << 3) | 0xC0 | (Config::SEC_ENABLE | Config::UNISON_DISABLE).bits();
-            while i2c.i2c_master(LM3509_ADDR, Some(&txbuf), None, BL_TIMEOUT_MS) != 0 {}
+            txbuf[1] = ((self.rate_of_change & 0x3) << 3) | 0xC0 | (Config::SEC_ENABLE | Config::MAIN_ENABLE).bits();
+            while i2c.i2c_controller(LM3509_ADDR, Some(&txbuf), None, BL_TIMEOUT_MS) != 0 {}
 
-            if false {
+            if true {  // set to false only if main backlight is not installed
                 // clamp brightness level to 31
                 if main_level_local > 31 {
                     main_level_local = 31;
@@ -86,7 +86,7 @@ impl BtBacklight {
 
                 txbuf[0] = LM3509_BMAIN_ADR;
                 txbuf[1] = main_level_local | 0xE0;
-                while i2c.i2c_master(LM3509_ADDR, Some(&txbuf), None, BL_TIMEOUT_MS) != 0 {}
+                while i2c.i2c_controller(LM3509_ADDR, Some(&txbuf), None, BL_TIMEOUT_MS) != 0 {}
             }
 
             // clamp brightness level to 31
@@ -97,7 +97,7 @@ impl BtBacklight {
             txbuf[0] = LM3509_BSUB_ADR;
             txbuf[1] = sub_level_local | 0xE0;
 
-            while i2c.i2c_master(LM3509_ADDR, Some(&txbuf), None, BL_TIMEOUT_MS) != 0 {}
+            while i2c.i2c_controller(LM3509_ADDR, Some(&txbuf), None, BL_TIMEOUT_MS) != 0 {}
         }
     }
 

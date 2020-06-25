@@ -95,7 +95,7 @@ impl BtUsbCc {
         let mut txbuf: [u8; 1] = [TUSB320LAI_00_ID as u8];
         let mut rxbuf: [u8; 8] = [0; 8];
 
-        while i2c.i2c_master(TUSB320LAI_ADDR, Some(&txbuf), Some(&mut rxbuf), TUSB320_TIMEOUT_MS) != 0 {}
+        while i2c.i2c_controller(TUSB320LAI_ADDR, Some(&txbuf), Some(&mut rxbuf), TUSB320_TIMEOUT_MS) != 0 {}
         for i in 0..8 {
             self.id[i] = rxbuf[i];
             // maybe should do something smarter than an assert here, huh.
@@ -104,23 +104,23 @@ impl BtUsbCc {
         // check revision
         txbuf = [TUSB320LAI_A0_REV as u8];
         let mut rxrev: [u8; 1] = [0; 1];
-        while i2c.i2c_master(TUSB320LAI_ADDR, Some(&txbuf), Some(&mut rxrev), TUSB320_TIMEOUT_MS) != 0 {}
+        while i2c.i2c_controller(TUSB320LAI_ADDR, Some(&txbuf), Some(&mut rxrev), TUSB320_TIMEOUT_MS) != 0 {}
         assert!(rxrev[0] == TUSB320LAI_REVISION_EXPECTED);
 
         // fill in other parameter inits
         // we want to initially look like a UFP, advertising 500mA current
         let mut txwrbuf: [u8; 2] = [TUSB320LAI_09_CSR1 as u8,
            (ConfigStatus1::DISABLE_UFP_ACCESSORY | ConfigStatus1::DRP_ADVERT_DUTYCYCLE_30PCT).bits()];
-        while i2c.i2c_master(TUSB320LAI_ADDR, Some(&txwrbuf), None, TUSB320_TIMEOUT_MS) != 0 {}
+        while i2c.i2c_controller(TUSB320LAI_ADDR, Some(&txwrbuf), None, TUSB320_TIMEOUT_MS) != 0 {}
 
         // set us up for UFP mode -- once we get host support, need to change to allow DRP mode!!
         txwrbuf = [TUSB320LAI_0A_CSR2 as u8,
            (ConfigStatus2::MODE_UFP_UNATTACHED_SNK | ConfigStatus2::SOURCE_PREF_DRP_TRY_SNK).bits()];
-        while i2c.i2c_master(TUSB320LAI_ADDR, Some(&txwrbuf), None, TUSB320_TIMEOUT_MS) != 0 {}
+        while i2c.i2c_controller(TUSB320LAI_ADDR, Some(&txwrbuf), None, TUSB320_TIMEOUT_MS) != 0 {}
 
         txbuf = [TUSB320LAI_08_CSR0 as u8];
         let mut status_regs: [u8; 3] = [0; 3];
-        while i2c.i2c_master(TUSB320LAI_ADDR, Some(&txbuf), Some(&mut status_regs), TUSB320_TIMEOUT_MS) != 0 {}
+        while i2c.i2c_controller(TUSB320LAI_ADDR, Some(&txbuf), Some(&mut status_regs), TUSB320_TIMEOUT_MS) != 0 {}
         for i in 0..3 {
             self.status[i] = status_regs[i];
         }
@@ -133,13 +133,13 @@ impl BtUsbCc {
         if p.I2C.ev_pending.read().bits() & USB_CC_INT_MASK != 0 {
             let txbuf = [TUSB320LAI_08_CSR0 as u8];
             let mut status_regs: [u8; 3] = [0; 3];
-            while i2c.i2c_master(TUSB320LAI_ADDR, Some(&txbuf), Some(&mut status_regs), TUSB320_TIMEOUT_MS) != 0 {}
+            while i2c.i2c_controller(TUSB320LAI_ADDR, Some(&txbuf), Some(&mut status_regs), TUSB320_TIMEOUT_MS) != 0 {}
             for i in 0..3 {
                 self.status[i] = status_regs[i];
             }
             // clear the interrupt in the TUSB320 by writing a `1` to it
             let update: [u8; 2] = [TUSB320LAI_09_CSR1 as u8, self.status[1] | ConfigStatus1::REGCHANGE_INTERRUPT.bits()];
-            while i2c.i2c_master(TUSB320LAI_ADDR, Some(&update), None, TUSB320_TIMEOUT_MS) != 0 {}
+            while i2c.i2c_controller(TUSB320LAI_ADDR, Some(&update), None, TUSB320_TIMEOUT_MS) != 0 {}
             // clear the interrupt in the CPU by writing a 1 to the pending bit
             unsafe{ p.I2C.ev_pending.write(|w| w.bits(USB_CC_INT_MASK)); }
             true
