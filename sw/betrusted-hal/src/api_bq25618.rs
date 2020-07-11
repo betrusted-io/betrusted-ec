@@ -413,7 +413,7 @@ impl BtCharger {
         // set boost target voltage to 5V
         self.registers[BQ25618_06_CHG_CTL2] =
            ((((4500 - VINDPM_OFFSET_MV) / VINDPM_LSB_MV) << VINDPM_BITOFF) & VINDPM_MASK) as u8 |
-           (ChargeControl2::BOOSTV_5000MV |
+           (ChargeControl2::BOOSTV_5150MV |
             ChargeControl2::OVP_14200MV)
             .bits();
         let txbuf: [u8; 2] = [BQ25618_06_CHG_CTL2 as u8, self.registers[BQ25618_06_CHG_CTL2]];
