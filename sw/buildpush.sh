@@ -10,11 +10,13 @@ then
     exit 0
 fi
 
+DESTDIR=code/bin
+
 # case of no private key specified
 if [ -z "$2" ]
 then
-cargo build --release && ./rust-rom.sh && scp /tmp/bt-ec.bin $1:code/betrusted-scripts/ && scp ../build/csr.csv $1:code/betrusted-scripts/ec-csr.csv
+cargo build --release && ./rust-rom.sh && scp /tmp/bt-ec.bin $1:$DESTDIR/ && scp ../build/csr.csv $1:$DESTDIR/ec-csr.csv
 else
 # there is a private key
-cargo build --release && ./rust-rom.sh && scp -i $2 /tmp/bt-ec.bin $1:code/betrusted-scripts/ && scp -i $2 ../build/csr.csv $1:code/betrusted-scripts/ec-csr.csv
+cargo build --release && ./rust-rom.sh && scp -i $2 /tmp/bt-ec.bin $1:$DESTDIR/ && scp -i $2 ../build/csr.csv $1:$DESTDIR/ec-csr.csv
 fi
