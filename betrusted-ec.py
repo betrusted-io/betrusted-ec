@@ -27,7 +27,7 @@ from litex.soc.interconnect import wishbone
 from litex.soc.interconnect.csr import *
 from litex.soc.cores.uart import UARTWishboneBridge
 
-from rtl.hard_i2c import HardI2C
+from gateware.ice40_hard_i2c import HardI2C
 from gateware.ticktimer import TickTimer
 from gateware.spi_ice40 import *
 
