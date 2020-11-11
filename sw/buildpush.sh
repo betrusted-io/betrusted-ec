@@ -10,7 +10,7 @@ then
     exit 0
 fi
 
-DESTDIR=code/bin
+DESTDIR=code/precursors
 
 # case of no private key specified
 if [ -z "$2" ]
