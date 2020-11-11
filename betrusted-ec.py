@@ -27,11 +27,9 @@ from litex.soc.interconnect import wishbone
 from litex.soc.interconnect.csr import *
 from litex.soc.cores.uart import UARTWishboneBridge
 
-from rtl.rtl_i2c import RtlI2C
 from rtl.hard_i2c import HardI2C
-from rtl.messible import Messible
-from rtl.ticktimer import TickTimer
-from rtl.spi import *
+from gateware.ticktimer import TickTimer
+from gateware.spi_ice40 import *
 
 import litex.soc.doc as lxsocdoc
 
@@ -519,7 +517,6 @@ class BaseSoC(SoCCore):
         "cpu_or_bridge":  8,
         "i2c":            9,
         "picorvspi":      10,
-        "messible":       11,
         "reboot":         12,
         "ticktimer":      15,
     }
@@ -632,9 +629,6 @@ class BaseSoC(SoCCore):
         self.submodules.i2c = HardI2C(platform, platform.request("i2c", 0))
         self.add_wb_slave(self.mem_map["i2c"], self.i2c.bus, 16*4)
         self.add_memory_region("i2c", self.mem_map["i2c"], 16*4, type='io')
-
-        # Messible (debug) -------------------------------------------------------------------------------
-        self.submodules.messible = Messible()
 
         # High-resolution tick timer ---------------------------------------------------------------------
         self.submodules.ticktimer = TickTimer(1000, clk_freq, bits=40)
