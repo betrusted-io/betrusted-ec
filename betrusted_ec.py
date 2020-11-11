@@ -322,48 +322,6 @@ class BetrustedPlatform(LatticePlatform):
             platform.add_period_constraint(clk18, 1e9/sysclkfreq)
 
 
-class CocotbPlatform(SimPlatform):
-    def __init__(self, io, toolchain="verilator"):
-        SimPlatform.__init__(self, io, "sim", _connectors, toolchain="verilator")
-
-    def create_programmer(self):
-        raise ValueError("programming is not supported")
-
-    class _CRG(Module):
-        def __init__(self, platform):
-            clk = platform.request("clk12")
-            rst = platform.request("reset")
-
-            clk12 = Signal()
-
-            self.clock_domains.cd_sys = ClockDomain()
-
-            self.comb += clk.clk12.eq(clk12)
-            self.comb += self.cd_sys.clk.eq(clk12)
-
-            self.comb += [
-                ResetSignal("sys").eq(rst),
-            ]
-
-class SBWarmBoot(Module, AutoCSR):
-    def __init__(self, parent, reset_vector=0):
-        self.ctrl = CSRStorage(size=8)
-        self.addr = CSRStorage(size=32, reset=reset_vector)
-        do_reset = Signal()
-        self.comb += [
-            # "Reset Key" is 0xac (0b101011xx)
-            do_reset.eq(self.ctrl.storage[2] & self.ctrl.storage[3] & ~self.ctrl.storage[4]
-                      & self.ctrl.storage[5] & ~self.ctrl.storage[6] & self.ctrl.storage[7])
-        ]
-        self.specials += Instance("SB_WARMBOOT",
-            i_S0   = self.ctrl.storage[0],
-            i_S1   = self.ctrl.storage[1],
-            i_BOOT = do_reset,
-        )
-        parent.config["BITSTREAM_SYNC_HEADER1"] = 0x7e99aa7e
-        parent.config["BITSTREAM_SYNC_HEADER2"] = 0x7eaa997e
-
-
 class PicoRVSpi(Module, AutoCSR, AutoDoc):
     def __init__(self, platform, pads, size=2*1024*1024):
         self.intro = ModuleDoc("See https://github.com/cliffordwolf/picorv32/tree/master/picosoc#spi-flash-controller-config-register")
@@ -517,7 +475,6 @@ class BaseSoC(SoCCore):
         "cpu_or_bridge":  8,
         "i2c":            9,
         "picorvspi":      10,
-        "reboot":         12,
         "ticktimer":      15,
     }
 
@@ -620,12 +577,6 @@ class BaseSoC(SoCCore):
         self.submodules.picorvspi = PicoRVSpi(platform, spi_pads)
         self.register_mem("spiflash", self.mem_map["spiflash"],
             self.picorvspi.bus, size=SPI_FLASH_SIZE)
-
-        self.submodules.reboot = SBWarmBoot(self, reset_vector=self.cpu.reset_address)
-        if hasattr(self, "cpu"):
-            self.cpu.cpu_params.update(
-                i_externalResetVector=self.reboot.addr.storage,
-            )
 
         # I2C --------------------------------------------------------------------------------------------
         self.submodules.i2c = HardI2C(platform, platform.request("i2c", 0))
