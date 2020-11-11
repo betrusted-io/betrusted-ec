@@ -550,7 +550,10 @@ class BaseSoC(SoCCore):
         self.submodules.crg = platform._CRG(platform)
 
         # Core -------------------------------------------------------------------------------------------
-        SoCCore.__init__(self, platform, clk_freq, integrated_sram_size=0, uart_name="crossover", csr_data_width=32, **kwargs) # with_uart=False
+        SoCCore.__init__(self, platform, clk_freq,
+            integrated_sram_size=0,
+            uart_name="crossover",
+            csr_data_width=32, **kwargs) # with_uart=False
 
         # Power management -------------------------------------------------------------------------------
         # Betrusted Power management interface
@@ -602,7 +605,6 @@ class BaseSoC(SoCCore):
         self.submodules.uart_bridge = UARTWishboneBridge(dbgpads, clk_freq, baudrate=115200)
         self.add_wb_master(self.uart_bridge.wishbone)
         if hasattr(self, "cpu"):
-#            self.cpu.use_external_variant("rtl/VexRiscv_Fomu_Debug.v")   # comment this out for smaller build
             os.path.join(output_dir, "gateware")
             self.register_mem("vexriscv_debug", 0xf00f0000, self.cpu.debug_bus, 0x100)
 
