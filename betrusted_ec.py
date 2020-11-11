@@ -204,24 +204,7 @@ io_evt = [
      ),
     # ("lpclk", 0, Pins("37"), IOStandard("LVCMOS18")),  # conflicts with SB_PLL40_2_PAD...what weirdness
 
-    # Only used for simulation
-    ("wishbone", 0,
-        Subsignal("adr",   Pins(30)),
-        Subsignal("dat_r", Pins(32)),
-        Subsignal("dat_w", Pins(32)),
-        Subsignal("sel",   Pins(4)),
-        Subsignal("cyc",   Pins(1)),
-        Subsignal("stb",   Pins(1)),
-        Subsignal("ack",   Pins(1)),
-        Subsignal("we",    Pins(1)),
-        Subsignal("cti",   Pins(3)),
-        Subsignal("bte",   Pins(2)),
-        Subsignal("err",   Pins(1))
-    ),
-    ("clk12", 0, Pins(1), IOStandard("LVCMOS18")),
 ]
-
-_connectors = []
 
 sysclkfreq=18e6
 
@@ -320,6 +303,7 @@ class BetrustedPlatform(LatticePlatform):
             # all wires.
             platform.add_period_constraint(clk_spi_peripheral, 1e9/20e6)
             platform.add_period_constraint(clk18, 1e9/sysclkfreq)
+            platform.add_period_constraint(self.cd_por.clk, 1e9/sysclkfreq)
 
 
 class PicoRVSpi(Module, AutoCSR, AutoDoc):
@@ -727,7 +711,7 @@ def main():
 
     parser = argparse.ArgumentParser(description="Build the Betrusted Embedded Controller")
     parser.add_argument(
-        "--revision", choices=["evt", "dvt"], default="evt",
+        "--revision", choices=["evt", "dvt", "pvt"], default="pvt",
         help="build EC for a particular hardware revision"
     )
     parser.add_argument(
@@ -735,9 +719,6 @@ def main():
     )
     parser.add_argument(
         "--with-dsp", help="use dsp inference in yosys (not all yosys builds have -dsp)", action="store_true"
-    )
-    parser.add_argument(
-        "--sim", help="generate files for simulation", action="store_true"
     )
     parser.add_argument(
         "--no-cpu", help="disable cpu generation for debugging purposes", action="store_true"
@@ -769,16 +750,13 @@ def main():
 
     if args.revision == 'evt':
         io = io_evt
-    elif args.revision == 'dvt':
+    elif args.revision == 'dvt' or args.revision == 'pvt':
         io = io_dvt
     else:
         print("Invalid hardware revision")
         exit(1)
 
-    if args.sim:
-        platform = CocotbPlatform(io)
-    else:
-        platform = BetrustedPlatform(io, revision=args.revision)
+    platform = BetrustedPlatform(io, revision=args.revision)
 
     soc = BaseSoC(platform, cpu_type=cpu_type, cpu_variant=cpu_variant,
                             use_dsp=args.with_dsp, placer=args.placer,
