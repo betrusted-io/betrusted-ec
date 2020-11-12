@@ -81,6 +81,7 @@ io_dvt = [
         Subsignal("cipo", Pins("10"), IOStandard("LVCMOS18")),
         Subsignal("copi", Pins("9"), IOStandard("LVCMOS18")),
         Subsignal("irq", Pins("6"), IOStandard("LVCMOS18")), # ACTIVE HIGH
+        Subsignal("hold", Pins("12"), IOStandard("LVCMOS18")),
      ),
     ("com_sclk", 0, Pins("20"), IOStandard("LVCMOS18")),
 
@@ -89,7 +90,7 @@ io_dvt = [
 
     ("power", 0,
         Subsignal("s0", Pins("19"), IOStandard("LVCMOS18")),
-        Subsignal("s1", Pins("12"), IOStandard("LVCMOS18")),
+        # Subsignal("s1", Pins("12"), IOStandard("LVCMOS18")),  # PVT changed to hold
         Subsignal("sys_on", Pins("47"), IOStandard("LVCMOS33")), # sys_on
         Subsignal("u_to_t_on", Pins("46"), IOStandard("LVCMOS33")), # u_to_t_on
         Subsignal("fpga_dis", Pins("21"), IOStandard("LVCMOS18")), # fpga_dis
@@ -433,7 +434,7 @@ class BtPower(Module, AutoCSR, AutoDoc):
         ])
 
         self.stats = CSRStatus(8, fields=[
-            CSRField("state", size=2, description="Current power state of the SOC"),
+            CSRField("state", size=1, description="Current power state of the SOC"),
             CSRField("monkey", size=2, description="Power-on key monitor input"),
         ])
         self.mon0 = Signal()
@@ -443,7 +444,7 @@ class BtPower(Module, AutoCSR, AutoDoc):
             pads.sys_on.eq(self.power.fields.self),
             pads.u_to_t_on.eq(self.power.fields.soc_on),
             pads.fpga_dis.eq(self.power.fields.discharge),
-            self.stats.fields.state.eq(Cat(pads.s0, pads.s1)),
+            self.stats.fields.state.eq(pads.s0),  # S1 is disregarded now
             self.stats.fields.monkey.eq(Cat(self.mon0, self.mon1)),
 
             self.soc_on.eq(self.power.fields.soc_on),
@@ -736,7 +737,7 @@ def main():
     compile_gateware = True
     compile_software = False # this is now done with Rust
 
-    if args.document_only or args.sim:
+    if args.document_only:
         compile_gateware = False
         compile_software = False
 
@@ -744,7 +745,7 @@ def main():
     cpu_variant = "minimal"
     cpu_variant = cpu_variant + "+debug"
 
-    if args.no_cpu or args.sim:
+    if args.no_cpu:
         cpu_type = None
         cpu_variant = None
 
@@ -760,7 +761,7 @@ def main():
 
     soc = BaseSoC(platform, cpu_type=cpu_type, cpu_variant=cpu_variant,
                             use_dsp=args.with_dsp, placer=args.placer,
-                            pnr_seed=args.seed, sim=args.sim,
+                            pnr_seed=args.seed,
                             output_dir=output_dir)
     builder = Builder(soc, output_dir=output_dir, csr_csv="build/csr.csv", compile_software=compile_software, compile_gateware=compile_gateware)
     # If we compile software, pull the code from somewhere other than
@@ -778,7 +779,7 @@ def main():
 
     soc.do_exit(vns)
 
-    if not args.document_only and not args.sim:
+    if not args.document_only:
         make_multiboot_header(os.path.join(output_dir, "gateware", "multiboot-header.bin"), [
             160,
             160,

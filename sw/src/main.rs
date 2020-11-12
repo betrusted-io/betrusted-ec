@@ -194,7 +194,7 @@ fn main() -> ! {
             }
 
             // check if we should turn the SoC on or not
-            if charger.chg_is_charging(&mut i2c, false) || (p.POWER.stats.read().state().bits() & 0x2 != 0) && do_power {
+            if charger.chg_is_charging(&mut i2c, false) || (p.POWER.stats.read().state().bit_is_set()) && do_power {
                 soc_on = true;
                 sprintln!("charger insert or soc on event!");
                 unsafe{ p.POWER.power.write(|w| w
