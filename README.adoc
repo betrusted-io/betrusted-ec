@@ -13,7 +13,10 @@ Compiled documentation: https://ci.betrusted.io/betrusted-ec/doc/[latest registe
 
 1. Ensure you have a toolchain installed, including a compiler, Python 3.5+, `nextpnr-ice40`, and `yosys`.  These can all be obtained by downloading the [Fomu toolchain](https://github.com/im-tomu/fomu-toolchain/releases/latest) and adding it to your `PATH`.
 1. Check out this repo with `git clone --recurse-submodules <repo>`.
-1. Run `./betrusted-ec.py` (or `python3 ./betrusted-ec.py`)
+1. Run `./betrusted-ec.py --revision=pvt` (or `python3 ./betrusted-ec.py --revision=pvt`) to build the "PVT" version of the EC
+1. Run `cargo xtask hw-image` to build the burnable ROM image
+1. Run `cargo xtask docs` to update the HTML document tree
+1. Run `cargo xtask push <target> [idfile]` to push the files to a Raspberry Pi with a debug hat for burning. `idfile` is the ssh ID file if you use one.
 
 ## Updating ##
 
@@ -94,16 +97,6 @@ $ cd -
 ```
 
 This will merge all changes from upstream onto your own branch.
-
-## Support programs ##
-
-There is a wrapper script in this repo to run support programs such as `litex_server` and `litex_term`.  These may be invoked either with python (`python bin/litex_server udp`) or on shebang-aware systems they may be executed directly (`./bin/litex_server udp`).
-
-## Xilinx PATH ##
-
-If your Xilinx install is in the default path (`C:\\Xilinx` on Windows, `/opt/Xilinx` on Linux), then the build system should be able to automatically find Xilinx.
-
-If not, you can add the Xilinx `bin` directory to your PATH.
 
 ## PyCharm integration ##
 
