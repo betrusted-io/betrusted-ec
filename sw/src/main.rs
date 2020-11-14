@@ -7,6 +7,7 @@ use core::panic::PanicInfo;
 use riscv_rt::entry;
 
 extern crate betrusted_hal;
+extern crate utralib;
 extern crate volatile;
 
 extern crate wfx_sys;
@@ -39,6 +40,8 @@ static mut DBGSTR: [u32; 4] = [0, 0, 0, 0];
 fn panic(_panic: &PanicInfo<'_>) -> ! {
     loop {}
 }
+
+use utralib::generated::*;
 
 enum ComState {
     Idle,
@@ -100,9 +103,9 @@ fn main() -> ! {
     gyro.init();
 
     use volatile::Volatile;
-    let com_ptr: *mut u32 = 0xD000_0000 as *mut u32;
+    let com_ptr: *mut u32 = utralib::HW_COM_MEM as *mut u32;
     let com_fifo = com_ptr as *mut Volatile<u32>;
-    let com_rd_ptr: *mut u32 = 0xD000_0000 as *mut u32;
+    let com_rd_ptr: *mut u32 = utralib::HW_COM_MEM as *mut u32;
     let com_rd = com_rd_ptr as *mut Volatile<u32>;
 
     unsafe{ (*com_fifo).write(2020); } // load a dummy entry in so we can respond on the first txrx
@@ -132,6 +135,9 @@ fn main() -> ! {
 
     let use_wifi: bool = true;
     let do_power: bool = false;
+
+    let mut power_csr = CSR::new(HW_POWER_BASE as *mut u32);
+
     loop {
         if !use_wifi && (get_time_ms(&p) - start_time > 1500) {
             delay_ms(&p, 250); // force just a delay, so requests queue up
@@ -194,26 +200,24 @@ fn main() -> ! {
             }
 
             // check if we should turn the SoC on or not
-            if charger.chg_is_charging(&mut i2c, false) || (p.POWER.stats.read().state().bit_is_set()) && do_power {
+            if charger.chg_is_charging(&mut i2c, false) || (power_csr.rf(utra::power::STATS_STATE) == 1) && do_power {
                 soc_on = true;
                 sprintln!("charger insert or soc on event!");
-                unsafe{ p.POWER.power.write(|w| w
-                    .self_().bit(true)
-                    .soc_on().bit(true)
-                    .discharge().bit(false)
-                    .kbdscan().bits(0)
-                ); } // turn off discharge if the soc is up
+                let power =
+                    power_csr.ms(utra::power::POWER_SELF, 1)
+                    | power_csr.ms(utra::power::POWER_SOC_ON, 1)
+                    | power_csr.ms(utra::power::POWER_DISCHARGE, 0)
+                    | power_csr.ms(utra::power::POWER_KBDSCAN, 0);
+                power_csr.wo(utra::power::POWER, power); // turn off discharge if the soc is up
             } else if charger.chg_is_charging(&mut i2c, false) {
                 soc_on = true;
                 sprintln!("charger charging!");
-                unsafe{
-                    p.POWER.power.write(|w| w
-                                                .self_().bit(true)
-                                                .soc_on().bit(true)
-                                                .discharge().bit(false)
-                                                .kbdscan().bits(0)
-                    );
-                }
+                let power =
+                    power_csr.ms(utra::power::POWER_SELF, 1)
+                    | power_csr.ms(utra::power::POWER_SOC_ON, 1)
+                    | power_csr.ms(utra::power::POWER_DISCHARGE, 0)
+                    | power_csr.ms(utra::power::POWER_KBDSCAN, 0);
+                power_csr.wo(utra::power::POWER, power);
             }
         }
 

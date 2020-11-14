@@ -16,3 +16,7 @@ run/
 target/
 /venv/*
 test/
+
+
+# ignore the generated utralib files
+utralib/src/generated.rs

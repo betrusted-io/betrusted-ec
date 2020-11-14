@@ -21,6 +21,7 @@ gyro_sys = { path = "gyro_sys" }
 gyro_rs = { path = "gyro_rs" }
 gyro_bindings = { path = "gyro_bindings" }
 xous-nommu = { path = "xous-nommu" }
+utralib = { path = "../utralib"}
 
 # this lets you use `cargo fix`!
 [[bin]]
