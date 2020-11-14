@@ -5,9 +5,12 @@ use std::{
     process::Command,
 };
 
+use const_format::formatcp;
+
 type DynError = Box<dyn std::error::Error>;
 
 const TARGET: &str = "riscv32i-unknown-none-elf";
+const IMAGE_PATH: &'static str = formatcp!("target/{}/release/bt-ec.bin", TARGET);
 
 fn main() {
     if let Err(e) = try_main() {
@@ -21,6 +24,8 @@ fn try_main() -> Result<(), DynError> {
     match task.as_deref() {
         Some("hw-image") => build_hw_image(false, env::args().nth(2))?,
         Some("docs") => make_docs()?,
+        Some("push") => push_to_pi(env::args().nth(2), env::args().nth(3))?,
+        Some("update") => update_usb()?,
         _ => print_help(),
     }
     Ok(())
@@ -37,8 +42,85 @@ update                  Planned: burns firmware to a a Precursor via USB
     )
 }
 
+fn push_to_pi(target: Option<String>, id: Option<String>) -> Result<(), DynError> {
+    const DESTDIR: &str = "code/precursors/";
+
+    let target_str = match target {
+        Some(str) => str,
+        _ => {println!("Must specify a target for push."); return Err("Must specify a target for push".into())},
+    };
+    let im_md5 = Command::new("md5sum")
+        .arg(&IMAGE_PATH)
+        .output();
+    match im_md5 {
+        Ok(md5) => print!("{}", std::str::from_utf8(&md5.stdout)?),
+        _ => return Err("md5sum check of image file failed".into()),
+    };
+    let csv_md5 = Command::new("md5sum")
+        .arg("build/csr.csv")
+        .output();
+    match csv_md5 {
+        Ok(md5) => print!("{}", std::str::from_utf8(&md5.stdout)?),
+        _ => return Err("md5sum check of csr.csv file failed".into()),
+    };
+    match id {
+        Some(idfile) => {
+            let scp = Command::new("scp")
+            .stdout(std::process::Stdio::piped())
+            .arg("-i").arg(idfile.clone())
+            .arg(&IMAGE_PATH)
+            .arg(target_str.clone() + DESTDIR)
+            .output();
+            match scp {
+                Ok(status) => print!("{}", std::str::from_utf8(&status.stdout)?),
+                _ => return Err("scp failed".into()),
+            }
+
+            let scp = Command::new("scp")
+            .arg("-i").arg(idfile.clone())
+            .arg("build/csr.csv")
+            .arg(target_str.clone() + DESTDIR + "ec-csr.csv")
+            .output();
+            match scp {
+                Ok(status) => print!("{}", std::str::from_utf8(&status.stdout)?),
+                _ => return Err("scp failed".into()),
+            }
+        },
+        _ => {
+            let scp = Command::new("scp")
+            .arg(&IMAGE_PATH)
+            .arg(target_str.clone() + DESTDIR)
+            .output();
+            match scp {
+                Ok(status) => print!("{}", std::str::from_utf8(&status.stdout)?),
+                _ => return Err("scp failed".into()),
+            }
+
+            let scp = Command::new("scp")
+            .arg("build/csr.csv")
+            .arg(target_str.clone() + DESTDIR + "ec-csr.csv")
+            .output();
+            match scp {
+                Ok(status) => print!("{}", std::str::from_utf8(&status.stdout)?),
+                _ => return Err("scp failed".into()),
+            }
+        }
+    }
+    Ok(())
+}
+
+fn update_usb() -> Result<(), DynError> {
+    println!("Placeholder function, doesn't do anything yet!");
+    Ok(())
+}
+
 fn make_docs() -> Result<(), DynError> {
-    println!("placeholder function");
+    Command::new("sphinx-build")
+    .arg("-M").arg("html")
+    .arg("build/documentation")
+    .arg("build/documentation/_build")
+    .output()
+    .expect("Failed to build docs");
 
     Ok(())
 }
@@ -120,7 +202,6 @@ fn create_image(
 ) -> Result<PathBuf, DynError> {
     let loader_bin_path = &format!("target/{}/release/loader.bin", TARGET);
     let kernel_bin_path = &format!("target/{}/release/kernel.bin", TARGET);
-    let image_path = &format!("target/{}/release/bt-ec.bin", TARGET);
     // kernel region limit primarily set by the loader copy bytes. Can be grown, at expense of heap.
     const KERNEL_REGION: usize = 48 * 1024;
     // this is defined by size of UP5k bitstream plus rounding to sector erase size of 4k; reset vector points just beyond this
@@ -186,12 +267,12 @@ fn create_image(
         }
     }
 
-    let mut image = std::fs::File::create(PathBuf::from(&image_path))?;
+    let mut image = std::fs::File::create(PathBuf::from(&IMAGE_PATH))?;
     image.write(&gateware_bin)?;
     image.write(&loader)?;
     image.write(&kernel_bin)?;
 
-    Ok(project_root().join(&image_path))
+    Ok(project_root().join(&IMAGE_PATH))
 }
 
 fn cargo() -> String {
