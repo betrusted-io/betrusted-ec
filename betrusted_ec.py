@@ -33,7 +33,7 @@ from gateware.spi_ice40 import *
 
 import litex.soc.doc as lxsocdoc
 
-# Ish. It's actually slightly smaller, but this is divisible by 4.
+# Ish. It's actually slightly smaller, but this is divisible by 4096 (erase sector size).
 GATEWARE_SIZE = 0x1a000
 
 # 1 MB (8 Mb)

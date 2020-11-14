@@ -1,0 +1,15 @@
+[workspace]
+members = [
+  "sw",
+  "svd2utra",
+  "xtask",
+]
+
+exclude = [
+  "utralib", # this is machine generated
+]
+
+[profile.release]
+codegen-units = 1  # more optimization
+debug = true
+lto = "fat"
