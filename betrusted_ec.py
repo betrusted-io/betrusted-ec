@@ -217,7 +217,7 @@ class BetrustedPlatform(LatticePlatform):
     def create_programmer(self):
         raise ValueError("programming is not supported")
 
-    class _CRG(Module):
+    class CRG(Module, AutoCSR, AutoDoc):
         def __init__(self, platform):
             clk12_raw = platform.request("clk12")
             clk18 = Signal()
@@ -260,6 +260,66 @@ class BetrustedPlatform(LatticePlatform):
                 )
             ]
             self.comb += platform.request("lcd_disp", 0).eq(1)  # force display on for now
+
+            ### WATCHDOG RESET, uses the extcomm_div divider to save on gates
+            self.watchdog = CSRStorage(17, fields=[
+                CSRField("reset_code", size=16, description="Write `600d` then `c0de` in sequence to this register to reset the watchdog timer"),
+                CSRField("enable", description="Enable the watchdog timer. Cannot be disabled once enabled, except with a reset. Notably, a watchdog reset will disable the watchdog.", reset=0),
+            ])
+            wdog_enabled=Signal(reset=0)
+            self.sync += [
+                If(self.watchdog.fields.enable,
+                    wdog_enabled.eq(1)
+                ).Else(
+                    wdog_enabled.eq(wdog_enabled)
+                )
+            ]
+            wdog_cycle_r = Signal()
+            wdog_cycle = Signal()
+            self.sync += wdog_cycle_r.eq(extcomm_div[23])
+            self.comb += wdog_cycle.eq(extcomm_div[23] & ~wdog_cycle_r)
+            wdog = FSM(reset_state="IDLE")
+            wdog.act("IDLE",
+                If(wdog_enabled,
+                    NextState("WAIT_ARM")
+                )
+            )
+            wdog.act("WAIT_ARM",
+                # sync up to the watchdog cycle so we give ourselves a full cycle to disarm the watchdog
+                If(wdog_cycle,
+                    NextState("ARMED")
+                )
+            )
+            wdog.act("ARMED",
+                If(wdog_cycle,
+                    self.cd_sys.rst.eq(1),
+                ),
+                If(self.watchdog.re,
+                    If(self.watchdog.fields.reset_code == 0x600d,
+                        NextState("DISARM1")
+                    )
+                ).Else(
+                    NextState("ARMED")
+                )
+            )
+            wdog.act("DISARM2",
+                If(wdog_cycle,
+                    self.cd_sys.rst.eq(1),
+                ),
+                If(self.watchdog.re,
+                    If(self.watchdog.fields.reset_code == 0xc0de,
+                       NextState("DISARMED")
+                    )
+                ).Else(
+                    NextState("ARMED")
+                )
+            )
+            wdog.act("DISARMED",
+                If(wdog_cycle,
+                    NextState("ARMED")
+                )
+            )
+
 
             # make an 18 MHz clock for the SPI bus controller
             self.specials += Instance(
@@ -460,6 +520,7 @@ class BaseSoC(SoCCore):
         "cpu_or_bridge":  8,
         "i2c":            9,
         "picorvspi":      10,
+        "crg":            14,
         "ticktimer":      15,
     }
 
@@ -478,6 +539,7 @@ class BaseSoC(SoCCore):
         "i2c"   : 2,
         "wifi"  : 3,
         "com"   : 4,
+        "ticktimer" : 5,
     }
     interrupt_map.update(SoCCore.interrupt_map)
 
@@ -489,7 +551,7 @@ class BaseSoC(SoCCore):
         self.output_dir = output_dir
 
         clk_freq = int(sysclkfreq)
-        self.submodules.crg = platform._CRG(platform)
+        self.submodules.crg = platform.CRG(platform)
 
         # Core -------------------------------------------------------------------------------------------
         SoCCore.__init__(self, platform, clk_freq,
