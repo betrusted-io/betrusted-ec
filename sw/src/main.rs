@@ -30,7 +30,7 @@ use gyro_rs::hal_gyro::BtGyro;
 #[macro_use]
 mod debug;
 
-const CONFIG_CLOCK_FREQUENCY: u32 = 12_000_000;
+const CONFIG_CLOCK_FREQUENCY: u32 = 18_000_000;
 
 // allocate a global, unsafe static string for debug output
 #[used]  // This is necessary to keep DBGSTR from being optimized out
@@ -63,6 +63,15 @@ const POWER_MASK_SHUTDOWN_OK: u32 = 0b01;
 
 pub fn debug_power(p: &betrusted_pac::Peripherals) {
     sprintln!("power: 0x{:04x}", p.POWER.power.read().bits());
+}
+
+fn com_int_handler(_irq_no: usize) {
+    let mut com_csr = CSR::new(utra::com::HW_COM_BASE as *mut u32);
+    let avail_pending = com_csr.rf(utra::com::EV_PENDING_SPI_AVAIL);
+
+    // handle interrupt here
+
+    com_csr.wfo(utra::com::EV_PENDING_SPI_AVAIL, 1); // clear the pending
 }
 
 #[entry]
@@ -137,6 +146,11 @@ fn main() -> ! {
     let do_power: bool = false;
 
     let mut power_csr = CSR::new(HW_POWER_BASE as *mut u32);
+    let mut com_csr = CSR::new(HW_COM_BASE as *mut u32);
+
+    xous_nommu::syscalls::sys_interrupt_claim(utra::com::COM_IRQ, com_int_handler).unwrap();
+    com_csr.wfo(utra::com::EV_PENDING_SPI_AVAIL, 1); // clear the pending signal just in case
+    com_csr.wfo(utra::com::EV_ENABLE_SPI_AVAIL, 1); // enable interrupts on SPI fifo not empty
 
     loop {
         if !use_wifi && (get_time_ms(&p) - start_time > 1500) {
