@@ -39,13 +39,13 @@ GATEWARE_SIZE = 0x1a000
 # 1 MB (8 Mb)
 SPI_FLASH_SIZE = 1 * 1024 * 1024
 
-io_dvt = [
+io_pvt = [
     ("serial", 0,
      Subsignal("rx", Pins("48")),  # MON0
      Subsignal("tx", Pins("3")),  # MON1
      IOStandard("LVCMOS33")
      ),
-    # serial is muxed in with these key monitor pins -- TODO
+    # serial is muxed in with these key monitor pins
 #    ("up5k_keycol0", 0, Pins("48"), IOStandard("LVCMOS33")),
 #    ("up5k_keycol1", 0, Pins("3"), IOStandard("LVCMOS33")),  # this is marking "high"
     ("up5k_keyrow0", 0, Pins("4"), IOStandard("LVCMOS33")),
@@ -115,86 +115,10 @@ io_dvt = [
     # ("lpclk", 0, Pins("37"), IOStandard("LVCMOS18")),  # conflicts with SB_PLL40_2_PAD...what weirdness
 ]
 
-io_evt = [
-    ("serial", 0,
-     Subsignal("rx", Pins("48")),  # MON0
-     Subsignal("tx", Pins("3")),  # MON1
-     IOStandard("LVCMOS33")
-     ),
-    # serial is muxed in with these key monitor pins -- TODO
-#    ("up5k_keycol0", 0, Pins("48"), IOStandard("LVCMOS33")),
-#    ("up5k_keycol1", 0, Pins("3"), IOStandard("LVCMOS33")),  # this is marking "high"
-    ("up5k_keyrow0", 0, Pins("4"), IOStandard("LVCMOS33")),
-    ("up5k_keyrow1", 0, Pins("2"), IOStandard("LVCMOS33")),
-
-    ("spiflash", 0,
-     Subsignal("cs_n", Pins("16"), IOStandard("LVCMOS18")),
-     Subsignal("clk", Pins("15"), IOStandard("LVCMOS18")),
-     Subsignal("cipo", Pins("17"), IOStandard("LVCMOS18")),
-     Subsignal("copi", Pins("14"), IOStandard("LVCMOS18")),
-     Subsignal("wp", Pins("18"), IOStandard("LVCMOS18")),
-     Subsignal("hold", Pins("13"), IOStandard("LVCMOS18")),
-     ),
-    ("spiflash4x", 0,
-     Subsignal("cs_n", Pins("16"), IOStandard("LVCMOS18")),
-     Subsignal("clk", Pins("15"), IOStandard("LVCMOS18")),
-     Subsignal("dq", Pins("14 17 18 13"), IOStandard("LVCMOS18")),
-     ),
-
-    # I2C
-    ("i2c", 0,
-     Subsignal("scl", Pins("23"), IOStandard("LVCMOS18")),
-     Subsignal("sda", Pins("25"), IOStandard("LVCMOS18")),
-     Subsignal("gg_int_n", Pins("37"), IOStandard("LVCMOS18")),     # DVT / mux to LPCLK if we want to go very low power
-     Subsignal("gyro_int_n", Pins("43"), IOStandard("LVCMOS18")),
-     Subsignal("usbcc_int_n", Pins("42"), IOStandard("LVCMOS18")),  # DVT
-    ),
-
-    ("clk12", 0, Pins("35"), IOStandard("LVCMOS18")),
-
-    ("com", 0,
-        Subsignal("csn", Pins("11"), IOStandard("LVCMOS18")),
-        Subsignal("cipo", Pins("10"), IOStandard("LVCMOS18")),
-        Subsignal("copi", Pins("9"), IOStandard("LVCMOS18")),
-        Subsignal("irq", Pins("6"), IOStandard("LVCMOS18")), # ACTIVE HIGH
-     ),
-    ("com_sclk", 0, Pins("20"), IOStandard("LVCMOS18")),
-
-    ("extcommin", 0, Pins("45"), IOStandard("LVCMOS33")),
-    ("lcd_disp", 0, Pins("44"), IOStandard("LVCMOS33")),
-
-    ("power", 0,
-        Subsignal("s0", Pins("19"), IOStandard("LVCMOS18")),
-        Subsignal("s1", Pins("12"), IOStandard("LVCMOS18")),
-        Subsignal("sys_on", Pins("47"), IOStandard("LVCMOS33")), # sys_on
-        Subsignal("u_to_t_on", Pins("46"), IOStandard("LVCMOS33")), # u_to_t_on
-        Subsignal("fpga_dis", Pins("21"), IOStandard("LVCMOS18")), # fpga_dis
-     ),
-
-    ("led", 0,
-         Subsignal("rgb0", Pins("39"), IOStandard("LVCMOS33")),
-         Subsignal("rgb1", Pins("40"), IOStandard("LVCMOS33")),
-         Subsignal("rgb2", Pins("41"), IOStandard("LVCMOS33")),
-     ),
-
-    ("wifi", 0,
-         Subsignal("cipo", Pins("32"), IOStandard("LVCMOS18")),
-         Subsignal("copi", Pins("34"), IOStandard("LVCMOS18")),
-         Subsignal("csn", Pins("28"), IOStandard("LVCMOS18")),
-         Subsignal("sclk", Pins("36"), IOStandard("LVCMOS18")),
-         Subsignal("pa_enable", Pins("27"), IOStandard("LVCMOS18")),
-         Subsignal("res_n", Pins("26"), IOStandard("LVCMOS18")),
-         Subsignal("wirq", Pins("31"), IOStandard("LVCMOS18")),
-         Subsignal("wakeup", Pins("38"), IOStandard("LVCMOS18")),
-     ),
-    # ("lpclk", 0, Pins("37"), IOStandard("LVCMOS18")),  # conflicts with SB_PLL40_2_PAD...what weirdness
-
-]
-
 sysclkfreq=18e6
 
 class BetrustedPlatform(LatticePlatform):
-    def __init__(self, io, toolchain="icestorm", revision="evt"):
+    def __init__(self, io, toolchain="icestorm", revision="pvt"):
         self.revision = revision
         LatticePlatform.__init__(self, "ice40-up5k-sg48", io, toolchain="icestorm")
 
@@ -528,7 +452,10 @@ class BaseSoC(SoCCore):
         self.add_csr("power")
 
         # Keyboard power-on + debug mux ------------------------------------------------------------------
-        debugonly = False # use to debug bootstrapping issues, avoid internal state on SoC messing with access to UART pads
+
+        # Use to debug bootstrapping issues, avoid internal state on SoC messing with access to UART pads.
+        # Prevents sleep/wake from working due to loss of modal pinmux.
+        debugonly = False
 
         if debugonly:
             self.submodules.uart_bridge = UARTWishboneBridge(platform.request("serial"), clk_freq, baudrate=115200)
@@ -734,7 +661,7 @@ def main():
 
     parser = argparse.ArgumentParser(description="Build the Betrusted Embedded Controller")
     parser.add_argument(
-        "--revision", choices=["evt", "dvt", "pvt"], default="pvt",
+        "--revision", choices=["dvt", "pvt"], default="pvt",
         help="build EC for a particular hardware revision"
     )
     parser.add_argument(
@@ -771,10 +698,8 @@ def main():
         cpu_type = None
         cpu_variant = None
 
-    if args.revision == 'evt':
-        io = io_evt
-    elif args.revision == 'dvt' or args.revision == 'pvt':
-        io = io_dvt
+    if args.revision == 'dvt' or args.revision == 'pvt':
+        io = io_pvt
     else:
         print("Invalid hardware revision")
         exit(1)
