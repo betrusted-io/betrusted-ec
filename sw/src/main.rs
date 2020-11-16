@@ -72,6 +72,11 @@ pub fn debug_power() {
 
 fn ticktimer_int_handler(_irq_no: usize) {
     let mut ticktimer_csr = CSR::new(HW_TICKTIMER_BASE as *mut u32);
+    let mut crg_csr = CSR::new(HW_CRG_BASE as *mut u32);
+
+    // disarm the watchdog
+    crg_csr.wfo(utra::crg::WATCHDOG_RESET_CODE, 0x600d);
+    crg_csr.wfo(utra::crg::WATCHDOG_RESET_CODE, 0xc0de);
 
     set_msleep_target_ticks(50); // resetting this will also clear the alarm
 
@@ -149,6 +154,7 @@ fn main() -> ! {
     set_msleep_target_ticks(50);
     ticktimer_csr.wfo(utra::ticktimer::EV_PENDING_ALARM, 1); // clear the pending signal just in case
     ticktimer_csr.wfo(utra::ticktimer::EV_ENABLE_ALARM, 1); // enable the interrupt
+    crg_csr.wfo(utra::crg::WATCHDOG_ENABLE, 1); // enable the watchdog reset
 
     loop {
         if !use_wifi && (get_time_ms() - start_time > 1500) {

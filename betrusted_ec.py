@@ -184,9 +184,10 @@ class BetrustedPlatform(LatticePlatform):
             ]
             wdog_cycle_r = Signal()
             wdog_cycle = Signal()
-            self.sync += wdog_cycle_r.eq(extcomm_div[23])
-            self.comb += wdog_cycle.eq(extcomm_div[23] & ~wdog_cycle_r)
+            self.sync += wdog_cycle_r.eq(extcomm)
+            self.comb += wdog_cycle.eq(extcomm & ~wdog_cycle_r)
             wdog = FSM(reset_state="IDLE")
+            self.submodules += wdog
             wdog.act("IDLE",
                 If(wdog_enabled,
                     NextState("WAIT_ARM")
@@ -206,20 +207,18 @@ class BetrustedPlatform(LatticePlatform):
                     If(self.watchdog.fields.reset_code == 0x600d,
                         NextState("DISARM1")
                     )
-                ).Else(
-                    NextState("ARMED")
                 )
             )
-            wdog.act("DISARM2",
+            wdog.act("DISARM1",
                 If(wdog_cycle,
                     self.cd_sys.rst.eq(1),
                 ),
                 If(self.watchdog.re,
                     If(self.watchdog.fields.reset_code == 0xc0de,
                        NextState("DISARMED")
+                    ).Else(
+                       NextState("ARMED")
                     )
-                ).Else(
-                    NextState("ARMED")
                 )
             )
             wdog.act("DISARMED",
