@@ -1,41 +1,76 @@
+use utralib::generated::*;
+
 const TICKS_PER_MS: u64 = 1;
 
-pub fn time_init(p: &betrusted_pac::Peripherals) {
-    p.TICKTIMER.control.write( |w| {w.reset().bit(true)});
+pub fn time_init() {
+    let mut ticktimer_csr = CSR::new(HW_TICKTIMER_BASE as *mut u32);
+
+    ticktimer_csr.wfo(utra::ticktimer::CONTROL_RESET, 1);
 }
 
 // time APIs needed (ideally)
 // get current time - in milliseconds, as u32
 // delay for milliseconds
-pub fn get_time_ms(p: &betrusted_pac::Peripherals) -> u32 {
+pub fn get_time_ms() -> u32 {
+    let ticktimer_csr = CSR::new(HW_TICKTIMER_BASE as *mut u32);
+
     let mut time: u64;
-    
-    time = p.TICKTIMER.time0.read().bits() as u64;
-    time |= (p.TICKTIMER.time1.read().bits() as u64) << 32;
+
+    time = ticktimer_csr.r(utra::ticktimer::TIME0) as u64;
+    time |= (ticktimer_csr.r(utra::ticktimer::TIME1) as u64) << 32;
 
     (time / TICKS_PER_MS) as u32
 }
 
-pub fn delay_ms(p: &betrusted_pac::Peripherals, ms: u32) {
-    let starttime: u32 = get_time_ms(p);
+pub fn get_time_ticks() -> u64 {
+    let ticktimer_csr = CSR::new(HW_TICKTIMER_BASE as *mut u32);
+
+    let mut time: u64;
+
+    time = ticktimer_csr.r(utra::ticktimer::TIME0) as u64;
+    time |= (ticktimer_csr.r(utra::ticktimer::TIME1) as u64) << 32;
+
+    time
+}
+
+pub fn set_msleep_target_ticks(delta_ticks: u32) {
+    let mut ticktimer_csr = CSR::new(HW_TICKTIMER_BASE as *mut u32);
+
+    let mut time: u64;
+
+    time = ticktimer_csr.r(utra::ticktimer::TIME0) as u64;
+    time |= (ticktimer_csr.r(utra::ticktimer::TIME1) as u64) << 32;
+
+    time += delta_ticks as u64;
+
+    ticktimer_csr.wo(utra::ticktimer::MSLEEP_TARGET1, ((time >> 32) & 0xFFFF_FFFF) as u32);
+    ticktimer_csr.wo(utra::ticktimer::MSLEEP_TARGET0, (time & 0xFFFF_FFFFF) as u32);
+}
+
+pub fn delay_ms(ms: u32) {
+    let starttime: u32 = get_time_ms();
 
     loop {
-        if get_time_ms(p) > (starttime + ms) {
+        if get_time_ms() > (starttime + ms) {
             break;
         }
     }
 }
 
 /// callers must deal with overflow, but the function is fast
-pub fn get_time_ticks_trunc(p: &betrusted_pac::Peripherals) -> u32 {
-    p.TICKTIMER.time0.read().bits()
+pub fn get_time_ticks_trunc() -> u32 {
+    let ticktimer_csr = CSR::new(HW_TICKTIMER_BASE as *mut u32);
+
+    ticktimer_csr.r(utra::ticktimer::TIME0)
 }
 
-pub fn delay_ticks(p: &betrusted_pac::Peripherals, ticks: u32) {
-    let start: u32 = p.TICKTIMER.time0.read().bits();
+pub fn delay_ticks(ticks: u32) {
+    let ticktimer_csr = CSR::new(HW_TICKTIMER_BASE as *mut u32);
+
+    let start: u32 = ticktimer_csr.r(utra::ticktimer::TIME0);
 
     loop {
-        let cur: u32 = p.TICKTIMER.time0.read().bits();
+        let cur: u32 = ticktimer_csr.r(utra::ticktimer::TIME0);
         if cur > start {
             if (cur - start) > ticks {
                 break;
@@ -45,5 +80,5 @@ pub fn delay_ticks(p: &betrusted_pac::Peripherals, ticks: u32) {
                 break;
             }
         }
-    }    
+    }
 }

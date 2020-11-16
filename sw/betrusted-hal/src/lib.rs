@@ -2,6 +2,7 @@
 
 extern crate bitflags;
 extern crate volatile;
+extern crate utralib;
 
 pub mod hal_hardi2c;
 pub mod hal_time;

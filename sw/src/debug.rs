@@ -1,9 +1,11 @@
+use utralib::generated::*;
+
 pub struct Uart {
     pub base: *mut u32,
 }
 
 pub const CROSSOVER_UART: Uart = Uart {
-    base: 0xE000_1800 as *mut u32,
+    base: utra::uart::HW_UART_BASE as *mut u32,
 };
 
 #[cfg(feature = "debug_uart")]

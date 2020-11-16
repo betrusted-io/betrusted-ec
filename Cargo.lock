@@ -45,20 +45,10 @@ dependencies = [
 name = "betrusted-hal"
 version = "0.1.0"
 dependencies = [
- "betrusted-pac",
  "bitflags",
  "c_types",
+ "utralib",
  "volatile",
-]
-
-[[package]]
-name = "betrusted-pac"
-version = "0.0.1"
-dependencies = [
- "bare-metal",
- "riscv",
- "riscv-rt",
- "vcell",
 ]
 
 [[package]]
@@ -150,7 +140,6 @@ name = "gyro_rs"
 version = "0.1.0"
 dependencies = [
  "betrusted-hal",
- "betrusted-pac",
  "c_types",
  "gyro_bindings",
  "gyro_sys",
@@ -445,7 +434,6 @@ name = "sw"
 version = "0.1.0"
 dependencies = [
  "betrusted-hal",
- "betrusted-pac",
  "gyro_bindings",
  "gyro_rs",
  "gyro_sys",
@@ -505,12 +493,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "vcell"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "876e32dcadfe563a4289e994f7cb391197f362b6315dc45e8ba4aa6f564a4b3c"
-
-[[package]]
 name = "vcpkg"
 version = "0.2.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -524,13 +506,9 @@ checksum = "f1bddf1187be692e79c5ffeab891132dfb0f236ed36a43c7ed39f1165ee20191"
 
 [[package]]
 name = "vexriscv"
-version = "0.0.2"
+version = "0.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a8cca4a24ec0049cadb38a5a0767529d28f3ea7bb5e5233b8f6cc02a1d8f0a51"
-dependencies = [
- "bare-metal",
- "bit_field",
-]
+checksum = "6eac3d398d0468c76272ea6b2c187d3696f0ed126325f8f41ccc711e9e74cd06"
 
 [[package]]
 name = "volatile"
@@ -550,8 +528,8 @@ name = "wfx_rs"
 version = "0.1.0"
 dependencies = [
  "betrusted-hal",
- "betrusted-pac",
  "c_types",
+ "utralib",
  "wfx_bindings",
  "wfx_sys",
  "xous-nommu",
@@ -593,6 +571,7 @@ checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
 name = "xous-nommu"
 version = "0.1.0"
 dependencies = [
+ "riscv",
  "vexriscv",
 ]
 

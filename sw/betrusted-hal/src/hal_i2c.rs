@@ -14,14 +14,14 @@ pub fn i2c_init(p: &betrusted_pac::Peripherals, clock_mhz: u32) {
 // threads and interurpts, this should be refactored to be asynchronous
 #[doc = "Wait until a transaction in progress ends. [FIXME] would be good to yield here once threading is enabled."]
 fn i2c_tip_wait(p: &betrusted_pac::Peripherals, timeout_ms: u32) -> u32 {
-    let starttime: u32 = get_time_ms(p);
+    let starttime: u32 = get_time_ms();
 
     // wait for TIP to go high
     loop {
         if p.I2C.status.read().tip().bit() == true {
             break;
         }
-        if get_time_ms(p) > starttime + timeout_ms {
+        if get_time_ms() > starttime + timeout_ms {
             unsafe{p.I2C.command.write( |w| {w.bits(0)}); }
             return 1;
         }
@@ -32,7 +32,7 @@ fn i2c_tip_wait(p: &betrusted_pac::Peripherals, timeout_ms: u32) -> u32 {
         if p.I2C.status.read().tip().bit() == false {
             break;
         }
-        if get_time_ms(p) > starttime + timeout_ms {
+        if get_time_ms() > starttime + timeout_ms {
             unsafe{p.I2C.command.write( |w| {w.bits(0)}); }
             return 1;
         }

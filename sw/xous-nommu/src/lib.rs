@@ -4,7 +4,8 @@ mod irq;
 mod macros;
 pub mod syscalls;
 
-use vexriscv::register::{mcause, mie, mstatus, vmim, vmip};
+use vexriscv::register::{vmim, vmip};
+use riscv::register::{mcause, mie, mstatus};
 
 #[cfg(test)]
 mod tests {

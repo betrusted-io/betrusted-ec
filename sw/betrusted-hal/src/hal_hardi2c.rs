@@ -191,7 +191,6 @@ bitflags! {
 }
 
 pub struct Hardi2c {
-    p: betrusted_pac::Peripherals,
     control: *mut Volatile <u32>,
     prescale_lsb: *mut Volatile <u32>,
     prescale_msb: *mut Volatile <u32>,
@@ -205,19 +204,16 @@ pub struct Hardi2c {
 
 impl Hardi2c {
     pub fn new() -> Self {
-        unsafe {
-            Hardi2c {
-                p: betrusted_pac::Peripherals::steal(),
-                control: ((HARDI2C_BASE + HARDI2C_CONTROL) as *mut u32) as *mut Volatile <u32>,
-                prescale_lsb: ((HARDI2C_BASE + HARDI2C_PRESCALE_LSB) as *mut u32) as *mut Volatile <u32>,
-                prescale_msb: ((HARDI2C_BASE + HARDI2C_PRESCALE_MSB) as *mut u32) as *mut Volatile <u32>,
-                irqen: ((HARDI2C_BASE + HARDI2C_IRQEN) as *mut u32) as *mut Volatile <u32>,
-                status: ((HARDI2C_BASE + HARDI2C_STATUS) as *mut u32) as *mut Volatile <u32>,
-                command: ((HARDI2C_BASE + HARDI2C_COMMAND) as *mut u32) as *mut Volatile <u32>,
-                txd: ((HARDI2C_BASE + HARDI2C_TXD) as *mut u32) as *mut Volatile <u32>,
-                rxd: ((HARDI2C_BASE + HARDI2C_RXD) as *mut u32) as *mut Volatile <u32>,
-                irqstat: ((HARDI2C_BASE + HARDI2C_IRQSTAT) as *mut u32) as *mut Volatile <u32>,
-            }
+        Hardi2c {
+            control: ((HARDI2C_BASE + HARDI2C_CONTROL) as *mut u32) as *mut Volatile <u32>,
+            prescale_lsb: ((HARDI2C_BASE + HARDI2C_PRESCALE_LSB) as *mut u32) as *mut Volatile <u32>,
+            prescale_msb: ((HARDI2C_BASE + HARDI2C_PRESCALE_MSB) as *mut u32) as *mut Volatile <u32>,
+            irqen: ((HARDI2C_BASE + HARDI2C_IRQEN) as *mut u32) as *mut Volatile <u32>,
+            status: ((HARDI2C_BASE + HARDI2C_STATUS) as *mut u32) as *mut Volatile <u32>,
+            command: ((HARDI2C_BASE + HARDI2C_COMMAND) as *mut u32) as *mut Volatile <u32>,
+            txd: ((HARDI2C_BASE + HARDI2C_TXD) as *mut u32) as *mut Volatile <u32>,
+            rxd: ((HARDI2C_BASE + HARDI2C_RXD) as *mut u32) as *mut Volatile <u32>,
+            irqstat: ((HARDI2C_BASE + HARDI2C_IRQSTAT) as *mut u32) as *mut Volatile <u32>,
         }
     }
 
@@ -242,10 +238,10 @@ impl Hardi2c {
 
     /// Wait for trrdy or srw to go true. trrdy = false => wait for srw [FIXME] make this interrupt driven, not polled
     fn i2c_wait(&mut self, flag: u32, timeout_ms: u32) -> u32 {
-        let starttime: u32 = get_time_ticks_trunc(&self.p);
+        let starttime: u32 = get_time_ticks_trunc();
 
         while (unsafe{ (*self.status).read() } & flag) == 0 {
-            let curtime: u32 = get_time_ticks_trunc(&self.p);
+            let curtime: u32 = get_time_ticks_trunc();
 
             if curtime >= starttime {
                 if (curtime - starttime) > timeout_ms {
@@ -264,10 +260,10 @@ impl Hardi2c {
 
     /// opposite polarity as above; don't generalize because the extra code can hurt wait loop timing
     fn i2c_wait_n(&mut self, flag: u32, timeout_ms: u32) -> u32 {
-        let starttime: u32 = get_time_ticks_trunc(&self.p);
+        let starttime: u32 = get_time_ticks_trunc();
 
         while (unsafe{ (*self.status).read() } & flag) != 0 {
-            let curtime: u32 = get_time_ticks_trunc(&self.p);
+            let curtime: u32 = get_time_ticks_trunc();
 
             if curtime >= starttime {
                 if (curtime - starttime) > timeout_ms {

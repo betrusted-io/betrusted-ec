@@ -10,9 +10,9 @@ edition = "2018"
 wfx_sys = { path = "../wfx_sys" }
 c_types = { path = "../c_types" }
 betrusted-hal = { path = "../betrusted-hal" }
-betrusted-pac = { path = "../betrusted-pac" }
 wfx_bindings = { path = "../wfx_bindings" }
 xous-nommu = { path = "../xous-nommu" }
+utralib = { path = "../../utralib"}
 
 [features]
 debug_uart = []

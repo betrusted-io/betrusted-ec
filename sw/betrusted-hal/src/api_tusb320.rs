@@ -1,6 +1,7 @@
 use bitflags::*;
 
 use crate::hal_hardi2c::Hardi2c;
+use utralib::generated::*;
 
 const TUSB320LAI_ADDR: u8 = 0x47;
 
@@ -79,7 +80,6 @@ pub const TUSB320LAI_A0_REV: usize = 0xA0;
 pub const TUSB320LAI_REVISION_EXPECTED: u8 = 0x02;
 
 const TUSB320_TIMEOUT_MS: u32 = 1;
-const USB_CC_INT_MASK: u32 = 0x08;
 
 pub struct BtUsbCc {
     pub id: [u8; 8],
@@ -91,7 +91,7 @@ impl BtUsbCc {
         BtUsbCc { id: [0; 8], status: [0; 3] }
     }
 
-    pub fn init(&mut self, i2c: &mut Hardi2c, p: &betrusted_pac::Peripherals) {
+    pub fn init(&mut self, i2c: &mut Hardi2c) {
         let mut txbuf: [u8; 1] = [TUSB320LAI_00_ID as u8];
         let mut rxbuf: [u8; 8] = [0; 8];
 
@@ -126,11 +126,13 @@ impl BtUsbCc {
         }
 
         // enable the regchange event
-        unsafe{ p.I2C.ev_enable.write(|w| w.bits(USB_CC_INT_MASK)); }
+        let mut i2c_csr = CSR::new(HW_I2C_BASE as *mut u32);
+        i2c_csr.wfo(utra::i2c::EV_ENABLE_USBCC_INT, 1);
     }
 
-    pub fn check_event(&mut self, i2c: &mut Hardi2c, p: &betrusted_pac::Peripherals) -> bool {
-        if p.I2C.ev_pending.read().bits() & USB_CC_INT_MASK != 0 {
+    pub fn check_event(&mut self, i2c: &mut Hardi2c) -> bool {
+        let mut i2c_csr = CSR::new(HW_I2C_BASE as *mut u32);
+        if i2c_csr.rf(utra::i2c::EV_PENDING_USBCC_INT) != 0 {
             let txbuf = [TUSB320LAI_08_CSR0 as u8];
             let mut status_regs: [u8; 3] = [0; 3];
             while i2c.i2c_controller(TUSB320LAI_ADDR, Some(&txbuf), Some(&mut status_regs), TUSB320_TIMEOUT_MS) != 0 {}
@@ -141,7 +143,7 @@ impl BtUsbCc {
             let update: [u8; 2] = [TUSB320LAI_09_CSR1 as u8, self.status[1] | ConfigStatus1::REGCHANGE_INTERRUPT.bits()];
             while i2c.i2c_controller(TUSB320LAI_ADDR, Some(&update), None, TUSB320_TIMEOUT_MS) != 0 {}
             // clear the interrupt in the CPU by writing a 1 to the pending bit
-            unsafe{ p.I2C.ev_pending.write(|w| w.bits(USB_CC_INT_MASK)); }
+            i2c_csr.wfo(utra::i2c::EV_PENDING_USBCC_INT, 1);
             true
         } else {
             false

@@ -1,6 +1,7 @@
 use crate::definitions::XousError;
 use crate::filled_array;
-use vexriscv::register::{mstatus, vmim};
+use vexriscv::register::vmim;
+use riscv::register::mstatus;
 
 static mut IRQ_HANDLERS: [Option<fn(usize)>; 32] = filled_array![None; 32];
 

@@ -1,7 +1,7 @@
 #![no_main]
 #![no_std]
 
-// note: to get vscode to reload the PAC, do shift-ctrl-p, 'reload window'. developer:Reload window
+// note: to get vscode to reload file, do shift-ctrl-p, 'reload window'. developer:Reload window
 
 use core::panic::PanicInfo;
 use riscv_rt::entry;
@@ -9,6 +9,13 @@ use riscv_rt::entry;
 extern crate betrusted_hal;
 extern crate utralib;
 extern crate volatile;
+
+use betrusted_hal::hal_hardi2c::*;
+use betrusted_hal::hal_time::*;
+use betrusted_hal::api_gasgauge::*;
+use betrusted_hal::api_lm3509::*;
+use betrusted_hal::api_bq25618::*;
+use betrusted_hal::api_tusb320::*;
 
 extern crate wfx_sys;
 extern crate wfx_rs;
@@ -58,43 +65,33 @@ enum ComState {
     SsidFetch,
 }
 
-const POWER_MASK_FPGA_ON: u32 = 0b10;
-const POWER_MASK_SHUTDOWN_OK: u32 = 0b01;
-
 pub fn debug_power() {
-    let mut power_csr = CSR::new(HW_POWER_BASE as *mut u32);
+    let power_csr = CSR::new(HW_POWER_BASE as *mut u32);
     sprintln!("power: 0x{:04x}", power_csr.r(utra::power::POWER));
 }
 
-fn com_int_handler(_irq_no: usize) {
-    let mut com_csr = CSR::new(utra::com::HW_COM_BASE as *mut u32);
-    let avail_pending = com_csr.rf(utra::com::EV_PENDING_SPI_AVAIL);
+fn ticktimer_int_handler(_irq_no: usize) {
+    let mut ticktimer_csr = CSR::new(HW_TICKTIMER_BASE as *mut u32);
 
-    // handle interrupt here
+    set_msleep_target_ticks(50); // resetting this will also clear the alarm
 
-    com_csr.wfo(utra::com::EV_PENDING_SPI_AVAIL, 1); // clear the pending
+    ticktimer_csr.wfo(utra::ticktimer::EV_PENDING_ALARM, 1);
 }
 
 #[entry]
 fn main() -> ! {
-    use betrusted_hal::hal_hardi2c::*;
-    use betrusted_hal::hal_time::*;
-    use betrusted_hal::api_gasgauge::*;
-    use betrusted_hal::api_lm3509::*;
-    use betrusted_hal::api_bq25618::*;
-    use betrusted_hal::api_tusb320::*;
-
     let mut power_csr = CSR::new(HW_POWER_BASE as *mut u32);
     let mut com_csr = CSR::new(HW_COM_BASE as *mut u32);
+    let mut crg_csr = CSR::new(HW_CRG_BASE as *mut u32);
+    let mut ticktimer_csr = CSR::new(HW_TICKTIMER_BASE as *mut u32);
 
     // Initialize the no-MMU version of Xous, which will give us
     // basic access to tasks and interrupts.
     xous_nommu::init();
 
-    let p = betrusted_pac::Peripherals::take().unwrap();
     let mut i2c = Hardi2c::new();
 
-    time_init(&p);
+    time_init();
 
     i2c.i2c_init(CONFIG_CLOCK_FREQUENCY);
 
@@ -109,7 +106,7 @@ fn main() -> ! {
     charger.chg_start(&mut i2c);
 
     let mut usb_cc = BtUsbCc::new();
-    usb_cc.init(&mut i2c, &p);
+    usb_cc.init(&mut i2c);
 
     let mut gyro: BtGyro = BtGyro::new();
     gyro.init();
@@ -122,7 +119,7 @@ fn main() -> ! {
 
     unsafe{ (*com_fifo).write(2020); } // load a dummy entry in so we can respond on the first txrx
 
-    let mut last_run_time : u32 = get_time_ms(&p);
+    let mut last_run_time : u32 = get_time_ms();
     let mut loopcounter: u32 = 0; // in seconds, so this will last ~125 years
     let mut voltage : i16 = 0;
     let mut current: i16 = 0;
@@ -137,7 +134,7 @@ fn main() -> ! {
 
     backlight.set_brightness(&mut i2c, 0, 0); // make sure the backlight is off on boot
 
-    let mut start_time: u32 = get_time_ms(&p);
+    let mut start_time: u32 = get_time_ms();
     let mut wifi_ready: bool = false;
     let mut ssid_list: [SsidResult; 6] = [SsidResult::default(); 6];
 
@@ -148,19 +145,20 @@ fn main() -> ! {
     let use_wifi: bool = true;
     let do_power: bool = false;
 
-    xous_nommu::syscalls::sys_interrupt_claim(utra::com::COM_IRQ, com_int_handler).unwrap();
-    com_csr.wfo(utra::com::EV_PENDING_SPI_AVAIL, 1); // clear the pending signal just in case
-    com_csr.wfo(utra::com::EV_ENABLE_SPI_AVAIL, 1); // enable interrupts on SPI fifo not empty
+    xous_nommu::syscalls::sys_interrupt_claim(utra::ticktimer::TICKTIMER_IRQ, ticktimer_int_handler).unwrap();
+    set_msleep_target_ticks(50);
+    ticktimer_csr.wfo(utra::ticktimer::EV_PENDING_ALARM, 1); // clear the pending signal just in case
+    ticktimer_csr.wfo(utra::ticktimer::EV_ENABLE_ALARM, 1); // enable the interrupt
 
     loop {
-        if !use_wifi && (get_time_ms(&p) - start_time > 1500) {
-            delay_ms(&p, 250); // force just a delay, so requests queue up
-            start_time = get_time_ms(&p);
+        if !use_wifi && (get_time_ms() - start_time > 1500) {
+            delay_ms(250); // force just a delay, so requests queue up
+            start_time = get_time_ms();
         }
         // slight delay to allow for wishbone-tool to connect for debuggening
-        if (get_time_ms(&p) - start_time > 1500) && !wifi_ready && use_wifi {
+        if (get_time_ms() - start_time > 1500) && !wifi_ready && use_wifi {
             sprintln!("initializing wifi!");
-            // delay_ms(&p, 250); // let the message print
+            // delay_ms(250); // let the message print
             // init the wifi interface
             if wfx_init() == SL_STATUS_OK {
                 sprintln!("Wifi ready");
@@ -168,13 +166,13 @@ fn main() -> ! {
             } else {
                 sprintln!("Wifi init failed");
             }
-            start_time = get_time_ms(&p);
+            start_time = get_time_ms();
         }
         if wifi_ready && use_wifi {
-            if get_time_ms(&p) - start_time > 20_000 {
+            if get_time_ms() - start_time > 20_000 {
                 sprintln!("starting ssid scan");
                 wfx_start_scan();
-                start_time = get_time_ms(&p);
+                start_time = get_time_ms();
             }
         }
         if wfx_rs::hal_wf200::wf200_event_get() && use_wifi {
@@ -192,15 +190,15 @@ fn main() -> ! {
             }
         }
 
-        if get_time_ms(&p) - last_run_time > 1000 {
-            last_run_time = get_time_ms(&p);
+        if get_time_ms() - last_run_time > 1000 {
+            last_run_time = get_time_ms();
             loopcounter += 1;
 
             // routine pings & housekeeping
             if loopcounter % 2 == 0 {
                 charger.chg_keepalive_ping(&mut i2c);
                 if !usb_cc_event {
-                    usb_cc_event = usb_cc.check_event(&mut i2c, &p);
+                    usb_cc_event = usb_cc.check_event(&mut i2c);
                 }
             } else {
                 voltage = gg_voltage(&mut i2c);
@@ -235,11 +233,11 @@ fn main() -> ! {
 
         // fast-monitor the keyboard inputs if the soc is in the off state
         if !soc_on {
-            if get_time_ms(&p) - pd_discharge_timer < 2000 {
+            if get_time_ms() - pd_discharge_timer < 2000 {
                 // wait 2 seconds after PD before checking anything
             } else {
-                if get_time_ms(&p) - pd_loop_timer > 50 { // every 50ms check key state
-                    pd_loop_timer = get_time_ms(&p);
+                if get_time_ms() - pd_loop_timer > 50 { // every 50ms check key state
+                    pd_loop_timer = get_time_ms();
                     // drive sense for keyboard
                     let power =
                     power_csr.ms(utra::power::POWER_SELF, 1)
@@ -272,7 +270,7 @@ fn main() -> ! {
 
         // p.WIFI.ev_enable.write(|w| unsafe{w.bits(0)} ); // disable wifi interrupts, entering a critical section
         // unsafe{ betrusted_pac::Peripherals::steal().WIFI.ev_pending.write(|w| w.bits(0x1)); }
-        while p.COM.status.read().rx_avail().bit_is_set() {
+        while com_csr.rf(utra::com::STATUS_RX_AVAIL) == 1 {
             let rx: u16;
             unsafe{ rx = (*com_rd).read() as u16; }
 
@@ -306,8 +304,8 @@ fn main() -> ! {
                 },
                 0xFFFF => {
                     // reset link command, when received, empty all the FIFOs, and prime Tx with dummy data
-                    p.COM.control.write( |w| w.reset().bit(true) ); // reset fifos
-                    p.COM.control.write( |w| w.clrerr().bit(true) ); // clear all error flags
+                    com_csr.wfo(utra::com::CONTROL_RESET, 1);  // reset fifos
+                    com_csr.wfo(utra::com::CONTROL_CLRERR, 1); // clear all error flags
                     com_sentinel = com_sentinel + 1;
                     unsafe{ (*com_fifo).write(com_sentinel as u32); }
                     comstate = ComState::Error;
@@ -353,7 +351,7 @@ fn main() -> ! {
                 },
                 ComState::Power => {
                     if linkindex == 0 {
-                        tx = p.POWER.power.read().bits() as u16;
+                        tx = power_csr.r(utra::power::POWER) as u16;
                     } else {
                         comstate = ComState::Idle;
                     }
@@ -366,7 +364,7 @@ fn main() -> ! {
                     } else if linkindex == 2 {
                         tx = voltage as u16;
                     } else if linkindex == 3 {
-                        tx = p.POWER.power.read().bits() as u16;
+                        tx = power_csr.r(utra::power::POWER) as u16;
                     } else {
                         comstate = ComState::Idle;
                     }
@@ -439,14 +437,14 @@ fn main() -> ! {
                     sprintln!("got power down request from soc!");
                     linkindex = 0;
                     // ignore rapid, successive power down requests
-                    if get_time_ms(&p) - pd_loop_timer > 1500 {
+                    if get_time_ms() - pd_loop_timer > 1500 {
                         let power =
                         power_csr.ms(utra::power::POWER_SELF, 1)
                         | power_csr.ms(utra::power::POWER_DISCHARGE, 1);
                         power_csr.wo(utra::power::POWER, power);
 
-                        pd_loop_timer = get_time_ms(&p);
-                        pd_discharge_timer = get_time_ms(&p);
+                        pd_loop_timer = get_time_ms();
+                        pd_discharge_timer = get_time_ms();
                         soc_on = false;
                         debug_power();
                     }
@@ -458,8 +456,8 @@ fn main() -> ! {
                     | power_csr.ms(utra::power::POWER_DISCHARGE, 1);
                     power_csr.wo(utra::power::POWER, power);
 
-                    pd_loop_timer = get_time_ms(&p);
-                    pd_discharge_timer = get_time_ms(&p);
+                    pd_loop_timer = get_time_ms();
+                    pd_discharge_timer = get_time_ms();
                     soc_on = false;
                 },
                 0xA000 => {

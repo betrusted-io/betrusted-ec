@@ -10,7 +10,6 @@ edition = "2018"
 gyro_sys = { path = "../gyro_sys" }
 c_types = { path = "../c_types" }
 betrusted-hal = { path = "../betrusted-hal" }
-betrusted-pac = { path = "../betrusted-pac" }
 gyro_bindings = { path = "../gyro_bindings" }
 xous-nommu = { path = "../xous-nommu" }
 

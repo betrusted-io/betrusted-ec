@@ -7,9 +7,9 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-betrusted-pac = { path = "../betrusted-pac" }
 bitflags = "1.2.1"
 volatile = "0.2.6"
 c_types = { path = "../c_types" }
+utralib = { path = "../../utralib"}
 
 [features]

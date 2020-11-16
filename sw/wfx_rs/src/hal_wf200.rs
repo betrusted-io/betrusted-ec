@@ -3,11 +3,12 @@
 
 use crate::betrusted_hal::hal_time::delay_ms;
 use crate::betrusted_hal::hal_time::get_time_ms;
-use crate::betrusted_pac;
 use crate::wfx_bindings;
 use xous_nommu::syscalls::*;
 use core::slice;
 use core::str;
+
+use utralib::generated::*;
 
 pub const DEBUGGING: bool = false;
 pub const DEBUGGING2: bool = false;  // more verbose debugging
@@ -184,83 +185,92 @@ pub fn wfx_init() -> sl_status_t {
 
 #[export_name = "sl_wfx_host_spi_cs_assert"]
 pub unsafe extern "C" fn sl_wfx_host_spi_cs_assert() -> sl_status_t {
-    unsafe { betrusted_pac::Peripherals::steal().WIFI.cs.write(|w| w.cs().bit(true)); }
+    let mut wifi_csr = CSR::new(HW_WIFI_BASE as *mut u32);
+    wifi_csr.wfo(utra::wifi::CS_CS, 1);
     SL_STATUS_OK
 }
 
 #[export_name = "sl_wfx_host_spi_cs_deassert"]
 pub unsafe extern "C" fn sl_wfx_host_spi_cs_deassert() -> sl_status_t {
-    unsafe{ betrusted_pac::Peripherals::steal().WIFI.cs.write(|w| w.cs().bit(false)); }
+    let mut wifi_csr = CSR::new(HW_WIFI_BASE as *mut u32);
+    wifi_csr.wfo(utra::wifi::CS_CS, 0);
     SL_STATUS_OK
 }
 
 #[export_name = "sl_wfx_host_deinit_bus"]
 pub unsafe extern "C" fn sl_wfx_host_deinit_bus()-> sl_status_t {
+    let mut wifi_csr = CSR::new(HW_WIFI_BASE as *mut u32);
     if DEBUGGING2 { sprintln!("deinit_bus"); }
-    unsafe{ betrusted_pac::Peripherals::steal().WIFI.control.write(|w| w.bits(0)); }
-    unsafe{ betrusted_pac::Peripherals::steal().WIFI.wifi.write(|w| w.bits(0)); }
+    wifi_csr.wo(utra::wifi::CONTROL, 0);
+    wifi_csr.wo(utra::wifi::WIFI, 0);
     SL_STATUS_OK
 }
 
+pub fn wfx_int_handler(_irq_no: usize) {
+    let mut wifi_csr = CSR::new(HW_WIFI_BASE as *mut u32);
+    let ev: u32 = wifi_csr.r(utra::wifi::EV_PENDING);
+    wf200_event_set();
+    // clear the interrupt
+    wifi_csr.wo(utra::wifi::EV_PENDING, ev);
+}
 #[export_name = "sl_wfx_host_enable_platform_interrupt"]
 pub unsafe extern "C" fn sl_wfx_host_enable_platform_interrupt() -> sl_status_t {
-   sys_interrupt_claim(betrusted_pac::Interrupt::WIFI as usize, |_| {
-       let ev: u32 = betrusted_pac::Peripherals::steal().WIFI.ev_pending.read().bits() as u32;
-       wf200_event_set();
-        // clear the interrupt
-        unsafe{ betrusted_pac::Peripherals::steal().WIFI.ev_pending.write(|w| w.bits(ev)); }
-    })
+    let mut wifi_csr = CSR::new(HW_WIFI_BASE as *mut u32);
+    sys_interrupt_claim(utra::wifi::WIFI_IRQ as usize, wfx_int_handler)
     .unwrap();
-    sprintln!("enabling interrupt: mask {} channel {}", WIFI_EVENT_WIRQ, betrusted_pac::Interrupt::WIFI as u8);
-    unsafe{ betrusted_pac::Peripherals::steal().WIFI.ev_enable.write(|w| unsafe{w.bits(WIFI_EVENT_WIRQ)} ); }
+    sprintln!("enabling interrupt: mask {} channel {}", WIFI_EVENT_WIRQ, utra::wifi::WIFI_IRQ as u8);
+    wifi_csr.wfo(utra::wifi::EV_ENABLE_WIRQ, 1);
     SL_STATUS_OK
 }
 
 #[export_name = "sl_wfx_host_disable_platform_interrupt"]
 pub unsafe extern "C" fn sl_wfx_host_disable_platform_interrupt() -> sl_status_t {
-    unsafe{ betrusted_pac::Peripherals::steal().WIFI.ev_enable.write(|w| unsafe{w.bits(0)} ); }
-    sys_interrupt_free(betrusted_pac::Interrupt::WIFI as usize);
+    let mut wifi_csr = CSR::new(HW_WIFI_BASE as *mut u32);
+    wifi_csr.wo(utra::wifi::EV_ENABLE, 0);
+    sys_interrupt_free(utra::wifi::WIFI_IRQ as usize);
     SL_STATUS_OK
 }
 
 #[export_name = "sl_wfx_host_init_bus"]
 pub unsafe extern "C" fn sl_wfx_host_init_bus()-> sl_status_t {
-    unsafe {
-        betrusted_pac::Peripherals::steal().WIFI.control.write(|w| unsafe{w.bits(0)});
-        betrusted_pac::Peripherals::steal().WIFI.wifi.write(|w| unsafe{w.bits(0)});
-    }
+    let mut wifi_csr = CSR::new(HW_WIFI_BASE as *mut u32);
+    wifi_csr.wo(utra::wifi::CONTROL, 0);
+    wifi_csr.wo(utra::wifi::WIFI, 0);
     if DEBUGGING2 { sprintln!("init_bus"); }
     SL_STATUS_OK
 }
 
 #[export_name = "sl_wfx_host_reset_chip"]
 pub unsafe extern "C" fn sl_wfx_host_reset_chip() -> sl_status_t {
+    let mut wifi_csr = CSR::new(HW_WIFI_BASE as *mut u32);
     if DEBUGGING2 { sprintln!("reset_chip"); }
-    betrusted_pac::Peripherals::steal().WIFI.wifi.write(|w| unsafe{w.reset().bit(true)});
-    delay_ms(&betrusted_pac::Peripherals::steal(), 10);
-    betrusted_pac::Peripherals::steal().WIFI.wifi.write(|w| unsafe{w.reset().bit(false)});
-    delay_ms(&betrusted_pac::Peripherals::steal(), 10);
+    wifi_csr.wfo(utra::wifi::WIFI_RESET, 1);
+    delay_ms(10);
+    wifi_csr.wfo(utra::wifi::WIFI_RESET, 0);
+    delay_ms(10);
     SL_STATUS_OK
 }
 
 #[export_name = "sl_wfx_host_hold_in_reset"]
 pub unsafe extern "C" fn sl_wfx_host_hold_in_reset() -> sl_status_t {
-    betrusted_pac::Peripherals::steal().WIFI.wifi.write(|w| unsafe{w.reset().bit(true)});
+    let mut wifi_csr = CSR::new(HW_WIFI_BASE as *mut u32);
+    wifi_csr.wfo(utra::wifi::WIFI_RESET, 1);
     SL_STATUS_OK
 }
 
 #[export_name = "sl_wfx_host_wait"]
 pub unsafe extern "C" fn sl_wfx_host_wait(wait_ms: u32) -> sl_status_t {
-    delay_ms(&betrusted_pac::Peripherals::steal(), wait_ms);
+    delay_ms(wait_ms);
     SL_STATUS_OK
 }
 
 #[export_name = "sl_wfx_host_set_wake_up_pin"]
 pub unsafe extern "C" fn sl_wfx_host_set_wake_up_pin(state: u8) -> sl_status_t {
+    let mut wifi_csr = CSR::new(HW_WIFI_BASE as *mut u32);
     if state == 0 {
-        betrusted_pac::Peripherals::steal().WIFI.wifi.modify(|_,w| w.wakeup().clear_bit());
+        wifi_csr.rmwf(utra::wifi::WIFI_WAKEUP, 0);
     } else {
-        betrusted_pac::Peripherals::steal().WIFI.wifi.modify(|_,w| w.wakeup().set_bit());
+        wifi_csr.rmwf(utra::wifi::WIFI_WAKEUP, 1);
     }
     SL_STATUS_OK
 }
@@ -293,6 +303,8 @@ pub unsafe extern "C" fn sl_wfx_host_spi_transfer_no_cs_assert(
     buffer: *mut u8,
     buffer_length: u16,
 ) -> sl_status_t {
+    let mut wifi_csr = CSR::new(HW_WIFI_BASE as *mut u32);
+
     unsafe {
         let mut header_len_mtu = header_length / 2; // we do "MTU" in case header_len is odd. should never be but...this is their API
         let mut header_pos: usize = 0;
@@ -301,14 +313,14 @@ pub unsafe extern "C" fn sl_wfx_host_spi_transfer_no_cs_assert(
         while header_len_mtu > 0 {
             //let word: u16 = ((header.add(header_pos).read() as u16) << 8) | (header.add(header_pos + 1).read() as u16);
             let word: u16 = headeru16.add(header_pos).read();
-            betrusted_pac::Peripherals::steal().WIFI.tx.write(|w| w.bits(word as u32));
+            wifi_csr.wo(utra::wifi::TX, word as u32);
             if DEBUGGING { sprintln!("header: {:02x} {:02x}", word >> 8, word & 0xff); }
             header_len_mtu -= 1;
             header_pos += 1;
 
-            betrusted_pac::Peripherals::steal().WIFI.control.write(|w| w.go().bit(true));
-            while betrusted_pac::Peripherals::steal().WIFI.status.read().tip().bit_is_set() {}
-            betrusted_pac::Peripherals::steal().WIFI.control.write(|w| w.go().bit(false));
+            wifi_csr.wfo(utra::wifi::CONTROL_GO, 1);
+            while wifi_csr.rf(utra::wifi::STATUS_TIP) == 1 {}
+            wifi_csr.wfo(utra::wifi::CONTROL_GO, 0);
         }
         if type_ == sl_wfx_host_bus_transfer_type_t_SL_WFX_BUS_READ {
             if DEBUGGING { sprintln!("rxlen: {}", buffer_length); }
@@ -317,12 +329,12 @@ pub unsafe extern "C" fn sl_wfx_host_spi_transfer_no_cs_assert(
             let mut bufferu16: *mut u16 = buffer as *mut u16;
             while buffer_len_mtu > 0 {
                 // transmit a dummy word to get the rx data
-                betrusted_pac::Peripherals::steal().WIFI.tx.write(|w| w.bits(0));
-                betrusted_pac::Peripherals::steal().WIFI.control.write(|w| w.go().bit(true));
-                while betrusted_pac::Peripherals::steal().WIFI.status.read().tip().bit_is_set() {}
-                betrusted_pac::Peripherals::steal().WIFI.control.write(|w| w.go().bit(false));
+                wifi_csr.wo(utra::wifi::TX, 0);
+                wifi_csr.wfo(utra::wifi::CONTROL_GO, 1);
+                while wifi_csr.rf(utra::wifi::STATUS_TIP) == 1 {}
+                wifi_csr.wfo(utra::wifi::CONTROL_GO, 0);
 
-                let word: u16 = betrusted_pac::Peripherals::steal().WIFI.rx.read().bits() as u16;
+                let word: u16 = wifi_csr.rf(utra::wifi::RX_RX) as u16;
                 if DEBUGGING { sprintln!("rx: {:02x} {:02x}", word >> 8, word & 0xff); }
                 bufferu16.add(buffer_pos).write(word);
                 //buffer.add(buffer_pos).write((word >> 8) as u8);
@@ -339,14 +351,14 @@ pub unsafe extern "C" fn sl_wfx_host_spi_transfer_no_cs_assert(
             while buffer_pos < buffer_len_mtu {
                 //let word: u16 = ((buffer.add(buffer_pos).read() as u16) << 8) | (buffer.add(buffer_pos+1).read() as u16);
                 let word: u16 = bufferu16.add(buffer_pos).read();
-                betrusted_pac::Peripherals::steal().WIFI.tx.write(|w| w.bits(word as u32));
+                wifi_csr.wo(utra::wifi::TX, word as u32);
                 if DEBUGGING { sprintln!("tx: {:02x} {:02x}", word >> 8, word & 0xff); }
 //                buffer_len_mtu -= 1;
                 buffer_pos += 1;
 
-                betrusted_pac::Peripherals::steal().WIFI.control.write(|w| w.go().bit(true));
-                while betrusted_pac::Peripherals::steal().WIFI.status.read().tip().bit_is_set() {}
-                betrusted_pac::Peripherals::steal().WIFI.control.write(|w| w.go().bit(false));
+                wifi_csr.wfo(utra::wifi::CONTROL_GO, 1);
+                while wifi_csr.rf(utra::wifi::STATUS_TIP) == 1 {}
+                wifi_csr.wfo(utra::wifi::CONTROL_GO, 0);
             }
         }
 
@@ -494,8 +506,8 @@ pub unsafe extern "C" fn sl_wfx_host_wait_for_confirmation(
     timeout_ms: u32,
     event_payload_out: *mut *mut c_types::c_void,
 ) -> sl_status_t {
-    let start_time = get_time_ms(unsafe{&betrusted_pac::Peripherals::steal()});
-    while (get_time_ms(unsafe{&betrusted_pac::Peripherals::steal()}) - start_time) < timeout_ms {
+    let start_time = get_time_ms();
+    while (get_time_ms() - start_time) < timeout_ms {
         let mut control_register: u16 = 0;
         loop {
             unsafe{ sl_wfx_receive_frame(&mut control_register); }
@@ -511,7 +523,7 @@ pub unsafe extern "C" fn sl_wfx_host_wait_for_confirmation(
             return SL_STATUS_OK;
         } else {
             if DEBUGGING{ sprintln!("confid: {}", HOST_CONTEXT.posted_event_id); }
-            delay_ms(unsafe{&betrusted_pac::Peripherals::steal()}, 1);
+            delay_ms(1);
         }
     }
     SL_STATUS_IO_TIMEOUT
@@ -616,7 +628,7 @@ pub unsafe extern "C" fn sl_wfx_host_sleep_grant(
 #[doc = " interruption"]
 #[export_name = "sl_wfx_host_wait_for_wake_up"]
 pub unsafe extern "C" fn sl_wfx_host_wait_for_wake_up() -> sl_status_t {
-    delay_ms(&betrusted_pac::Peripherals::steal(), 2); // don't ask me, this is literally the reference vendor code!
+    delay_ms(2); // don't ask me, this is literally the reference vendor code!
     SL_STATUS_OK
 }
 

@@ -3,7 +3,6 @@
 
 use crate::betrusted_hal::hal_time::delay_ms;
 use crate::betrusted_hal::hal_time::get_time_ms;
-use crate::betrusted_pac;
 use crate::betrusted_hal::hal_hardi2c::Hardi2c;
 use crate::gyro_bindings;
 use xous_nommu::syscalls::*;
