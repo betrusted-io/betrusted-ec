@@ -13,5 +13,3 @@ volatile = "0.2.6"
 c_types = { path = "../c_types" }
 
 [features]
-evt = []
-dvt = []

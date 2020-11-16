@@ -148,9 +148,9 @@ fn main() -> ! {
     let use_wifi: bool = true;
     let do_power: bool = false;
 
-    //xous_nommu::syscalls::sys_interrupt_claim(utra::com::COM_IRQ, com_int_handler).unwrap();
-    //com_csr.wfo(utra::com::EV_PENDING_SPI_AVAIL, 1); // clear the pending signal just in case
-    //com_csr.wfo(utra::com::EV_ENABLE_SPI_AVAIL, 1); // enable interrupts on SPI fifo not empty
+    xous_nommu::syscalls::sys_interrupt_claim(utra::com::COM_IRQ, com_int_handler).unwrap();
+    com_csr.wfo(utra::com::EV_PENDING_SPI_AVAIL, 1); // clear the pending signal just in case
+    com_csr.wfo(utra::com::EV_ENABLE_SPI_AVAIL, 1); // enable interrupts on SPI fifo not empty
 
     loop {
         if !use_wifi && (get_time_ms(&p) - start_time > 1500) {

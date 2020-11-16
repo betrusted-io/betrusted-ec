@@ -31,6 +31,4 @@ bench = false
 
 [features]
 debug_uart = [ "wfx_rs/debug_uart" ]
-dvt = []
-evt = []
-default = ["dvt"]  # "debug_uart" to turn on uart debugging
+default = []  # "debug_uart" to turn on uart debugging
