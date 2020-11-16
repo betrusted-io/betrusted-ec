@@ -11,6 +11,8 @@ type DynError = Box<dyn std::error::Error>;
 
 const TARGET: &str = "riscv32i-unknown-none-elf";
 const IMAGE_PATH: &'static str = formatcp!("target/{}/release/bt-ec.bin", TARGET);
+const DEST_FILE: &'static str = formatcp!("bt-ec.bin");
+const DESTDIR: &'static str = "code/precursors/";
 
 fn main() {
     if let Err(e) = try_main() {
@@ -42,11 +44,36 @@ update                  Planned: burns firmware to a a Precursor via USB
     )
 }
 
+fn scp(addr: &str, username: &str, idfile: Option<String>, src_file: &std::path::Path, dest_file: &std::path::Path) {
+    use std::io::prelude::*;
+
+    let tcp = std::net::TcpStream::connect(addr).unwrap();
+    let mut sess = ssh2::Session::new().unwrap();
+
+    sess.set_tcp_stream(tcp);
+    sess.handshake().unwrap();
+
+    if idfile.is_some() {
+        sess.userauth_pubkey_file(username, None, &PathBuf::from(idfile.unwrap()), None).unwrap();
+    } else {
+        sess.userauth_agent(username).unwrap();
+    }
+
+    let mut f = std::fs::File::open(src_file).unwrap();
+    let mut f_data = vec![];
+    f.read_to_end(&mut f_data).unwrap();
+
+    println!("Copying {:?} to {:?} on host {:?}", src_file, dest_file, addr);
+    let mut remote_file = sess
+        .scp_send(dest_file.as_ref(), 0o644, f_data.len() as _, None)
+        .unwrap();
+    remote_file.write_all(&f_data).unwrap();
+}
+
 fn push_to_pi(target: Option<String>, id: Option<String>) -> Result<(), DynError> {
-    const DESTDIR: &str = "code/precursors/";
 
     let target_str = match target {
-        Some(str) => str,
+        Some(tgt) => tgt + ":22",
         _ => {println!("Must specify a target for push."); return Err("Must specify a target for push".into())},
     };
     let im_md5 = Command::new("md5sum")
@@ -63,49 +90,14 @@ fn push_to_pi(target: Option<String>, id: Option<String>) -> Result<(), DynError
         Ok(md5) => print!("{}", std::str::from_utf8(&md5.stdout)?),
         _ => return Err("md5sum check of csr.csv file failed".into()),
     };
-    match id {
-        Some(idfile) => {
-            let scp = Command::new("scp")
-            .stdout(std::process::Stdio::piped())
-            .arg("-i").arg(idfile.clone())
-            .arg(&IMAGE_PATH)
-            .arg(target_str.clone() + DESTDIR)
-            .output();
-            match scp {
-                Ok(status) => print!("{}", std::str::from_utf8(&status.stdout)?),
-                _ => return Err("scp failed".into()),
-            }
+    let dest_str = DESTDIR.to_string() + DEST_FILE;
+    let dest = Path::new(&dest_str);
+    scp(&target_str.clone(), "pi", id.clone(), Path::new(&IMAGE_PATH), &dest);
 
-            let scp = Command::new("scp")
-            .arg("-i").arg(idfile.clone())
-            .arg("build/csr.csv")
-            .arg(target_str.clone() + DESTDIR + "ec-csr.csv")
-            .output();
-            match scp {
-                Ok(status) => print!("{}", std::str::from_utf8(&status.stdout)?),
-                _ => return Err("scp failed".into()),
-            }
-        },
-        _ => {
-            let scp = Command::new("scp")
-            .arg(&IMAGE_PATH)
-            .arg(target_str.clone() + DESTDIR)
-            .output();
-            match scp {
-                Ok(status) => print!("{}", std::str::from_utf8(&status.stdout)?),
-                _ => return Err("scp failed".into()),
-            }
+    let dest_str = DESTDIR.to_string() + "ec-csr.csv";
+    let dest = Path::new(&dest_str);
+    scp(&target_str.clone(), "pi", id.clone(), Path::new("build/csr.csv"), &dest);
 
-            let scp = Command::new("scp")
-            .arg("build/csr.csv")
-            .arg(target_str.clone() + DESTDIR + "ec-csr.csv")
-            .output();
-            match scp {
-                Ok(status) => print!("{}", std::str::from_utf8(&status.stdout)?),
-                _ => return Err("scp failed".into()),
-            }
-        }
-    }
     Ok(())
 }
 
@@ -142,7 +134,7 @@ fn build_hw_image(debug: bool, svd: Option<String>) -> Result<(), DynError> {
     let sw = build_sw(debug)?;
 
     let loaderpath = PathBuf::from("sw/loader.S");
-    let gatewarepath = PathBuf::from("build/gateware/top.bin");
+    let gatewarepath = PathBuf::from("build/gateware/betrusted_ec.bin");
     let output_bundle = create_image(&sw, &loaderpath, &gatewarepath)?;
     println!();
     println!(

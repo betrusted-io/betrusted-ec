@@ -8,3 +8,4 @@ edition = "2018"
 
 [dependencies]
 "const_format" = "0.2.8"
+"ssh2" = "0.8.3"
