@@ -61,8 +61,9 @@ enum ComState {
 const POWER_MASK_FPGA_ON: u32 = 0b10;
 const POWER_MASK_SHUTDOWN_OK: u32 = 0b01;
 
-pub fn debug_power(p: &betrusted_pac::Peripherals) {
-    sprintln!("power: 0x{:04x}", p.POWER.power.read().bits());
+pub fn debug_power() {
+    let mut power_csr = CSR::new(HW_POWER_BASE as *mut u32);
+    sprintln!("power: 0x{:04x}", power_csr.r(utra::power::POWER));
 }
 
 fn com_int_handler(_irq_no: usize) {
@@ -80,9 +81,11 @@ fn main() -> ! {
     use betrusted_hal::hal_time::*;
     use betrusted_hal::api_gasgauge::*;
     use betrusted_hal::api_lm3509::*;
-//    use betrusted_hal::api_charger::*;    // for EVT
-    use betrusted_hal::api_bq25618::*;  // for DVT
+    use betrusted_hal::api_bq25618::*;
     use betrusted_hal::api_tusb320::*;
+
+    let mut power_csr = CSR::new(HW_POWER_BASE as *mut u32);
+    let mut com_csr = CSR::new(HW_COM_BASE as *mut u32);
 
     // Initialize the no-MMU version of Xous, which will give us
     // basic access to tasks and interrupts.
@@ -145,12 +148,9 @@ fn main() -> ! {
     let use_wifi: bool = true;
     let do_power: bool = false;
 
-    let mut power_csr = CSR::new(HW_POWER_BASE as *mut u32);
-    let mut com_csr = CSR::new(HW_COM_BASE as *mut u32);
-
-    xous_nommu::syscalls::sys_interrupt_claim(utra::com::COM_IRQ, com_int_handler).unwrap();
-    com_csr.wfo(utra::com::EV_PENDING_SPI_AVAIL, 1); // clear the pending signal just in case
-    com_csr.wfo(utra::com::EV_ENABLE_SPI_AVAIL, 1); // enable interrupts on SPI fifo not empty
+    //xous_nommu::syscalls::sys_interrupt_claim(utra::com::COM_IRQ, com_int_handler).unwrap();
+    //com_csr.wfo(utra::com::EV_PENDING_SPI_AVAIL, 1); // clear the pending signal just in case
+    //com_csr.wfo(utra::com::EV_ENABLE_SPI_AVAIL, 1); // enable interrupts on SPI fifo not empty
 
     loop {
         if !use_wifi && (get_time_ms(&p) - start_time > 1500) {
@@ -220,8 +220,7 @@ fn main() -> ! {
                 let power =
                     power_csr.ms(utra::power::POWER_SELF, 1)
                     | power_csr.ms(utra::power::POWER_SOC_ON, 1)
-                    | power_csr.ms(utra::power::POWER_DISCHARGE, 0)
-                    | power_csr.ms(utra::power::POWER_KBDSCAN, 0);
+                    | power_csr.ms(utra::power::POWER_DISCHARGE, 0);
                 power_csr.wo(utra::power::POWER, power); // turn off discharge if the soc is up
             } else if charger.chg_is_charging(&mut i2c, false) {
                 soc_on = true;
@@ -229,8 +228,7 @@ fn main() -> ! {
                 let power =
                     power_csr.ms(utra::power::POWER_SELF, 1)
                     | power_csr.ms(utra::power::POWER_SOC_ON, 1)
-                    | power_csr.ms(utra::power::POWER_DISCHARGE, 0)
-                    | power_csr.ms(utra::power::POWER_KBDSCAN, 0);
+                    | power_csr.ms(utra::power::POWER_DISCHARGE, 0);
                 power_csr.wo(utra::power::POWER, power);
             }
         }
@@ -242,48 +240,34 @@ fn main() -> ! {
             } else {
                 if get_time_ms(&p) - pd_loop_timer > 50 { // every 50ms check key state
                     pd_loop_timer = get_time_ms(&p);
-                    // re-affirm "neutral" power settings (including disabling the discharge FET)
-                    unsafe{
-                        p.POWER.power.write(|w| w
-                                                    .self_().bit(true)
-                                                    .soc_on().bit(false)
-                                                    .discharge().bit(false)
-                                                    .kbdscan().bits(0)
-                        );
-                    }
-                    // discharge stray noise on sense lines
-                    unsafe{ p.POWER.power.write(|w| w
-                        .self_().bit(true)
-                        .discharge().bit(false)
-                        .soc_on().bit(false)
-                        .kbddrive().bit(true)
-                        .kbdscan().bits(3)); }
-                    // prep for sensing
-                    unsafe{ p.POWER.power.write(|w| w
-                        .self_().bit(true)
-                        .discharge().bit(false)
-                        .soc_on().bit(false)
-                        .kbddrive().bit(false)
-                        .kbdscan().bits(3)); }
-                    if p.POWER.stats.read().monkey().bits() == 3 { // both keys have to be hit
+                    // drive sense for keyboard
+                    let power =
+                    power_csr.ms(utra::power::POWER_SELF, 1)
+                    | power_csr.ms(utra::power::POWER_DISCHARGE, 1)
+                    | power_csr.ms(utra::power::POWER_KBDDRIVE, 1);
+                    power_csr.wo(utra::power::POWER, power);
+
+                    if power_csr.rf(utra::power::STATS_MONKEY) == 3 { // both keys have to be hit
                         sprintln!("detect power up event!");
                         // power on the SOC
-                        unsafe{ p.POWER.power.write(|w| w
-                            .self_().bit(true)
-                            .soc_on().bit(false)
-                            .discharge().bit(false)
-                            .kbdscan().bits(0)); } // first disengage discharge & scan
+                        let power =
+                        power_csr.ms(utra::power::POWER_SELF, 1)
+                        | power_csr.ms(utra::power::POWER_SOC_ON, 1);
+                        power_csr.wo(utra::power::POWER, power);
                         soc_on = true;
-                        unsafe{ p.POWER.power.write(|w| w
-                            .self_().bit(true)
-                            .soc_on().bit(true)
-                            .discharge().bit(false)
-                            .kbdscan().bits(0)); } // then try to power on the SoC
-                        debug_power(&p);
+
+                        debug_power();
+                    } else {
+                        // re-engage discharge fets, disable keyboard drive
+                        let power =
+                        power_csr.ms(utra::power::POWER_SELF, 1)
+                        | power_csr.ms(utra::power::POWER_KBDDRIVE, 0)
+                        | power_csr.ms(utra::power::POWER_DISCHARGE, 1);
+                        power_csr.wo(utra::power::POWER, power);
                     }
                 }
             }
-            debug_power(&p);
+            debug_power();
         }
 
         // p.WIFI.ev_enable.write(|w| unsafe{w.bits(0)} ); // disable wifi interrupts, entering a critical section
@@ -456,26 +440,24 @@ fn main() -> ! {
                     linkindex = 0;
                     // ignore rapid, successive power down requests
                     if get_time_ms(&p) - pd_loop_timer > 1500 {
-                        unsafe{ p.POWER.power.write(|w| w.
-                            self_().bit(true).
-                            discharge().bit(true).
-                            soc_on().bit(false).
-                            kbdscan().bits(0)
-                        ); }
+                        let power =
+                        power_csr.ms(utra::power::POWER_SELF, 1)
+                        | power_csr.ms(utra::power::POWER_DISCHARGE, 1);
+                        power_csr.wo(utra::power::POWER, power);
+
                         pd_loop_timer = get_time_ms(&p);
                         pd_discharge_timer = get_time_ms(&p);
                         soc_on = false;
-                        debug_power(&p);
+                        debug_power();
                     }
                 },
                 0x9200 => {
                     charger.set_shipmode(&mut i2c);
-                    unsafe{ p.POWER.power.write(|w| w.
-                        self_().bit(true).
-                        discharge().bit(true).
-                        soc_on().bit(false).
-                        kbdscan().bits(0)
-                    ); }
+                    let power =
+                    power_csr.ms(utra::power::POWER_SELF, 1)
+                    | power_csr.ms(utra::power::POWER_DISCHARGE, 1);
+                    power_csr.wo(utra::power::POWER, power);
+
                     pd_loop_timer = get_time_ms(&p);
                     pd_discharge_timer = get_time_ms(&p);
                     soc_on = false;

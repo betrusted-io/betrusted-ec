@@ -50,6 +50,7 @@ fn scp(addr: &str, username: &str, idfile: Option<String>, src_file: &std::path:
     let tcp = std::net::TcpStream::connect(addr).unwrap();
     let mut sess = ssh2::Session::new().unwrap();
 
+    sess.set_timeout(10000);
     sess.set_tcp_stream(tcp);
     sess.handshake().unwrap();
 

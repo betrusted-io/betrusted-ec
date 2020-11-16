@@ -113,22 +113,6 @@ io_dvt = [
          Subsignal("wakeup", Pins("38"), IOStandard("LVCMOS18")),
      ),
     # ("lpclk", 0, Pins("37"), IOStandard("LVCMOS18")),  # conflicts with SB_PLL40_2_PAD...what weirdness
-
-    # Only used for simulation
-    ("wishbone", 0,
-        Subsignal("adr",   Pins(30)),
-        Subsignal("dat_r", Pins(32)),
-        Subsignal("dat_w", Pins(32)),
-        Subsignal("sel",   Pins(4)),
-        Subsignal("cyc",   Pins(1)),
-        Subsignal("stb",   Pins(1)),
-        Subsignal("ack",   Pins(1)),
-        Subsignal("we",    Pins(1)),
-        Subsignal("cti",   Pins(3)),
-        Subsignal("bte",   Pins(2)),
-        Subsignal("err",   Pins(1))
-    ),
-    ("clk12", 0, Pins(1), IOStandard("LVCMOS18")),
 ]
 
 io_evt = [
@@ -489,8 +473,7 @@ class BtPower(Module, AutoCSR, AutoDoc):
             CSRField("self", description="Writing `1` to this keeps the EC powered on", reset=1),
             CSRField("soc_on", description="Writing `1` to this powers on the SoC", reset=1),
             CSRField("discharge", description="Writing `1` to this connects a low-value resistor across FPGA domain supplies to force a full discharge"),
-            CSRField("kbdscan", size=2, description="Writing `1` to this forces the power-down keyboard scan event on the respective mon bit"),
-            CSRField("kbddrive", description="Writing `1` to this drives the input scan row to 0. Do this prior to reading to mitigate noise")
+            CSRField("kbddrive", description="Writing `1` to this drives the scan column to 1. Do this prior to reading to mitigate noise")
         ])
 
         self.stats = CSRStatus(8, fields=[
@@ -511,19 +494,6 @@ class BtPower(Module, AutoCSR, AutoDoc):
         ]
 
 class BaseSoC(SoCCore):
-    SoCCore.csr_map = {
-        "ctrl":           0,  # provided by default (optional)
-        "power":          4,
-        "timer0":         5,  # provided by default (optional)
-        "com":            6,
-        "wifi":           7,
-        "cpu_or_bridge":  8,
-        "i2c":            9,
-        "picorvspi":      10,
-        "crg":            14,
-        "ticktimer":      15,
-    }
-
     SoCCore.mem_map = {
         "rom":      0x00000000,  # (default shadow @0x80000000)
         "sram":     0x10000000,  # (default shadow @0xa0000000)
@@ -533,16 +503,6 @@ class BaseSoC(SoCCore):
         "com":      0xd0000000,
     }
 
-
-    interrupt_map = {
-        "timer0": 1,
-        "i2c"   : 2,
-        "wifi"  : 3,
-        "com"   : 4,
-        "ticktimer" : 5,
-    }
-    interrupt_map.update(SoCCore.interrupt_map)
-
     def __init__(self, platform,
                  use_dsp=False, placer="heap", output_dir="build",
                  pnr_seed=0, sim=False,
@@ -551,98 +511,98 @@ class BaseSoC(SoCCore):
         self.output_dir = output_dir
 
         clk_freq = int(sysclkfreq)
-        self.submodules.crg = platform.CRG(platform)
 
         # Core -------------------------------------------------------------------------------------------
         SoCCore.__init__(self, platform, clk_freq,
             integrated_sram_size=0,
             uart_name="crossover",
+            cpu_reset_address=self.mem_map["spiflash"]+GATEWARE_SIZE,
             csr_data_width=32, **kwargs) # with_uart=False
+
+        self.submodules.crg = platform.CRG(platform)
+        self.add_csr("crg")
 
         # Power management -------------------------------------------------------------------------------
         # Betrusted Power management interface
         self.submodules.power = BtPower(platform.request("power"))
+        self.add_csr("power")
 
         # Keyboard power-on + debug mux ------------------------------------------------------------------
-        serialpads = platform.request("serial")
-        # serialpad RX needs to drive a scan signal so we can detect it on the other side of the matrix
-        keycol0_ts = TSTriple(1)
-        self.specials += keycol0_ts.get_tristate(serialpads.rx)
+        debugonly = False # use to debug bootstrapping issues, avoid internal state on SoC messing with access to UART pads
 
-        dbguart_tx = Signal()
-        dbguart_rx = Signal()
-        dbgpads = Record([('rx', 1), ('tx', 1)], name="serial")
-        dbgpads.rx = dbguart_rx
-        dbgpads.tx = dbguart_tx
-        self.comb += dbgpads.rx.eq(keycol0_ts.i)
-        drive_kbd = Signal(2)
+        if debugonly:
+            self.submodules.uart_bridge = UARTWishboneBridge(platform.request("serial"), clk_freq, baudrate=115200)
+            self.add_wb_master(self.uart_bridge.wishbone)
+            if hasattr(self, "cpu"):
+                os.path.join(output_dir, "gateware")
+                self.register_mem("vexriscv_debug", 0xf00f0000, self.cpu.debug_bus, 0x100)
+        else:
+            serialpads = platform.request("serial")
+            dbguart_tx = Signal()
+            dbguart_rx = Signal()
+            dbgpads = Record([('rx', 1), ('tx', 1)], name="serial")
+            dbgpads.rx = dbguart_rx
+            dbgpads.tx = dbguart_tx
 
-        # up5k_keyrow0 = Signal()
-        # up5k_keyrow1 = Signal()
-        # add weak pullups to prevent triggering from noise
-        #self.specials += Instance(
-        #    "SB_IO", p_PIN_TYPE=1, p_PULLUP=1,
-        #    i_PACKAGE_PIN=platform.request("up5k_keyrow0"), o_D_IN_0=up5k_keyrow0)
-        #self.specials += Instance(
-        #    "SB_IO", p_PIN_TYPE=1, p_PULLUP=1,
-        #    i_PACKAGE_PIN=platform.request("up5k_keyrow1"), o_D_IN_0=up5k_keyrow1)
-        keyrow0_ts = TSTriple(1)
-        self.specials += keyrow0_ts.get_tristate(platform.request("up5k_keyrow0"))
-        self.comb += keyrow0_ts.o.eq(0)
-        self.comb += keyrow0_ts.oe.eq(self.power.power.fields.kbddrive)
-        keyrow1_ts = TSTriple(1)
-        self.specials += keyrow1_ts.get_tristate(platform.request("up5k_keyrow1"))
-        self.comb += keyrow1_ts.o.eq(0)
-        self.comb += keyrow1_ts.oe.eq(self.power.power.fields.kbddrive)
+            # serialpad RX needs to drive a scan signal so we can detect it on the other side of the matrix
+            keycol0_ts = TSTriple(1)
+            self.specials += keycol0_ts.get_tristate(serialpads.rx)
+            #self.comb += serialpads.rx.eq(1)
 
-        self.comb += self.power.mon1.eq(keyrow1_ts.i)
-        self.comb += self.power.mon0.eq(keyrow0_ts.i)
-        self.comb += drive_kbd.eq(self.power.power.fields.kbdscan) # two-bit assign
+            self.comb += dbgpads.rx.eq(keycol0_ts.i)
 
-        # serialpad TX is what we use to test for keyboard hit to power on the SOC
-        # only allow test keyboard hit patterns when the SOC is powered off
-        self.comb += serialpads.tx.eq( (~self.power.soc_on & drive_kbd[0]) | (self.power.soc_on & dbgpads.tx) )
-        self.comb += keycol0_ts.oe.eq( drive_kbd[1] & ~self.power.soc_on ) # force signal on the rx pin when in power off & scan
-        self.comb += keycol0_ts.o.eq(1) # drive a '1' for scan
+            self.comb += self.power.mon1.eq(platform.request("up5k_keyrow1"))
+            self.comb += self.power.mon0.eq(platform.request("up5k_keyrow0"))
 
-        # Debug block ------------------------------------------------------------------------------------
-        self.submodules.uart_bridge = UARTWishboneBridge(dbgpads, clk_freq, baudrate=115200)
-        self.add_wb_master(self.uart_bridge.wishbone)
-        if hasattr(self, "cpu"):
-            os.path.join(output_dir, "gateware")
-            self.register_mem("vexriscv_debug", 0xf00f0000, self.cpu.debug_bus, 0x100)
+            # serialpad TX is what we use to test for keyboard hit to power on the SOC
+            # only allow test keyboard hit patterns when the SOC is powered off
+            self.comb += serialpads.tx.eq( (~self.power.soc_on & self.power.power.fields.kbddrive) | (self.power.soc_on & dbgpads.tx) )
+            self.comb += keycol0_ts.oe.eq(  ~self.power.soc_on & self.power.power.fields.kbddrive ) # force signal on the rx pin when in power off & scan
+            self.comb += keycol0_ts.o.eq(1) # drive a '1' for scan
+
+            # Debug block ------------------------------------------------------------------------------------
+            self.submodules.uart_bridge = UARTWishboneBridge(dbgpads, clk_freq, baudrate=115200)
+            self.add_wb_master(self.uart_bridge.wishbone)
+            if hasattr(self, "cpu"):
+                os.path.join(output_dir, "gateware")
+                self.register_mem("vexriscv_debug", 0xf00f0000, self.cpu.debug_bus, 0x100)
 
         # RAM/ROM/reset cluster --------------------------------------------------------------------------
         spram_size = 128*1024
         self.submodules.spram = up5kspram.Up5kSPRAM(size=spram_size)
         self.register_mem("sram", self.mem_map["sram"], self.spram.bus, spram_size)
 
-        self.cpu.reset_address=self.mem_map["spiflash"]+GATEWARE_SIZE
-
         # Add a simple bit-banged SPI Flash module
         spi_pads = platform.request("spiflash")
         self.submodules.picorvspi = PicoRVSpi(platform, spi_pads)
         self.register_mem("spiflash", self.mem_map["spiflash"],
             self.picorvspi.bus, size=SPI_FLASH_SIZE)
+        self.add_csr("picorvspi")
 
         # I2C --------------------------------------------------------------------------------------------
         self.submodules.i2c = HardI2C(platform, platform.request("i2c", 0))
         self.add_wb_slave(self.mem_map["i2c"], self.i2c.bus, 16*4)
         self.add_memory_region("i2c", self.mem_map["i2c"], 16*4, type='io')
+        self.add_csr("i2c")
+        self.add_interrupt("i2c")
 
         # High-resolution tick timer ---------------------------------------------------------------------
         self.submodules.ticktimer = TickTimer(1000, clk_freq, bits=40)
+        self.add_csr("ticktimer")
+        self.add_interrupt("ticktimer")
 
         # COM port (spi peripheral to Artix) ------------------------------------------------------------------
         # FIXME: we should have these RTL blocks come from a deps/gateware submodule, not rtl. This way sims are consistent with implementation
         self.submodules.com = SpiFifoPeripheral(platform.request("com"))
         self.add_wb_slave(self.mem_map["com"], self.com.bus, 4)
         self.add_memory_region("com", self.mem_map["com"], 4, type='io')
+        self.add_csr("com")
+        self.add_interrupt("com")
 
         # SPI port to wifi (controller) ------------------------------------------------------------------
         self.submodules.wifi = ClockDomainsRenamer({'spi':'sys'})(SpiController(platform.request("wifi"), gpio_cs=True))  # control CS with GPIO per wf200 API spec
-
-
+        self.add_csr("wifi")
+        self.add_interrupt("wifi")
 
 
         #### Platform config & build below ---------------------------------------------------------------
@@ -852,13 +812,13 @@ def main():
 
         with open(os.path.join(output_dir, 'gateware', 'multiboot-header.bin'), 'rb') as multiboot_header_file:
             multiboot_header = multiboot_header_file.read()
-            with open(os.path.join(output_dir, 'gateware', 'top.bin'), 'rb') as top_file:
+            with open(os.path.join(output_dir, 'gateware', 'betrusted_ec.bin'), 'rb') as top_file:
                 top = top_file.read()
-                with open(os.path.join(output_dir, 'gateware', 'top-multiboot.bin'), 'wb') as top_multiboot_file:
+                with open(os.path.join(output_dir, 'gateware', 'betrusted_ec_multiboot.bin'), 'wb') as top_multiboot_file:
                     top_multiboot_file.write(multiboot_header)
                     top_multiboot_file.write(top)
-        pad_file(os.path.join(output_dir, 'gateware', 'top.bin'), os.path.join(output_dir, 'gateware', 'top_pad.bin'), 0x1a000)
-        pad_file(os.path.join(output_dir, 'gateware', 'top-multiboot.bin'), os.path.join(output_dir, 'gateware', 'top-multiboot_pad.bin'), 0x1a000)
+        pad_file(os.path.join(output_dir, 'gateware', 'betrusted_ec.bin'), os.path.join(output_dir, 'gateware', 'betrusted_ec_pad.bin'), 0x1a000)
+        pad_file(os.path.join(output_dir, 'gateware', 'betrusted_ec_multiboot.bin'), os.path.join(output_dir, 'gateware', 'betrusted_ec_multiboot_pad.bin'), 0x1a000)
 
     lxsocdoc.generate_docs(soc, "build/documentation", note_pulses=True)
     lxsocdoc.generate_svd(soc, "build/software")
