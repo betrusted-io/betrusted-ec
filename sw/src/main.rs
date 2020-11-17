@@ -191,7 +191,6 @@ fn main() -> ! {
     let use_wifi: bool = true;
     let do_power: bool = false;
 
-    /*
     let mut idcode: [u8; 3] = [0; 3];
     spi_cmd(CMD_RDID, None, Some(&mut idcode));
     sprintln!("SPI ID code: {:02x} {:02x} {:02x}", idcode[0], idcode[1], idcode[2]);
@@ -209,7 +208,6 @@ fn main() -> ! {
     spi_program_page(test_addr, &mut test_data);
 
     dump_rom_addr(test_addr);
-    */
 
     xous_nommu::syscalls::sys_interrupt_claim(utra::ticktimer::TICKTIMER_IRQ, ticktimer_int_handler).unwrap();
     set_msleep_target_ticks(50);
