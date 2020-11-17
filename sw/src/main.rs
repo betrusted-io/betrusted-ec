@@ -73,10 +73,38 @@ pub fn debug_power() {
 fn ticktimer_int_handler(_irq_no: usize) {
     let mut ticktimer_csr = CSR::new(HW_TICKTIMER_BASE as *mut u32);
     let mut crg_csr = CSR::new(HW_CRG_BASE as *mut u32);
+    let mut power_csr = CSR::new(HW_POWER_BASE as *mut u32);
 
     // disarm the watchdog
     crg_csr.wfo(utra::crg::WATCHDOG_RESET_CODE, 0x600d);
     crg_csr.wfo(utra::crg::WATCHDOG_RESET_CODE, 0xc0de);
+
+    // fast-monitor the keyboard wakeup inputs if the soc is in the off state
+    if power_csr.rf(utra::power::POWER_SOC_ON) == 0 {
+        // drive sense for keyboard
+        let power =
+        power_csr.ms(utra::power::POWER_SELF, 1)
+        | power_csr.ms(utra::power::POWER_DISCHARGE, 1)
+        | power_csr.ms(utra::power::POWER_KBDDRIVE, 1);
+        power_csr.wo(utra::power::POWER, power);
+
+        if power_csr.rf(utra::power::STATS_MONKEY) == 3 { // both keys have to be hit
+            sprintln!("detect power up event!");
+            // power on the SOC
+            let power =
+            power_csr.ms(utra::power::POWER_SELF, 1)
+            | power_csr.ms(utra::power::POWER_SOC_ON, 1);
+            power_csr.wo(utra::power::POWER, power);
+        } else {
+            // re-engage discharge fets, disable keyboard drive
+            let power =
+            power_csr.ms(utra::power::POWER_SELF, 1)
+            | power_csr.ms(utra::power::POWER_KBDDRIVE, 0)
+            | power_csr.ms(utra::power::POWER_DISCHARGE, 1);
+            power_csr.wo(utra::power::POWER, power);
+        }
+        debug_power();
+    }
 
     set_msleep_target_ticks(50); // resetting this will also clear the alarm
 
@@ -132,8 +160,6 @@ fn main() -> ! {
     let mut linkindex : usize = 0;
     let mut comstate: ComState = ComState::Idle;
     let mut pd_loop_timer: u32 = 0;
-    let mut pd_discharge_timer: u32 = 0;
-    let mut soc_on: bool = true;
     let mut backlight : BtBacklight = BtBacklight::new();
     let mut com_sentinel: u16 = 0;
 
@@ -157,6 +183,7 @@ fn main() -> ! {
     crg_csr.wfo(utra::crg::WATCHDOG_ENABLE, 1); // enable the watchdog reset
 
     loop {
+        //////////////////////// WIFI HANDLER BLOCK ---------
         if !use_wifi && (get_time_ms() - start_time > 1500) {
             delay_ms(250); // force just a delay, so requests queue up
             start_time = get_time_ms();
@@ -195,7 +222,9 @@ fn main() -> ! {
                 }
             }
         }
+        //////////////////////// ---------------------------
 
+        //////////////////////// CHARGER HANDLER BLOCK -----
         if get_time_ms() - last_run_time > 1000 {
             last_run_time = get_time_ms();
             loopcounter += 1;
@@ -208,7 +237,7 @@ fn main() -> ! {
                 }
             } else {
                 voltage = gg_voltage(&mut i2c);
-                if soc_on {
+                if power_csr.rf(utra::power::POWER_SOC_ON) == 1 {
                     current = gg_avg_current(&mut i2c);
                 } else {
                     // TODO: need more fine control over this
@@ -217,9 +246,8 @@ fn main() -> ! {
                 }
             }
 
-            // check if we should turn the SoC on or not
+            // check if we should turn the SoC on or not based on power status change events
             if charger.chg_is_charging(&mut i2c, false) || (power_csr.rf(utra::power::STATS_STATE) == 1) && do_power {
-                soc_on = true;
                 sprintln!("charger insert or soc on event!");
                 let power =
                     power_csr.ms(utra::power::POWER_SELF, 1)
@@ -227,7 +255,6 @@ fn main() -> ! {
                     | power_csr.ms(utra::power::POWER_DISCHARGE, 0);
                 power_csr.wo(utra::power::POWER, power); // turn off discharge if the soc is up
             } else if charger.chg_is_charging(&mut i2c, false) {
-                soc_on = true;
                 sprintln!("charger charging!");
                 let power =
                     power_csr.ms(utra::power::POWER_SELF, 1)
@@ -236,44 +263,9 @@ fn main() -> ! {
                 power_csr.wo(utra::power::POWER, power);
             }
         }
+        //////////////////////// ---------------------------
 
-        // fast-monitor the keyboard inputs if the soc is in the off state
-        if !soc_on {
-            if get_time_ms() - pd_discharge_timer < 2000 {
-                // wait 2 seconds after PD before checking anything
-            } else {
-                if get_time_ms() - pd_loop_timer > 50 { // every 50ms check key state
-                    pd_loop_timer = get_time_ms();
-                    // drive sense for keyboard
-                    let power =
-                    power_csr.ms(utra::power::POWER_SELF, 1)
-                    | power_csr.ms(utra::power::POWER_DISCHARGE, 1)
-                    | power_csr.ms(utra::power::POWER_KBDDRIVE, 1);
-                    power_csr.wo(utra::power::POWER, power);
-
-                    if power_csr.rf(utra::power::STATS_MONKEY) == 3 { // both keys have to be hit
-                        sprintln!("detect power up event!");
-                        // power on the SOC
-                        let power =
-                        power_csr.ms(utra::power::POWER_SELF, 1)
-                        | power_csr.ms(utra::power::POWER_SOC_ON, 1);
-                        power_csr.wo(utra::power::POWER, power);
-                        soc_on = true;
-
-                        debug_power();
-                    } else {
-                        // re-engage discharge fets, disable keyboard drive
-                        let power =
-                        power_csr.ms(utra::power::POWER_SELF, 1)
-                        | power_csr.ms(utra::power::POWER_KBDDRIVE, 0)
-                        | power_csr.ms(utra::power::POWER_DISCHARGE, 1);
-                        power_csr.wo(utra::power::POWER, power);
-                    }
-                }
-            }
-            debug_power();
-        }
-
+        //////////////////////// COM HANDLER BLOCK ---------
         // p.WIFI.ev_enable.write(|w| unsafe{w.bits(0)} ); // disable wifi interrupts, entering a critical section
         // unsafe{ betrusted_pac::Peripherals::steal().WIFI.ev_pending.write(|w| w.bits(0x1)); }
         while com_csr.rf(utra::com::STATUS_RX_AVAIL) == 1 {
@@ -449,9 +441,9 @@ fn main() -> ! {
                         | power_csr.ms(utra::power::POWER_DISCHARGE, 1);
                         power_csr.wo(utra::power::POWER, power);
 
+                        set_msleep_target_ticks(500); // extend next service so we can discharge
+
                         pd_loop_timer = get_time_ms();
-                        pd_discharge_timer = get_time_ms();
-                        soc_on = false;
                         debug_power();
                     }
                 },
@@ -461,10 +453,9 @@ fn main() -> ! {
                     power_csr.ms(utra::power::POWER_SELF, 1)
                     | power_csr.ms(utra::power::POWER_DISCHARGE, 1);
                     power_csr.wo(utra::power::POWER, power);
+                    set_msleep_target_ticks(500); // extend next service so we can discharge
 
                     pd_loop_timer = get_time_ms();
-                    pd_discharge_timer = get_time_ms();
-                    soc_on = false;
                 },
                 0xA000 => {
                     gyro.update_xyz();
@@ -472,6 +463,7 @@ fn main() -> ! {
                 _ => {},
             }
         }
+        //////////////////////// ---------------------------
 
     }
 }
