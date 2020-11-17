@@ -43,9 +43,14 @@ module spimemio (
 	input  flash_io2_di,
 	input  flash_io3_di,
 
-	input   [3:0] cfgreg_we,
-	input  [31:0] cfgreg_di,
-	output [31:0] cfgreg_do
+	input   [3:0] bb_oe,
+	input   [3:0] bb_wd,
+	input         bb_clk,
+	input         bb_csb,
+	output  [3:0] bb_rd,
+
+	input         config_update,
+	input         memio_enable,
 );
 	reg        xfer_resetn;
 	reg        din_valid;
@@ -74,58 +79,36 @@ module spimemio (
 	reg softreset;
 
 	reg       config_en;      // cfgreg[31]
-	reg       config_ddr;     // cfgreg[22]
-	reg       config_qspi;    // cfgreg[21]
-	reg       config_cont;    // cfgreg[20]
-	reg [3:0] config_dummy;   // cfgreg[19:16]
-	reg [3:0] config_oe;      // cfgreg[11:8]
-	reg       config_csb;     // cfgreg[5]
-	reg       config_clk;     // cfgref[4]
-	reg [3:0] config_do;      // cfgreg[3:0]
+	wire      config_ddr;     // cfgreg[22]
+	wire      config_qspi;    // cfgreg[21]
+	wire      config_cont;    // cfgreg[20]
+	wire [3:0] config_dummy;   // cfgreg[19:16]
+	wire [3:0] config_oe;      // cfgreg[11:8]
+	wire      config_csb;     // cfgreg[5]
+	wire      config_clk;     // cfgref[4]
+	wire [3:0] config_do;      // cfgreg[3:0]
 
-	assign cfgreg_do[31] = config_en;
-	assign cfgreg_do[30:23] = 0;
-	assign cfgreg_do[22] = config_ddr;
-	assign cfgreg_do[21] = config_qspi;
-	assign cfgreg_do[20] = config_cont;
-	assign cfgreg_do[19:16] = config_dummy;
-	assign cfgreg_do[15:12] = 0;
-	assign cfgreg_do[11:8] = {flash_io3_oe, flash_io2_oe, flash_io1_oe, flash_io0_oe};
-	assign cfgreg_do[7:6] = 0;
-	assign cfgreg_do[5] = flash_csb;
-	assign cfgreg_do[4] = flash_clk;
-	assign cfgreg_do[3:0] = {flash_io3_di, flash_io2_di, flash_io1_di, flash_io0_di};
+	assign bb_rd = {flash_io3_di, flash_io2_di, flash_io1_di, flash_io0_di};
+
+	// make these pass through to improve timing a bit, reduce resource utilization
+	assign config_csb = bb_csb;
+    assign config_clk = bb_clk;
+    assign config_do = bb_wd;
+	assign config_oe = bb_oe;
+
+	assign config_qspi = 1;
+	assign config_ddr = 0;
+	assign config_cont = 0;
+	assign config_dummy = 4'd4; // 4 for QSPI mode
 
 	always @(posedge clk) begin
-		softreset <= !config_en || cfgreg_we;
+		softreset <= !config_en || config_update;
 		if (!resetn) begin
 			softreset <= 1;
 			config_en <= 1;
-			config_csb <= 0;
-			config_clk <= 0;
-			config_oe <= 0;
-			config_do <= 0;
-			config_ddr <= 0;
-			config_qspi <= 0;
-			config_cont <= 0;
-			config_dummy <= 8;
 		end else begin
-			if (cfgreg_we[0]) begin
-				config_csb <= cfgreg_di[5];
-				config_clk <= cfgreg_di[4];
-				config_do <= cfgreg_di[3:0];
-			end
-			if (cfgreg_we[1]) begin
-				config_oe <= cfgreg_di[11:8];
-			end
-			if (cfgreg_we[2]) begin
-				config_ddr <= cfgreg_di[22];
-				config_qspi <= cfgreg_di[21];
-				config_cont <= cfgreg_di[20];
-				config_dummy <= cfgreg_di[19:16];
-			end
-			if (cfgreg_we[3]) begin
-				config_en <= cfgreg_di[31];
+			if (config_update) begin
+				config_en <= memio_enable;
 			end
 		end
 	end

@@ -276,19 +276,12 @@ class BetrustedPlatform(LatticePlatform):
 
 class PicoRVSpi(Module, AutoCSR, AutoDoc):
     def __init__(self, platform, pads, size=2*1024*1024):
-        self.intro = ModuleDoc("See https://github.com/cliffordwolf/picorv32/tree/master/picosoc#spi-flash-controller-config-register")
+        self.intro = ModuleDoc("See https://github.com/cliffordwolf/picorv32/tree/master/picosoc#spi-flash-controller-config-register; used with modifications")
         self.size = size
 
         self.bus = bus = wishbone.Interface()
 
         self.reset = Signal()
-
-        self.cfg1 = CSRStorage(size=8)
-        self.cfg2 = CSRStorage(size=8)
-        self.cfg3 = CSRStorage(size=8, reset=0x24) # set 1 for qspi (bit 21); lower 4 bits is "dummy" cycles
-        self.cfg4 = CSRStorage(size=8)
-
-        self.stat = CSRStatus(size=32)
 
         cfg = Signal(32)
         cfg_we = Signal(4)
@@ -304,10 +297,20 @@ class PicoRVSpi(Module, AutoCSR, AutoDoc):
                 ic_reset.eq(0)
             )
 
-        self.comb += [
-            cfg.eq(Cat(self.cfg1.storage, self.cfg2.storage, self.cfg3.storage, self.cfg4.storage)),
-            cfg_we.eq(Cat(self.cfg1.re, self.cfg2.re, self.cfg3.re | ic_reset, self.cfg4.re)),
-            self.stat.status.eq(cfg_out),
+        self.rdata = CSRStatus(fields=[
+            CSRField("data", size=4, description="Data bits from SPI [3:hold, 2:wp, 1:cipo, 0:copi]"),
+        ])
+        self.mode = CSRStorage(fields=[
+            CSRField("bitbang", size=1, description="Turn on bitbang mode", reset = 0),
+            CSRField("csn", size=1, description="Chip select (set to `0` to select the chip)"),
+        ])
+        self.wdata = CSRStorage(description="Writes to this field automatically pulse CLK", fields=[
+            CSRField("data", size=4, description="Data bits to SPI [3:hold, 2:wp, 1:cipo, 0:copi]"),
+            CSRField("oe", size=4, description="Output enable for data pins"),
+        ])
+        bb_clk = Signal()
+        self.sync += [
+            bb_clk.eq(self.wdata.re), # auto-clock the SPI chip whenever wdata is written. Delay a cycle for setup/hold.
         ]
 
         copi_pad = TSTriple()
@@ -382,9 +385,13 @@ class PicoRVSpi(Module, AutoCSR, AutoDoc):
             i_addr  = flash_addr,
             o_rdata = o_rdata,
 
-            i_cfgreg_we = cfg_we,
-            i_cfgreg_di = cfg,
-            o_cfgreg_do = cfg_out,
+            i_bb_oe = self.wdata.fields.oe,
+            i_bb_wd = self.wdata.fields.data,
+            i_bb_clk = bb_clk,
+            i_bb_csb = self.mode.fields.csn,
+            o_bb_rd = self.rdata.fields.data,
+            i_config_update = self.mode.re | ic_reset,
+            i_memio_enable = ~self.mode.fields.bitbang,
         )
         platform.add_source("rtl/spimemio.v")
 
