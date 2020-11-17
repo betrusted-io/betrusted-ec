@@ -225,6 +225,8 @@ fn main() -> ! {
         //////////////////////// ---------------------------
 
         //////////////////////// CHARGER HANDLER BLOCK -----
+        // I2C can't happen inside an interrupt routine, so we do it in the main loop
+        // real time response is also not critical
         if get_time_ms() - last_run_time > 1000 {
             last_run_time = get_time_ms();
             loopcounter += 1;
@@ -266,8 +268,6 @@ fn main() -> ! {
         //////////////////////// ---------------------------
 
         //////////////////////// COM HANDLER BLOCK ---------
-        // p.WIFI.ev_enable.write(|w| unsafe{w.bits(0)} ); // disable wifi interrupts, entering a critical section
-        // unsafe{ betrusted_pac::Peripherals::steal().WIFI.ev_pending.write(|w| w.bits(0x1)); }
         while com_csr.rf(utra::com::STATUS_RX_AVAIL) == 1 {
             let rx: u16;
             unsafe{ rx = (*com_rd).read() as u16; }
