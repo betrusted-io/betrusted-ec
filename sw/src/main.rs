@@ -37,6 +37,9 @@ use gyro_rs::hal_gyro::BtGyro;
 #[macro_use]
 mod debug;
 
+mod spi;
+use spi::*;
+
 const CONFIG_CLOCK_FREQUENCY: u32 = 18_000_000;
 
 // allocate a global, unsafe static string for debug output
@@ -49,6 +52,7 @@ fn panic(_panic: &PanicInfo<'_>) -> ! {
 }
 
 use utralib::generated::*;
+use volatile::Volatile;
 
 enum ComState {
     Idle,
@@ -111,6 +115,18 @@ fn ticktimer_int_handler(_irq_no: usize) {
     ticktimer_csr.wfo(utra::ticktimer::EV_PENDING_ALARM, 1);
 }
 
+fn dump_rom_addr(addr: u32) {
+    let rom_ptr: *mut u32 = (addr + HW_SPIFLASH_MEM as u32) as *mut u32;
+    let rom = rom_ptr as *mut Volatile<u32>;
+    for i in 0..64 {
+        if i % 8 == 0 {
+            sprint!("\n\r0x{:06x}: ", addr + i * 4);
+        }
+        let data: u32 = unsafe{(*rom.add(i as usize)).read()};
+        sprint!("{:02x} {:02x} {:02x} {:02x} ", data & 0xFF, (data >> 8) & 0xff, (data >> 16) & 0xff, (data >> 24) & 0xff);
+    }
+}
+
 #[entry]
 fn main() -> ! {
     let mut power_csr = CSR::new(HW_POWER_BASE as *mut u32);
@@ -144,7 +160,6 @@ fn main() -> ! {
     let mut gyro: BtGyro = BtGyro::new();
     gyro.init();
 
-    use volatile::Volatile;
     let com_ptr: *mut u32 = utralib::HW_COM_MEM as *mut u32;
     let com_fifo = com_ptr as *mut Volatile<u32>;
     let com_rd_ptr: *mut u32 = utralib::HW_COM_MEM as *mut u32;
@@ -175,6 +190,26 @@ fn main() -> ! {
 
     let use_wifi: bool = true;
     let do_power: bool = false;
+
+    /*
+    let mut idcode: [u8; 3] = [0; 3];
+    spi_cmd(CMD_RDID, None, Some(&mut idcode));
+    sprintln!("SPI ID code: {:02x} {:02x} {:02x}", idcode[0], idcode[1], idcode[2]);
+    let test_addr = 0x8_0000;
+    dump_rom_addr(test_addr);
+
+    spi_erase_region(test_addr, 4096);
+
+    dump_rom_addr(test_addr);
+
+    let mut test_data: [u8; 256] = [0; 256];
+    for i in 0..256 {
+        test_data[i] = (255 - i) as u8;
+    }
+    spi_program_page(test_addr, &mut test_data);
+
+    dump_rom_addr(test_addr);
+    */
 
     xous_nommu::syscalls::sys_interrupt_claim(utra::ticktimer::TICKTIMER_IRQ, ticktimer_int_handler).unwrap();
     set_msleep_target_ticks(50);
