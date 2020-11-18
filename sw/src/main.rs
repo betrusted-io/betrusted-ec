@@ -34,11 +34,17 @@ use wfx_bindings::*;
 
 use gyro_rs::hal_gyro::BtGyro;
 
+use utralib::generated::*;
+use volatile::Volatile;
+
 #[macro_use]
 mod debug;
 
 mod spi;
 use spi::*;
+mod comstates;
+use comstates::*;
+
 
 const CONFIG_CLOCK_FREQUENCY: u32 = 18_000_000;
 
@@ -49,32 +55,6 @@ static mut DBGSTR: [u32; 4] = [0, 0, 0, 0];
 #[panic_handler]
 fn panic(_panic: &PanicInfo<'_>) -> ! {
     loop {}
-}
-
-use utralib::generated::*;
-use volatile::Volatile;
-
-#[non_exhaustive]
-struct ComState;
-
-impl ComState {
-    // direct coding states
-    pub const STAT: u16         = 0x8000;
-    pub const POWER: u16        = 0x9000;
-    pub const GAS_GAUGE: u16    = 0x7000;
-    pub const LOOP_TEST: u16    = 0x4000;
-    pub const READ_CHARGE_STATE: u16 = 0x9100;
-    pub const GYRO_READ: u16    = 0xA100;
-    pub const POLL_USB_CC: u16  = 0xB000;
-    pub const SSID_CHECK: u16   = 0x2000;
-    pub const SSID_FETCH: u16   = 0x2100;
-    pub const LINK_READ: u16    = 0xF0F0;
-    pub const LINK_SYNC: u16    = 0xFFFF;
-
-    // "meta" states, inferred from link state
-    pub const IDLE: u16         = 0x0000;
-    pub const ERROR: u16        = 0xDEAD;
-    pub const PASS: u16         = 0xCAFE;
 }
 
 pub fn debug_power() {
@@ -133,7 +113,7 @@ fn dump_rom_addr(addr: u32) {
         let data: u32 = unsafe{(*rom.add(i as usize)).read()};
         sprint!("{:02x} {:02x} {:02x} {:02x} ", data & 0xFF, (data >> 8) & 0xff, (data >> 16) & 0xff, (data >> 24) & 0xff);
     }
-    splintln!("");
+    sprintln!("");
 }
 
 #[entry]
@@ -332,7 +312,7 @@ fn main() -> ! {
                 },
                 ComState::GAS_GAUGE => {linkindex = 0; comstate = ComState::GAS_GAUGE;},
                 ComState::STAT => {linkindex = 0; comstate = ComState::STAT;},
-                ComState::POWER => {comstate = ComState::POWER;},
+                ComState::POWER_OFF => {comstate = ComState::POWER_OFF;},
                 ComState::READ_CHARGE_STATE => {comstate = ComState::READ_CHARGE_STATE},
                 // 0x9200 shipmode
                 // 0xA000 fetch latest gyro XYZ data
@@ -389,7 +369,7 @@ fn main() -> ! {
                         comstate = ComState::IDLE;
                     }
                 },
-                ComState::POWER => {
+                ComState::POWER_OFF => {
                     if linkindex == 0 {
                         tx = power_csr.r(utra::power::POWER) as u16;
                     } else {
@@ -450,27 +430,27 @@ fn main() -> ! {
 
             // now that TX has been handled, go deeper into rx codes and run things that can take longer to respond to
             match rx {
-                0x2100 => { // ssid fetch
+                ComState::SSID_FETCH => { // ssid fetch
                     if linkindex == 1 { // only grab it on the initial command request
                         ssid_list = wf200_ssid_get_list();
                     }
                 }
-                0x5A00 => { // charging mode
+                ComState::CHG_START => { // charging mode
                     charger.chg_start(&mut i2c);
                 },
-                0x5ABB => { // boost on
+                ComState::CHG_BOOST_ON => { // boost on
                     charger.chg_boost(&mut i2c);
                 },
-                0x5AFE => { // boost off
+                ComState::CHG_BOOST_OFF => { // boost off
                     charger.chg_boost_off(&mut i2c);
                 },
-                0x6800..=0x6BFF => {
+                ComState::BL_START..=ComState::BL_END => {
                         let main_bl_level: u8 = (rx & 0x1F) as u8;
                         let sec_bl_level: u8 = ((rx >> 5) & 0x1F) as u8;
                         backlight.set_brightness(&mut i2c, main_bl_level, sec_bl_level);
                     },
-                0x8000 => {charger.update_regs(&mut i2c);},
-                0x9000 => {
+                ComState::STAT => {charger.update_regs(&mut i2c);},
+                ComState::POWER_OFF => {
                     sprintln!("got power down request from soc!");
                     linkindex = 0;
                     // ignore rapid, successive power down requests
@@ -486,7 +466,7 @@ fn main() -> ! {
                         debug_power();
                     }
                 },
-                0x9200 => {
+                ComState::POWER_SHIPMODE => {
                     charger.set_shipmode(&mut i2c);
                     let power =
                     power_csr.ms(utra::power::POWER_SELF, 1)
@@ -496,7 +476,7 @@ fn main() -> ! {
 
                     pd_loop_timer = get_time_ms();
                 },
-                0xA000 => {
+                ComState::GYRO_UPDATE => {
                     gyro.update_xyz();
                 },
                 _ => {},
