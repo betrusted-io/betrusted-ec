@@ -54,19 +54,27 @@ fn panic(_panic: &PanicInfo<'_>) -> ! {
 use utralib::generated::*;
 use volatile::Volatile;
 
-enum ComState {
-    Idle,
-    Stat,
-    Power,
-    GasGauge,
-    LoopTest,
-    ReadChargeState,
-    Error,
-    Pass,
-    GyroRead,
-    PollUsbCc,
-    SsidCheck,
-    SsidFetch,
+#[non_exhaustive]
+struct ComState;
+
+impl ComState {
+    // direct coding states
+    pub const STAT: u16         = 0x8000;
+    pub const POWER: u16        = 0x9000;
+    pub const GAS_GAUGE: u16    = 0x7000;
+    pub const LOOP_TEST: u16    = 0x4000;
+    pub const READ_CHARGE_STATE: u16 = 0x9100;
+    pub const GYRO_READ: u16    = 0xA100;
+    pub const POLL_USB_CC: u16  = 0xB000;
+    pub const SSID_CHECK: u16   = 0x2000;
+    pub const SSID_FETCH: u16   = 0x2100;
+    pub const LINK_READ: u16    = 0xF0F0;
+    pub const LINK_SYNC: u16    = 0xFFFF;
+
+    // "meta" states, inferred from link state
+    pub const IDLE: u16         = 0x0000;
+    pub const ERROR: u16        = 0xDEAD;
+    pub const PASS: u16         = 0xCAFE;
 }
 
 pub fn debug_power() {
@@ -125,6 +133,7 @@ fn dump_rom_addr(addr: u32) {
         let data: u32 = unsafe{(*rom.add(i as usize)).read()};
         sprint!("{:02x} {:02x} {:02x} {:02x} ", data & 0xFF, (data >> 8) & 0xff, (data >> 16) & 0xff, (data >> 24) & 0xff);
     }
+    splintln!("");
 }
 
 #[entry]
@@ -173,7 +182,7 @@ fn main() -> ! {
     let mut current: i16 = 0;
     let mut stby_current: i16 = 0;
     let mut linkindex : usize = 0;
-    let mut comstate: ComState = ComState::Idle;
+    let mut comstate: u16 = ComState::IDLE;
     let mut pd_loop_timer: u32 = 0;
     let mut backlight : BtBacklight = BtBacklight::new();
     let mut com_sentinel: u16 = 0;
@@ -283,14 +292,14 @@ fn main() -> ! {
 
             // check if we should turn the SoC on or not based on power status change events
             if charger.chg_is_charging(&mut i2c, false) || (power_csr.rf(utra::power::STATS_STATE) == 1) && do_power {
-                sprintln!("charger insert or soc on event!");
+                // sprintln!("charger insert or soc on event!");
                 let power =
                     power_csr.ms(utra::power::POWER_SELF, 1)
                     | power_csr.ms(utra::power::POWER_SOC_ON, 1)
                     | power_csr.ms(utra::power::POWER_DISCHARGE, 0);
                 power_csr.wo(utra::power::POWER, power); // turn off discharge if the soc is up
             } else if charger.chg_is_charging(&mut i2c, false) {
-                sprintln!("charger charging!");
+                // sprintln!("charger charging!");
                 let power =
                     power_csr.ms(utra::power::POWER_SELF, 1)
                     | power_csr.ms(utra::power::POWER_SOC_ON, 1)
@@ -306,66 +315,66 @@ fn main() -> ! {
             unsafe{ rx = (*com_rd).read() as u16; }
 
             let mut tx: u16 = 0;
-            // first parse rx and try to stuff a tx response as fast as possible
+            // first parse rx and handle "fast responses" to inquiries if it's static data or existing in a cache
             match rx {
-                0x2000 => {
+                ComState::SSID_CHECK => {
                     linkindex = 0;
-                    comstate = ComState::SsidCheck;
+                    comstate = ComState::SSID_CHECK;
                 },
-                0x2100 => {
+                ComState::SSID_FETCH => {
                     linkindex = 0;
-                    comstate = ComState::SsidFetch;
+                    comstate = ComState::SSID_FETCH;
                 },
-                0x4000 => {
+                ComState::LOOP_TEST => {
                     linkindex = 0;
-                    comstate = ComState::LoopTest;
+                    comstate = ComState::LOOP_TEST;
                     com_sentinel = 0;
                 },
-                0x7000 => {linkindex = 0; comstate = ComState::GasGauge;},
-                0x8000 => {linkindex = 0; comstate = ComState::Stat;},
-                0x9000 => {comstate = ComState::Power;},
-                0x9100 => {comstate = ComState::ReadChargeState},
+                ComState::GAS_GAUGE => {linkindex = 0; comstate = ComState::GAS_GAUGE;},
+                ComState::STAT => {linkindex = 0; comstate = ComState::STAT;},
+                ComState::POWER => {comstate = ComState::POWER;},
+                ComState::READ_CHARGE_STATE => {comstate = ComState::READ_CHARGE_STATE},
                 // 0x9200 shipmode
                 // 0xA000 fetch latest gyro XYZ data
-                0xA100 => {linkindex = 0; comstate = ComState::GyroRead},
-                0xB000 => {linkindex = 0; comstate = ComState::PollUsbCc},
-                0xF0F0 => {
+                ComState::GYRO_READ => {linkindex = 0; comstate = ComState::GYRO_READ},
+                ComState::POLL_USB_CC => {linkindex = 0; comstate = ComState::POLL_USB_CC},
+                ComState::LINK_READ => {
                     // this a "read continuation" command, in other words, return read data
                     // based on the current ComState
                 },
-                0xFFFF => {
-                    // reset link command, when received, empty all the FIFOs, and prime Tx with dummy data
+                ComState::LINK_SYNC => {
+                    // sync link command, when received, empty all the FIFOs, and prime Tx with dummy data
                     com_csr.wfo(utra::com::CONTROL_RESET, 1);  // reset fifos
                     com_csr.wfo(utra::com::CONTROL_CLRERR, 1); // clear all error flags
                     com_sentinel = com_sentinel + 1;
                     unsafe{ (*com_fifo).write(com_sentinel as u32); }
-                    comstate = ComState::Error;
+                    comstate = ComState::ERROR;
                     continue;
                 },
                 _ => {
-                    comstate = ComState::Pass;
+                    comstate = ComState::PASS;
                 },
             }
 
             // these responses should all be "on-hand", e.g. not requiring an I2C transaction to retrieve
             match comstate {
-                ComState::SsidCheck => {
+                ComState::SSID_CHECK => {
                     if wf200_ssid_updated() {
                         tx = 1;
                     } else {
                         tx = 0;
                     }
                 },
-                ComState::SsidFetch => {
+                ComState::SSID_FETCH => {
                     if linkindex < 16 * 6 {
                         tx = ssid_list[linkindex / 16].ssid[(linkindex % 16)*2] as u16 |
                         ((ssid_list[linkindex / 16].ssid[(linkindex % 16)*2+1] as u16) << 8);
                     } else {
                         tx = 0;
-                        comstate = ComState::Idle;
+                        comstate = ComState::IDLE;
                     }
                 }
-                ComState::Stat => {
+                ComState::STAT => {
                     if linkindex == 0 {
                         tx = 0x8888; // first response is just to the initial command
                     } else if linkindex > 0 && linkindex < 0xD {
@@ -377,17 +386,17 @@ fn main() -> ! {
                     } else if linkindex == 0x10 {
                         tx = current as u16;
                     } else {
-                        comstate = ComState::Idle;
+                        comstate = ComState::IDLE;
                     }
                 },
-                ComState::Power => {
+                ComState::POWER => {
                     if linkindex == 0 {
                         tx = power_csr.r(utra::power::POWER) as u16;
                     } else {
-                        comstate = ComState::Idle;
+                        comstate = ComState::IDLE;
                     }
                 },
-                ComState::GasGauge => {
+                ComState::GAS_GAUGE => {
                     if linkindex == 0 {
                         tx = current as u16;
                     } else if linkindex == 1 {
@@ -397,20 +406,20 @@ fn main() -> ! {
                     } else if linkindex == 3 {
                         tx = power_csr.r(utra::power::POWER) as u16;
                     } else {
-                        comstate = ComState::Idle;
+                        comstate = ComState::IDLE;
                     }
                 },
-                ComState::LoopTest => {
+                ComState::LOOP_TEST => {
                     tx = (rx & 0xFF) | ((linkindex as u16 & 0xFF) << 8);
                 },
-                ComState::ReadChargeState => {
+                ComState::READ_CHARGE_STATE => {
                     if charger.chg_is_charging(&mut i2c, true) { // use "cached" version so this is safe in a fast loop
                         tx = 1;
                     } else {
                         tx = 0;
                     }
                 },
-                ComState::GyroRead => {
+                ComState::GYRO_READ => {
                     match linkindex {
                         0 => tx = gyro.x,
                         1 => tx = gyro.y,
@@ -419,7 +428,7 @@ fn main() -> ! {
                         _ => tx = 0xEEEE,
                     }
                 },
-                ComState::PollUsbCc => {
+                ComState::POLL_USB_CC => {
                     match linkindex {
                         0 => { if usb_cc_event { tx = 1 } else { tx = 0 } usb_cc_event = false; }, // clear the usb_cc_event pending flag as its been checked
                         1 => tx = usb_cc.status[0] as u16,
@@ -428,10 +437,10 @@ fn main() -> ! {
                         _ => tx= 0xEEEE,
                     }
                 }
-                ComState::Error => {
+                ComState::ERROR => {
                     tx = 0xEEEE;
                 },
-                ComState::Pass => {
+                ComState::PASS => {
                     tx = 0x1111;
                 }
                 _ => tx = 8888,
@@ -440,9 +449,6 @@ fn main() -> ! {
             unsafe{ (*com_fifo).write(tx as u32); }
 
             // now that TX has been handled, go deeper into rx codes and run things that can take longer to respond to
-            // pub const WIFI_EVENT_WIRQ: u32 = 0x1;
-            // p.WIFI.ev_enable.write(|w| unsafe{w.bits(0x1)} ); // re-enable wifi interrupts
-
             match rx {
                 0x2100 => { // ssid fetch
                     if linkindex == 1 { // only grab it on the initial command request
