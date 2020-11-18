@@ -800,9 +800,9 @@ fn sl_wfx_host_received_frame_callback(rx_buffer: *const sl_wfx_received_ind_t) 
 fn sl_wfx_scan_result_callback(scan_result: *const sl_wfx_scan_result_ind_body_t) {
     let ssid = unsafe { str::from_utf8(slice::from_raw_parts(&(*scan_result).ssid_def.ssid as *const u8, 32)).expect("unable to parse ssid") };
     unsafe { // because raw pointer dereferences
-        sprintln!("scan-- ch:{} str:{} mac:{:02x}{:02x}{:02x}{:02x}{:02x}{:02x} ssid:{}",
+        sprintln!("scan-- ch:{} str:-{} mac:{:02x}{:02x}{:02x}{:02x}{:02x}{:02x} ssid:{}",
             (*scan_result).channel,
-            ((*scan_result).rcpi - 220) / 2,
+            32768 - (((*scan_result).rcpi - 220) / 2),
             (*scan_result).mac[0], (*scan_result).mac[1],
             (*scan_result).mac[2], (*scan_result).mac[3],
             (*scan_result).mac[4], (*scan_result).mac[5],

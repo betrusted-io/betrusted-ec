@@ -33,8 +33,8 @@ impl ComState {
     pub const LINK_READ: u16    = 0xF0F0;
     pub const LINK_SYNC: u16    = 0xFFFF;
 
-    // "meta" states, inferred from link state
-    pub const IDLE: u16         = 0x0000;
+    // response codes (not used as commands)
+//    pub const IDLE: u16         = 0x07E4; // 2020 decimal
     pub const ERROR: u16        = 0xDEAD;
-    pub const PASS: u16         = 0xCAFE;
+//    pub const CMD_ACK: u16      = 0xCAFE;
 }
