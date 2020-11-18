@@ -30,4 +30,5 @@ bench = false
 
 [features]
 debug_uart = [ "wfx_rs/debug_uart" ]
-default = []  # "debug_uart" to turn on uart debugging
+#default = ["debug_uart"]  # "debug_uart" to turn on uart debugging
+default = []

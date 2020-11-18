@@ -91,6 +91,12 @@ fn spi_quad_read() -> u8 {
     byte
 }
 
+pub fn spi_standby() {
+    let mut spicsr = CSR::new(HW_PICORVSPI_BASE as *mut u32);
+    // ensure drivers are off to save power
+    spicsr.wfo(utra::picorvspi::WDATA_OE, 0);
+}
+
 /// called before any exit, successful or failed
 fn exit_bb() {
     let mut spicsr = CSR::new(HW_PICORVSPI_BASE as *mut u32);
@@ -100,6 +106,9 @@ fn exit_bb() {
         spi_ms.ms(utra::picorvspi::MODE_BITBANG, 1)
             | spi_ms.ms(utra::picorvspi::MODE_CSN, 1)
     );
+    // ensure drivers are off to save power
+    spicsr.wfo(utra::picorvspi::WDATA_OE, 0);
+
     // exit bitbang mode
     spicsr.wo(utra::picorvspi::MODE,
         spi_ms.ms(utra::picorvspi::MODE_BITBANG, 0)
@@ -244,14 +253,14 @@ pub fn spi_erase_region(addr: u32, len: u32) {
                 break;
             }
         }
-        if len - erased >= 65536 {
-            spi_cmd(CMD_BE64K, Some(addr), None);
+        if (len - erased >= 0x1_0000) && ((addr & 0xFFFF) == 0) {
+            spi_cmd(CMD_BE64K, Some(addr + erased), None);
             erased += 65536;
-        } else if len - erased >= 32768 {
-            spi_cmd(CMD_BE32K, Some(addr), None);
+        } else if (len - erased >= 0x8000) && ((addr & 0x7FFF) == 0) {
+            spi_cmd(CMD_BE32K, Some(addr + erased), None);
             erased += 32768;
         } else {
-            spi_cmd(CMD_SE, Some(addr), None);
+            spi_cmd(CMD_SE, Some(addr + erased), None);
             erased += 4096;
         }
         loop {
@@ -276,7 +285,7 @@ pub fn spi_program_page(addr: u32, data: &mut [u8]) {
     loop {
         spi_cmd(CMD_WREN, None, None);
         spi_cmd(CMD_RDSR, None, Some(&mut sr));
-        sprintln!("SR: {:02x}", sr[0]);
+        //sprintln!("SR: {:02x}", sr[0]);
         if sr[0] & SPI_SR_WEL_MASK != 0 {
             break;
         }
@@ -284,16 +293,17 @@ pub fn spi_program_page(addr: u32, data: &mut [u8]) {
     spi_cmd(CMD_4PP, Some(addr), Some(data));
     loop {
         spi_cmd(CMD_RDSR, None, Some(&mut sr));
-        sprintln!("program wait: {:02x}", sr[0]);
+        //sprintln!("program wait: {:02x}", sr[0]);
         if sr[0] & SPI_SR_WIP_MASK == 0 {
             break;
         }
     }
+    /* accelerate PP op
     spi_cmd(CMD_RDSCUR, None, Some(&mut sr));
     if sr[0] & (SPI_RDSCUR_E_FAIL_MASK | SPI_RDSCUR_P_FAIL_MASK) != 0 {
         sprintln!("program fail!");
     } else {
         sprintln!("program success!");
     }
-    spi_cmd(CMD_WRDI, None, None);
+    spi_cmd(CMD_WRDI, None, None);*/
 }

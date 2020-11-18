@@ -102,6 +102,12 @@ fn ticktimer_int_handler(_irq_no: usize) {
     ticktimer_csr.wfo(utra::ticktimer::EV_PENDING_ALARM, 1);
 }
 
+fn com_int_handler(_irq_no: usize) {
+    let mut com_csr = CSR::new(HW_COM_BASE as *mut u32);
+    // nop handler, here just to wake up the CPU in case of an incoming SPI packet and run the normal loop
+    com_csr.wfo(utra::com::EV_PENDING_SPI_AVAIL, 1);
+}
+
 fn dump_rom_addr(addr: u32) {
     let rom_ptr: *mut u32 = (addr + HW_SPIFLASH_MEM as u32) as *mut u32;
     let rom = rom_ptr as *mut Volatile<u32>;
@@ -122,12 +128,34 @@ fn com_tx(tx: u16) {
     unsafe{ (*com_fifo).write(tx as u32); }
 }
 
+fn com_rx(timeout: u32) -> Result<u16, &'static str> {
+    let com_csr = CSR::new(HW_COM_BASE as *mut u32);
+    let com_rd_ptr: *mut u32 = utralib::HW_COM_MEM as *mut u32;
+    let com_rd = com_rd_ptr as *mut Volatile<u32>;
+
+    if timeout != 0 && (com_csr.rf(utra::com::STATUS_RX_AVAIL) != 0) {
+        let start = get_time_ms();
+        loop {
+            if com_csr.rf(utra::com::STATUS_RX_AVAIL) == 1 {
+                break;
+            } else if start + timeout < get_time_ms() {
+                return Err("timeout")
+            }
+        }
+    }
+    Ok(unsafe{ (*com_rd).read() as u16 })
+}
+
 #[entry]
 fn main() -> ! {
     let mut power_csr = CSR::new(HW_POWER_BASE as *mut u32);
     let mut com_csr = CSR::new(HW_COM_BASE as *mut u32);
     let mut crg_csr = CSR::new(HW_CRG_BASE as *mut u32);
     let mut ticktimer_csr = CSR::new(HW_TICKTIMER_BASE as *mut u32);
+    let mut wifi_csr = CSR::new(HW_WIFI_BASE as *mut u32);
+
+    let com_rd_ptr: *mut u32 = utralib::HW_COM_MEM as *mut u32;
+    let com_rd = com_rd_ptr as *mut Volatile<u32>;
 
     // Initialize the no-MMU version of Xous, which will give us
     // basic access to tasks and interrupts.
@@ -155,11 +183,6 @@ fn main() -> ! {
     let mut gyro: BtGyro = BtGyro::new();
     gyro.init();
 
-    let com_rd_ptr: *mut u32 = utralib::HW_COM_MEM as *mut u32;
-    let com_rd = com_rd_ptr as *mut Volatile<u32>;
-
-    // com_tx(ComState::IDLE); // load a dummy entry in so we can respond on the first txrx
-
     let mut last_run_time : u32 = get_time_ms();
     let mut loopcounter: u32 = 0; // in seconds, so this will last ~125 years
     let mut voltage : i16 = 0;
@@ -181,13 +204,13 @@ fn main() -> ! {
     let use_wifi: bool = true;
     let do_power: bool = false;
 
+    sprintln!("this changed!!!");
 /*
     let mut idcode: [u8; 3] = [0; 3];
     spi_cmd(CMD_RDID, None, Some(&mut idcode));
     sprintln!("SPI ID code: {:02x} {:02x} {:02x}", idcode[0], idcode[1], idcode[2]);
     let test_addr = 0x8_0000;
     dump_rom_addr(test_addr);
-
     spi_erase_region(test_addr, 4096);
 
     dump_rom_addr(test_addr);
@@ -200,96 +223,106 @@ fn main() -> ! {
 
     dump_rom_addr(test_addr);
 */
+    spi_standby();
+
     xous_nommu::syscalls::sys_interrupt_claim(utra::ticktimer::TICKTIMER_IRQ, ticktimer_int_handler).unwrap();
     set_msleep_target_ticks(50);
     ticktimer_csr.wfo(utra::ticktimer::EV_PENDING_ALARM, 1); // clear the pending signal just in case
     ticktimer_csr.wfo(utra::ticktimer::EV_ENABLE_ALARM, 1); // enable the interrupt
-    crg_csr.wfo(utra::crg::WATCHDOG_ENABLE, 1); // enable the watchdog reset
 
+    /////// NOTE TO SELF: if using GDB, must disable the watchdog!!!
+    //crg_csr.wfo(utra::crg::WATCHDOG_ENABLE, 1); // enable the watchdog reset
+
+    xous_nommu::syscalls::sys_interrupt_claim(utra::com::COM_IRQ, com_int_handler).unwrap();
+    com_csr.wfo(utra::com::EV_ENABLE_SPI_AVAIL, 1);
+
+    let mut flash_update_lock = false;
     loop {
-        //////////////////////// WIFI HANDLER BLOCK ---------
-        if !use_wifi && (get_time_ms() - start_time > 1500) {
-            delay_ms(250); // force just a delay, so requests queue up
-            start_time = get_time_ms();
-        }
-        // slight delay to allow for wishbone-tool to connect for debuggening
-        if (get_time_ms() - start_time > 1500) && !wifi_ready && use_wifi {
-            sprintln!("initializing wifi!");
-            // delay_ms(250); // let the message print
-            // init the wifi interface
-            if wfx_init() == SL_STATUS_OK {
-                sprintln!("Wifi ready");
-                wifi_ready = true;
-            } else {
-                sprintln!("Wifi init failed");
-            }
-            start_time = get_time_ms();
-        }
-        if wifi_ready && use_wifi {
-            if get_time_ms() - start_time > 20_000 {
-                sprintln!("starting ssid scan");
-                wfx_start_scan();
+        if !flash_update_lock {
+            //////////////////////// WIFI HANDLER BLOCK ---------
+            if !use_wifi && (get_time_ms() - start_time > 1500) {
+                delay_ms(250); // force just a delay, so requests queue up
                 start_time = get_time_ms();
             }
-        }
-        if wfx_rs::hal_wf200::wf200_event_get() && use_wifi {
-            // first thing -- clear the event. So that if we get another event
-            // while handling this packet, we have a chance of detecting that.
-            // we lack mutexes, so we need to think about this behavior very carefully.
-
-            if wf200_mutex_get() { // don't process events while the driver has locked us out
-                wfx_rs::hal_wf200::wf200_event_clear();
-
-                // handle the Rx packet
-                if wfx_scan_ongoing() {
-                    wfx_handle_event();
-                }
-            }
-        }
-        //////////////////////// ---------------------------
-
-        //////////////////////// CHARGER HANDLER BLOCK -----
-        // I2C can't happen inside an interrupt routine, so we do it in the main loop
-        // real time response is also not critical; note this runs "lazily", only if the COM loop is idle
-        if get_time_ms() - last_run_time > 1000 {
-            last_run_time = get_time_ms();
-            loopcounter += 1;
-
-            // routine pings & housekeeping
-            if loopcounter % 2 == 0 {
-                charger.chg_keepalive_ping(&mut i2c);
-                if !usb_cc_event {
-                    usb_cc_event = usb_cc.check_event(&mut i2c);
-                }
-            } else {
-                voltage = gg_voltage(&mut i2c);
-                if power_csr.rf(utra::power::POWER_SOC_ON) == 1 {
-                    current = gg_avg_current(&mut i2c);
+            // slight delay to allow for wishbone-tool to connect for debuggening
+            if (get_time_ms() - start_time > 1500) && !wifi_ready && use_wifi {
+                sprintln!("initializing wifi!");
+                // delay_ms(250); // let the message print
+                // init the wifi interface
+                if wfx_init() == SL_STATUS_OK {
+                    sprintln!("Wifi ready");
+                    wifi_ready = true;
                 } else {
-                    // TODO: need more fine control over this
-                    // at the moment, system can power on for 1 full second prior to getting this reading
-                    stby_current = gg_avg_current(&mut i2c);
+                    sprintln!("Wifi init failed");
+                }
+                start_time = get_time_ms();
+            }
+            if wifi_ready && use_wifi {
+                if get_time_ms() - start_time > 20_000 {
+                    sprintln!("starting ssid scan");
+                    wfx_start_scan();
+                    start_time = get_time_ms();
                 }
             }
+            if wfx_rs::hal_wf200::wf200_event_get() && use_wifi {
+                // first thing -- clear the event. So that if we get another event
+                // while handling this packet, we have a chance of detecting that.
+                // we lack mutexes, so we need to think about this behavior very carefully.
 
-            // check if we should turn the SoC on or not based on power status change events
-            if charger.chg_is_charging(&mut i2c, false) || (power_csr.rf(utra::power::STATS_STATE) == 1) && do_power {
-                // sprintln!("charger insert or soc on event!");
-                let power =
-                    power_csr.ms(utra::power::POWER_SELF, 1)
-                    | power_csr.ms(utra::power::POWER_SOC_ON, 1)
-                    | power_csr.ms(utra::power::POWER_DISCHARGE, 0);
-                power_csr.wo(utra::power::POWER, power); // turn off discharge if the soc is up
-            } else if charger.chg_is_charging(&mut i2c, false) {
-                // sprintln!("charger charging!");
-                let power =
-                    power_csr.ms(utra::power::POWER_SELF, 1)
-                    | power_csr.ms(utra::power::POWER_SOC_ON, 1)
-                    | power_csr.ms(utra::power::POWER_DISCHARGE, 0);
-                power_csr.wo(utra::power::POWER, power);
+                if wf200_mutex_get() { // don't process events while the driver has locked us out
+                    wfx_rs::hal_wf200::wf200_event_clear();
+
+                    // handle the Rx packet
+                    if wfx_scan_ongoing() {
+                        wfx_handle_event();
+                    }
+                }
             }
+            //////////////////////// ---------------------------
+
+            //////////////////////// CHARGER HANDLER BLOCK -----
+            // I2C can't happen inside an interrupt routine, so we do it in the main loop
+            // real time response is also not critical; note this runs "lazily", only if the COM loop is idle
+            if get_time_ms() - last_run_time > 1000 {
+                last_run_time = get_time_ms();
+                loopcounter += 1;
+
+                // routine pings & housekeeping
+                if loopcounter % 2 == 0 {
+                    charger.chg_keepalive_ping(&mut i2c);
+                    if !usb_cc_event {
+                        usb_cc_event = usb_cc.check_event(&mut i2c);
+                    }
+                } else {
+                    voltage = gg_voltage(&mut i2c);
+                    if power_csr.rf(utra::power::POWER_SOC_ON) == 1 {
+                        current = gg_avg_current(&mut i2c);
+                    } else {
+                        // TODO: need more fine control over this
+                        // at the moment, system can power on for 1 full second prior to getting this reading
+                        stby_current = gg_avg_current(&mut i2c);
+                    }
+                }
+
+                // check if we should turn the SoC on or not based on power status change events
+                if charger.chg_is_charging(&mut i2c, false) || (power_csr.rf(utra::power::STATS_STATE) == 1) && do_power {
+                    // sprintln!("charger insert or soc on event!");
+                    let power =
+                        power_csr.ms(utra::power::POWER_SELF, 1)
+                        | power_csr.ms(utra::power::POWER_SOC_ON, 1)
+                        | power_csr.ms(utra::power::POWER_DISCHARGE, 0);
+                    power_csr.wo(utra::power::POWER, power); // turn off discharge if the soc is up
+                } else if charger.chg_is_charging(&mut i2c, false) {
+                    // sprintln!("charger charging!");
+                    let power =
+                        power_csr.ms(utra::power::POWER_SELF, 1)
+                        | power_csr.ms(utra::power::POWER_SOC_ON, 1)
+                        | power_csr.ms(utra::power::POWER_DISCHARGE, 0);
+                    power_csr.wo(utra::power::POWER, power);
+                }
+            }
+            //////////////////////// ---------------------------
         }
-        //////////////////////// ---------------------------
 
         //////////////////////// COM HANDLER BLOCK ---------
         while com_csr.rf(utra::com::STATUS_RX_AVAIL) == 1 {
@@ -356,11 +389,7 @@ fn main() -> ! {
                     pd_loop_timer = get_time_ms();
                 },
                 ComState::READ_CHARGE_STATE => {
-                    if charger.chg_is_charging(&mut i2c, true) { // use "cached" version so this is safe in a fast loop
-                        com_tx(1);
-                    } else {
-                        com_tx(0);
-                    }
+                    if charger.chg_is_charging(&mut i2c, false) { com_tx(1); } else { com_tx(0); }
                 },
                 ComState::GYRO_UPDATE => {
                     gyro.update_xyz();
@@ -401,12 +430,78 @@ fn main() -> ! {
                     com_csr.wfo(utra::com::CONTROL_CLRERR, 1); // clear all error flags
                     // com_tx(ComState::IDLE);
                 },
+                ComState::FLASH_ERASE => {
+                    let mut error = false;
+                    let mut address: u32 = 0;
+                    let mut len: u32 = 0;
+                    // receive address in "network order" (big endian)
+                    match com_rx(100) {
+                        Ok(result) => address = (result as u32) << 16,
+                        _ => error = true,
+                    }
+                    match com_rx(100) {
+                        Ok(result) => address |= (result as u32) & 0xFFFF,
+                        _ => error = true,
+                    }
+                    // receive len, in bytes
+                    match com_rx(100) {
+                        Ok(result) => len = (result as u32) << 16,
+                        _ => error = true,
+                    }
+                    match com_rx(100) {
+                        Ok(result) => len |= (result as u32) & 0xFFFF,
+                        _ => error = true,
+                    }
+                    if !error {
+                        sprintln!("Erasing {} bytes from 0x{:08x}", len, address);
+                        spi_erase_region(address, len);
+                    }
+                },
+                ComState::FLASH_PP => {
+                    let mut error = false;
+                    let mut address: u32 = 0;
+                    let mut page: [u8; 256] = [0; 256];
+                    // receive address in "network order" (big endian)
+                    match com_rx(100) {
+                        Ok(result) => address = (result as u32) << 16,
+                        _ => error = true,
+                    }
+                    match com_rx(100) {
+                        Ok(result) => address |= (result as u32) & 0xFFFF,
+                        _ => error = true,
+                    }
+                    for i in 0..128 {
+                        match com_rx(100) {
+                            Ok(result) => {
+                                let b = result.to_le_bytes();
+                                page[i*2] = b[0];
+                                page[i*2+1] = b[1];
+                            },
+                            _ => error = true,
+                        }
+                    }
+                    if !error {
+                        // sprintln!("Programming 256 bytes to 0x{:08x}", address);
+                        spi_program_page(address, &mut page);
+                    }
+                },
+                ComState::FLASH_LOCK => {
+                    flash_update_lock = true;
+                    wifi_csr.wfo(utra::wifi::EV_ENABLE_WIRQ, 0);
+                },
+                ComState::FLASH_UNLOCK => {
+                    flash_update_lock = false;
+                    wifi_csr.wfo(utra::wifi::EV_ENABLE_WIRQ, 1);
+                },
+                ComState::FLASH_WAITACK => {
+                    com_tx(ComState::FLASH_ACK);
+                }
                 _ => {
                     com_tx(ComState::ERROR);
                 },
             }
         }
         //////////////////////// ---------------------------
-
+        // unsafe { riscv::asm::wfi() }; // potential for power savings?
     }
 }

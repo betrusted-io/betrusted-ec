@@ -8,6 +8,13 @@ impl ComState {
     pub const SSID_CHECK: u16   = 0x2000;
     pub const SSID_FETCH: u16   = 0x2100;
 
+    pub const FLASH_WAITACK:u16 = 0x3000;
+    pub const FLASH_ACK: u16    = 0x3CC3;
+    pub const FLASH_ERASE: u16  = 0x3200;
+    pub const FLASH_PP: u16     = 0x3300;
+    pub const FLASH_LOCK: u16   = 0x3400; // lock activity for updates
+    pub const FLASH_UNLOCK: u16 = 0x3434; // unlock activity for updates
+
     pub const LOOP_TEST: u16    = 0x4000;
 
     pub const CHG_START: u16    = 0x5A00;
@@ -17,9 +24,9 @@ impl ComState {
     pub const BL_START: u16     = 0x6800; // back light range encoded in state arg
     pub const BL_END: u16       = 0x6BFF;
 
-    pub const STAT: u16         = 0x8000;
-
     pub const GAS_GAUGE: u16    = 0x7000;
+
+    pub const STAT: u16         = 0x8000;
 
     pub const POWER_OFF: u16    = 0x9000;
     pub const READ_CHARGE_STATE: u16 = 0x9100;
