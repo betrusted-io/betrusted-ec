@@ -164,6 +164,15 @@ fn main() -> ! {
 
     let mut charger: BtCharger = BtCharger::new();
 
+    let mut last_run_time : u32 = get_time_ms();
+    let mut loopcounter: u32 = 0; // in seconds, so this will last ~125 years
+    let mut voltage : i16 = 0;
+    let mut current: i16 = 0;
+    let mut stby_current: i16 = 0;
+    let mut pd_loop_timer: u32 = 0;
+    let mut soc_was_on: bool;
+    if power_csr.rf(utra::power::STATS_STATE) == 1 { soc_was_on = true; } else { soc_was_on = false; }
+
     // this needs to be one of the first things called after I2C comes up
     charger.chg_set_safety(&mut i2c);
 
@@ -178,15 +187,7 @@ fn main() -> ! {
     let mut gyro: BtGyro = BtGyro::new();
     gyro.init();
 
-    let mut last_run_time : u32 = get_time_ms();
-    let mut loopcounter: u32 = 0; // in seconds, so this will last ~125 years
-    let mut voltage : i16 = 0;
-    let mut current: i16 = 0;
-    let mut stby_current: i16 = 0;
-    let mut pd_loop_timer: u32 = 0;
     let mut backlight : BtBacklight = BtBacklight::new();
-    let mut com_sentinel: u16 = 0;
-
     backlight.set_brightness(&mut i2c, 0, 0); // make sure the backlight is off on boot
 
     let mut start_time: u32 = get_time_ms();
@@ -216,6 +217,7 @@ fn main() -> ! {
 
     dump_rom_addr(test_addr);
 */
+
     spi_standby();
 
     xous_nommu::syscalls::sys_interrupt_claim(utra::ticktimer::TICKTIMER_IRQ, ticktimer_int_handler).unwrap();
@@ -229,6 +231,7 @@ fn main() -> ! {
     xous_nommu::syscalls::sys_interrupt_claim(utra::com::COM_IRQ, com_int_handler).unwrap();
     com_csr.wfo(utra::com::EV_ENABLE_SPI_AVAIL, 1);
 
+    let mut com_sentinel: u16 = 0;  // for link debugging mostly
     let mut flash_update_lock = false;
     loop {
         if !flash_update_lock {
@@ -290,11 +293,11 @@ fn main() -> ! {
                     voltage = gg_voltage(&mut i2c);
                     if power_csr.rf(utra::power::STATS_STATE) == 1 {
                         current = gg_avg_current(&mut i2c);
-                    } else {
-                        // TODO: need more fine control over this
-                        // at the moment, system can power on for 1 full second prior to getting this reading
+                    } else if power_csr.rf(utra::power::STATS_STATE) == 0 && !soc_was_on {
+                        // only sample if the last state was also powered off, so we aren't averaging in ~1s worth of "power on" current while this loop triggers
                         stby_current = gg_avg_current(&mut i2c);
                     }
+                    if power_csr.rf(utra::power::STATS_STATE) == 1 { soc_was_on = true; } else { soc_was_on = false; }
                 }
 
                 // check if we should turn the SoC on or not based on power status change events
