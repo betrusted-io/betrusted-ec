@@ -56,11 +56,6 @@ fn panic(_panic: &PanicInfo<'_>) -> ! {
     loop {}
 }
 
-pub fn debug_power() {
-    let power_csr = CSR::new(HW_POWER_BASE as *mut u32);
-    sprintln!("power: 0x{:04x}", power_csr.r(utra::power::POWER));
-}
-
 fn ticktimer_int_handler(_irq_no: usize) {
     let mut ticktimer_csr = CSR::new(HW_TICKTIMER_BASE as *mut u32);
     let mut crg_csr = CSR::new(HW_CRG_BASE as *mut u32);
@@ -94,7 +89,6 @@ fn ticktimer_int_handler(_irq_no: usize) {
             | power_csr.ms(utra::power::POWER_DISCHARGE, 1);
             power_csr.wo(utra::power::POWER, power);
         }
-        debug_power();
     }
 
     set_msleep_target_ticks(50); // resetting this will also clear the alarm
@@ -108,6 +102,7 @@ fn com_int_handler(_irq_no: usize) {
     com_csr.wfo(utra::com::EV_PENDING_SPI_AVAIL, 1);
 }
 
+#[allow(dead_code)]  // used for debugging
 fn dump_rom_addr(addr: u32) {
     let rom_ptr: *mut u32 = (addr + HW_SPIFLASH_MEM as u32) as *mut u32;
     let rom = rom_ptr as *mut Volatile<u32>;
@@ -202,10 +197,8 @@ fn main() -> ! {
     let mut usb_cc_event = false;
 
     let use_wifi: bool = true;
-    let do_power: bool = false;
 
-    sprintln!("this changed!!!");
-/*
+/*  // quick test routine for SPI flashing
     let mut idcode: [u8; 3] = [0; 3];
     spi_cmd(CMD_RDID, None, Some(&mut idcode));
     sprintln!("SPI ID code: {:02x} {:02x} {:02x}", idcode[0], idcode[1], idcode[2]);
@@ -231,7 +224,7 @@ fn main() -> ! {
     ticktimer_csr.wfo(utra::ticktimer::EV_ENABLE_ALARM, 1); // enable the interrupt
 
     /////// NOTE TO SELF: if using GDB, must disable the watchdog!!!
-    //crg_csr.wfo(utra::crg::WATCHDOG_ENABLE, 1); // enable the watchdog reset
+    crg_csr.wfo(utra::crg::WATCHDOG_ENABLE, 1); // enable the watchdog reset
 
     xous_nommu::syscalls::sys_interrupt_claim(utra::com::COM_IRQ, com_int_handler).unwrap();
     com_csr.wfo(utra::com::EV_ENABLE_SPI_AVAIL, 1);
@@ -287,7 +280,7 @@ fn main() -> ! {
                 last_run_time = get_time_ms();
                 loopcounter += 1;
 
-                // routine pings & housekeeping
+                // routine pings & housekeeping; split i2c traffic across two phases to even the CPU load
                 if loopcounter % 2 == 0 {
                     charger.chg_keepalive_ping(&mut i2c);
                     if !usb_cc_event {
@@ -295,7 +288,7 @@ fn main() -> ! {
                     }
                 } else {
                     voltage = gg_voltage(&mut i2c);
-                    if power_csr.rf(utra::power::POWER_SOC_ON) == 1 {
+                    if power_csr.rf(utra::power::STATS_STATE) == 1 {
                         current = gg_avg_current(&mut i2c);
                     } else {
                         // TODO: need more fine control over this
@@ -305,20 +298,13 @@ fn main() -> ! {
                 }
 
                 // check if we should turn the SoC on or not based on power status change events
-                if charger.chg_is_charging(&mut i2c, false) || (power_csr.rf(utra::power::STATS_STATE) == 1) && do_power {
+                if charger.chg_is_charging(&mut i2c, false) || (power_csr.rf(utra::power::STATS_STATE) == 1) {
                     // sprintln!("charger insert or soc on event!");
                     let power =
                         power_csr.ms(utra::power::POWER_SELF, 1)
                         | power_csr.ms(utra::power::POWER_SOC_ON, 1)
                         | power_csr.ms(utra::power::POWER_DISCHARGE, 0);
                     power_csr.wo(utra::power::POWER, power); // turn off discharge if the soc is up
-                } else if charger.chg_is_charging(&mut i2c, false) {
-                    // sprintln!("charger charging!");
-                    let power =
-                        power_csr.ms(utra::power::POWER_SELF, 1)
-                        | power_csr.ms(utra::power::POWER_SOC_ON, 1)
-                        | power_csr.ms(utra::power::POWER_DISCHARGE, 0);
-                    power_csr.wo(utra::power::POWER, power);
                 }
             }
             //////////////////////// ---------------------------
@@ -375,7 +361,6 @@ fn main() -> ! {
                         set_msleep_target_ticks(500); // extend next service so we can discharge
 
                         pd_loop_timer = get_time_ms();
-                        debug_power();
                     }
                 },
                 ComState::POWER_SHIPMODE => {

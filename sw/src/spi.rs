@@ -54,6 +54,7 @@ fn spi_1bit_write(byte: u8) {
     }
 }
 
+#[inline]
 fn spi_quad_write(byte: u8) {
     let mut spicsr = CSR::new(HW_PICORVSPI_BASE as *mut u32);
     let mut spi_ms = CSR::new(HW_PICORVSPI_BASE as *mut u32);
@@ -282,28 +283,41 @@ pub fn spi_erase_region(addr: u32, len: u32) {
 
 pub fn spi_program_page(addr: u32, data: &mut [u8]) {
     let mut sr: [u8; 1] = [0; 1];
-    loop {
+    let fast_and_furious = true;
+
+    if fast_and_furious {
+        // skip most the checks, in favor of speed.
         spi_cmd(CMD_WREN, None, None);
-        spi_cmd(CMD_RDSR, None, Some(&mut sr));
-        //sprintln!("SR: {:02x}", sr[0]);
-        if sr[0] & SPI_SR_WEL_MASK != 0 {
-            break;
+        spi_cmd(CMD_4PP, Some(addr), Some(data));
+        loop {
+            spi_cmd(CMD_RDSR, None, Some(&mut sr));
+            if sr[0] & SPI_SR_WIP_MASK == 0 {
+                break;
+            }
         }
-    }
-    spi_cmd(CMD_4PP, Some(addr), Some(data));
-    loop {
-        spi_cmd(CMD_RDSR, None, Some(&mut sr));
-        //sprintln!("program wait: {:02x}", sr[0]);
-        if sr[0] & SPI_SR_WIP_MASK == 0 {
-            break;
-        }
-    }
-    /* accelerate PP op
-    spi_cmd(CMD_RDSCUR, None, Some(&mut sr));
-    if sr[0] & (SPI_RDSCUR_E_FAIL_MASK | SPI_RDSCUR_P_FAIL_MASK) != 0 {
-        sprintln!("program fail!");
     } else {
-        sprintln!("program success!");
+        loop {
+            spi_cmd(CMD_WREN, None, None);
+            spi_cmd(CMD_RDSR, None, Some(&mut sr));
+            //sprintln!("SR: {:02x}", sr[0]);
+            if sr[0] & SPI_SR_WEL_MASK != 0 {
+                break;
+            }
+        }
+        spi_cmd(CMD_4PP, Some(addr), Some(data));
+        loop {
+            spi_cmd(CMD_RDSR, None, Some(&mut sr));
+            //sprintln!("program wait: {:02x}", sr[0]);
+            if sr[0] & SPI_SR_WIP_MASK == 0 {
+                break;
+            }
+        }
+        spi_cmd(CMD_RDSCUR, None, Some(&mut sr));
+        if sr[0] & (SPI_RDSCUR_E_FAIL_MASK | SPI_RDSCUR_P_FAIL_MASK) != 0 {
+            sprintln!("program fail!");
+        } else {
+            sprintln!("program success!");
+        }
+        spi_cmd(CMD_WRDI, None, None);
     }
-    spi_cmd(CMD_WRDI, None, None);*/
 }
