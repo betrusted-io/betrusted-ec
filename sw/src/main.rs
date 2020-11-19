@@ -490,6 +490,6 @@ fn main() -> ! {
             }
         }
         //////////////////////// ---------------------------
-        // unsafe { riscv::asm::wfi() }; // potential for power savings?
+        // unsafe { riscv::asm::wfi() }; // potential for power savings? unfortunately WFI seems broken
     }
 }
