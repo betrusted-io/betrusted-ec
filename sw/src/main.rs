@@ -318,175 +318,150 @@ fn main() -> ! {
             let rx: u16;
             unsafe{ rx = (*com_rd).read() as u16; }
 
-            match rx {
-                ComState::SSID_CHECK => {
-                    if wf200_ssid_updated() { com_tx(1); } else { com_tx(0); }
-                },
-                ComState::SSID_FETCH => {
-                    let ssid_list = wf200_ssid_get_list();
+            if rx == ComState::SSID_CHECK.verb {
+                if wf200_ssid_updated() { com_tx(1); } else { com_tx(0); }
+            } else if rx == ComState::SSID_FETCH.verb {
+                let ssid_list = wf200_ssid_get_list();
 
-                    for index in 0..16 * 6 {
-                        com_tx(ssid_list[index / 16].ssid[(index % 16)*2] as u16 |
-                                 ((ssid_list[index / 16].ssid[(index % 16)*2+1] as u16) << 8)
-                        );
-                    }
-                },
-                ComState::LOOP_TEST => {
-                    com_tx((rx & 0xFF) | ((com_sentinel as u16 & 0xFF) << 8));
-                    com_sentinel += 1;
-                },
-                ComState::GAS_GAUGE => {
+                for index in 0..16 * 6 {
+                    com_tx(ssid_list[index / 16].ssid[(index % 16)*2] as u16 |
+                                ((ssid_list[index / 16].ssid[(index % 16)*2+1] as u16) << 8)
+                    );
+                }
+            } else if rx == ComState::LOOP_TEST.verb {
+                com_tx((rx & 0xFF) | ((com_sentinel as u16 & 0xFF) << 8));
+                com_sentinel += 1;
+            } else if rx == ComState::GAS_GAUGE.verb {
                     com_tx(current as u16);
                     com_tx(stby_current as u16);
                     com_tx(voltage as u16);
                     com_tx(power_csr.r(utra::power::POWER) as u16);
-                },
-                ComState::STAT => {
-                    com_tx(0x8888);  // first is just a response to the initial command
-                    charger.update_regs(&mut i2c);
-                    for i in 0..0xC {
-                        com_tx(charger.registers[i] as u16);
-                    }
-                    com_tx(voltage as u16);
-                    com_tx(stby_current as u16);
-                    com_tx(current as u16);
-                },
-                ComState::POWER_OFF => {
-                    com_tx(power_csr.r(utra::power::POWER) as u16);
-                    sprintln!("got power down request from soc!");
-                    // ignore rapid, successive power down requests
-                    if get_time_ms() - pd_loop_timer > 1500 {
-                        let power =
-                        power_csr.ms(utra::power::POWER_SELF, 1)
-                        | power_csr.ms(utra::power::POWER_DISCHARGE, 1);
-                        power_csr.wo(utra::power::POWER, power);
-
-                        set_msleep_target_ticks(500); // extend next service so we can discharge
-
-                        pd_loop_timer = get_time_ms();
-                    }
-                },
-                ComState::POWER_SHIPMODE => {
-                    charger.set_shipmode(&mut i2c);
+            } else if rx == ComState::STAT.verb {
+                com_tx(0x8888);  // first is just a response to the initial command
+                charger.update_regs(&mut i2c);
+                for i in 0..0xC {
+                    com_tx(charger.registers[i] as u16);
+                }
+                com_tx(voltage as u16);
+                com_tx(stby_current as u16);
+                com_tx(current as u16);
+            } else if rx == ComState::POWER_OFF.verb {
+                com_tx(power_csr.r(utra::power::POWER) as u16);
+                sprintln!("got power down request from soc!");
+                // ignore rapid, successive power down requests
+                if get_time_ms() - pd_loop_timer > 1500 {
                     let power =
                     power_csr.ms(utra::power::POWER_SELF, 1)
                     | power_csr.ms(utra::power::POWER_DISCHARGE, 1);
                     power_csr.wo(utra::power::POWER, power);
+
                     set_msleep_target_ticks(500); // extend next service so we can discharge
 
                     pd_loop_timer = get_time_ms();
-                },
-                ComState::READ_CHARGE_STATE => {
-                    if charger.chg_is_charging(&mut i2c, false) { com_tx(1); } else { com_tx(0); }
-                },
-                ComState::GYRO_UPDATE => {
-                    gyro.update_xyz();
-                },
-                ComState::GYRO_READ => {
-                    com_tx(gyro.x);
-                    com_tx(gyro.y);
-                    com_tx(gyro.z);
-                    com_tx(gyro.id as u16);
-                },
-                ComState::POLL_USB_CC => {
-                    if usb_cc_event { com_tx(1) } else { com_tx(0) } usb_cc_event = false; // clear the usb_cc_event pending flag as its been checked
-                    for i in 0..3 {
-                        com_tx(usb_cc.status[i] as u16);
-                    }
-                },
-                ComState::CHG_START => { // charging mode
-                    charger.chg_start(&mut i2c);
-                },
-                ComState::CHG_BOOST_ON => { // boost on
-                    charger.chg_boost(&mut i2c);
-                },
-                ComState::CHG_BOOST_OFF => { // boost off
-                    charger.chg_boost_off(&mut i2c);
-                },
-                ComState::BL_START..=ComState::BL_END => {
-                    let main_bl_level: u8 = (rx & 0x1F) as u8;
-                    let sec_bl_level: u8 = ((rx >> 5) & 0x1F) as u8;
-                    backlight.set_brightness(&mut i2c, main_bl_level, sec_bl_level);
-                },
-                ComState::LINK_READ => {
+                }
+            } else if rx ==  ComState::POWER_SHIPMODE.verb {
+                charger.set_shipmode(&mut i2c);
+                let power =
+                power_csr.ms(utra::power::POWER_SELF, 1)
+                | power_csr.ms(utra::power::POWER_DISCHARGE, 1);
+                power_csr.wo(utra::power::POWER, power);
+                set_msleep_target_ticks(500); // extend next service so we can discharge
+
+                pd_loop_timer = get_time_ms();
+            } else if rx ==  ComState::READ_CHARGE_STATE.verb {
+                if charger.chg_is_charging(&mut i2c, false) { com_tx(1); } else { com_tx(0); }
+            } else if rx ==  ComState::GYRO_UPDATE.verb {
+                gyro.update_xyz();
+            } else if rx ==  ComState::GYRO_READ.verb {
+                com_tx(gyro.x);
+                com_tx(gyro.y);
+                com_tx(gyro.z);
+                com_tx(gyro.id as u16);
+            } else if rx == ComState::POLL_USB_CC.verb {
+                if usb_cc_event { com_tx(1) } else { com_tx(0) } usb_cc_event = false; // clear the usb_cc_event pending flag as its been checked
+                for i in 0..3 {
+                    com_tx(usb_cc.status[i] as u16);
+                }
+            } else if rx == ComState::CHG_START.verb { // charging mode
+                charger.chg_start(&mut i2c);
+            } else if rx == ComState::CHG_BOOST_ON.verb { // boost on
+                charger.chg_boost(&mut i2c);
+            } else if rx == ComState::CHG_BOOST_OFF.verb { // boost off
+                charger.chg_boost_off(&mut i2c);
+            } else if rx >= ComState::BL_START.verb && rx <= ComState::BL_END.verb {
+                let main_bl_level: u8 = (rx & 0x1F) as u8;
+                let sec_bl_level: u8 = ((rx >> 5) & 0x1F) as u8;
+                backlight.set_brightness(&mut i2c, main_bl_level, sec_bl_level);
+            } else if rx == ComState::LINK_READ.verb {
                     // this a "read continuation" command, in other words, return read data
                     // based on the current ComState
-                },
-                ComState::LINK_SYNC => {
-                    // sync link command, when received, empty all the FIFOs, and prime Tx with dummy data
-                    com_csr.wfo(utra::com::CONTROL_RESET, 1);  // reset fifos
-                    com_csr.wfo(utra::com::CONTROL_CLRERR, 1); // clear all error flags
-                    // com_tx(ComState::IDLE);
-                },
-                ComState::FLASH_ERASE => {
-                    let mut error = false;
-                    let mut address: u32 = 0;
-                    let mut len: u32 = 0;
-                    // receive address in "network order" (big endian)
-                    match com_rx(100) {
-                        Ok(result) => address = (result as u32) << 16,
-                        _ => error = true,
-                    }
-                    match com_rx(100) {
-                        Ok(result) => address |= (result as u32) & 0xFFFF,
-                        _ => error = true,
-                    }
-                    // receive len, in bytes
-                    match com_rx(100) {
-                        Ok(result) => len = (result as u32) << 16,
-                        _ => error = true,
-                    }
-                    match com_rx(100) {
-                        Ok(result) => len |= (result as u32) & 0xFFFF,
-                        _ => error = true,
-                    }
-                    if !error {
-                        sprintln!("Erasing {} bytes from 0x{:08x}", len, address);
-                        spi_erase_region(address, len);
-                    }
-                },
-                ComState::FLASH_PP => {
-                    let mut error = false;
-                    let mut address: u32 = 0;
-                    let mut page: [u8; 256] = [0; 256];
-                    // receive address in "network order" (big endian)
-                    match com_rx(100) {
-                        Ok(result) => address = (result as u32) << 16,
-                        _ => error = true,
-                    }
-                    match com_rx(100) {
-                        Ok(result) => address |= (result as u32) & 0xFFFF,
-                        _ => error = true,
-                    }
-                    for i in 0..128 {
-                        match com_rx(100) {
-                            Ok(result) => {
-                                let b = result.to_le_bytes();
-                                page[i*2] = b[0];
-                                page[i*2+1] = b[1];
-                            },
-                            _ => error = true,
-                        }
-                    }
-                    if !error {
-                        // sprintln!("Programming 256 bytes to 0x{:08x}", address);
-                        spi_program_page(address, &mut page);
-                    }
-                },
-                ComState::FLASH_LOCK => {
-                    flash_update_lock = true;
-                    wifi_csr.wfo(utra::wifi::EV_ENABLE_WIRQ, 0);
-                },
-                ComState::FLASH_UNLOCK => {
-                    flash_update_lock = false;
-                    wifi_csr.wfo(utra::wifi::EV_ENABLE_WIRQ, 1);
-                },
-                ComState::FLASH_WAITACK => {
-                    com_tx(ComState::FLASH_ACK);
+            } else if rx == ComState::LINK_SYNC.verb {
+                // sync link command, when received, empty all the FIFOs, and prime Tx with dummy data
+                com_csr.wfo(utra::com::CONTROL_RESET, 1);  // reset fifos
+                com_csr.wfo(utra::com::CONTROL_CLRERR, 1); // clear all error flags
+            } else if rx == ComState::FLASH_ERASE.verb {
+                let mut error = false;
+                let mut address: u32 = 0;
+                let mut len: u32 = 0;
+                // receive address in "network order" (big endian)
+                match com_rx(100) {
+                    Ok(result) => address = (result as u32) << 16,
+                    _ => error = true,
                 }
-                _ => {
-                    com_tx(ComState::ERROR);
-                },
+                match com_rx(100) {
+                    Ok(result) => address |= (result as u32) & 0xFFFF,
+                    _ => error = true,
+                }
+                // receive len, in bytes
+                match com_rx(100) {
+                    Ok(result) => len = (result as u32) << 16,
+                    _ => error = true,
+                }
+                match com_rx(100) {
+                    Ok(result) => len |= (result as u32) & 0xFFFF,
+                    _ => error = true,
+                }
+                if !error {
+                    sprintln!("Erasing {} bytes from 0x{:08x}", len, address);
+                    spi_erase_region(address, len);
+                }
+            } else if rx == ComState::FLASH_PP.verb {
+                let mut error = false;
+                let mut address: u32 = 0;
+                let mut page: [u8; 256] = [0; 256];
+                // receive address in "network order" (big endian)
+                match com_rx(100) {
+                    Ok(result) => address = (result as u32) << 16,
+                    _ => error = true,
+                }
+                match com_rx(100) {
+                    Ok(result) => address |= (result as u32) & 0xFFFF,
+                    _ => error = true,
+                }
+                for i in 0..128 {
+                    match com_rx(100) {
+                        Ok(result) => {
+                            let b = result.to_le_bytes();
+                            page[i*2] = b[0];
+                            page[i*2+1] = b[1];
+                        },
+                        _ => error = true,
+                    }
+                }
+                if !error {
+                    // sprintln!("Programming 256 bytes to 0x{:08x}", address);
+                    spi_program_page(address, &mut page);
+                }
+            } else if rx == ComState::FLASH_LOCK.verb {
+                flash_update_lock = true;
+                wifi_csr.wfo(utra::wifi::EV_ENABLE_WIRQ, 0);
+            } else if rx == ComState::FLASH_UNLOCK.verb {
+                flash_update_lock = false;
+                wifi_csr.wfo(utra::wifi::EV_ENABLE_WIRQ, 1);
+            } else if rx == ComState::FLASH_WAITACK.verb {
+                com_tx(ComState::FLASH_ACK.verb);
+            } else {
+                com_tx(ComState::ERROR.verb);
             }
         }
         //////////////////////// ---------------------------
