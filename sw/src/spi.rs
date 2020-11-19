@@ -283,7 +283,7 @@ pub fn spi_erase_region(addr: u32, len: u32) {
 
 pub fn spi_program_page(addr: u32, data: &mut [u8]) {
     let mut sr: [u8; 1] = [0; 1];
-    let fast_and_furious = true;
+    let fast_and_furious = false;
 
     if fast_and_furious {
         // skip most the checks, in favor of speed.
