@@ -44,6 +44,8 @@ use spi::*;
 mod comstates;
 use comstates::*;
 
+const BATTERY_PANIC_VOLTAGE: i16 = 3500;  // this is the voltage that we hard shut down the device to avoid battery damage
+const BATTERY_LOW_VOLTAGE: i16 = 3575;  // this is the reserve voltage where we attempt to shut off the SoC so that BBRAM keys, RTC are preserved
 
 const CONFIG_CLOCK_FREQUENCY: u32 = 18_000_000;
 
@@ -291,6 +293,27 @@ fn main() -> ! {
                     }
                 } else {
                     voltage = gg_voltage(&mut i2c);
+                    if voltage < BATTERY_PANIC_VOLTAGE {
+                        // put the device into "shipmode" which disconnects the battery from the system
+                        // NOTE: this may cause the loss of volatile keys
+                        charger.set_shipmode(&mut i2c);
+                        let power =
+                        power_csr.ms(utra::power::POWER_SELF, 1)
+                        | power_csr.ms(utra::power::POWER_DISCHARGE, 1);
+                        power_csr.wo(utra::power::POWER, power);
+                        set_msleep_target_ticks(500);
+                        delay_ms(10_000); // this is how long it takes for shipmode to kick in
+                    } else if voltage < BATTERY_LOW_VOLTAGE {
+                        // NOTE: this should probably get more aggressive about shutting down wifi, etc.
+                        let power =
+                        power_csr.ms(utra::power::POWER_SELF, 1)
+                        | power_csr.ms(utra::power::POWER_DISCHARGE, 1);
+                        power_csr.wo(utra::power::POWER, power);
+
+                        set_msleep_target_ticks(500); // extend next service so we can discharge
+
+                        pd_loop_timer = get_time_ms();
+                    }
                     if power_csr.rf(utra::power::STATS_STATE) == 1 {
                         current = gg_avg_current(&mut i2c);
                     } else if power_csr.rf(utra::power::STATS_STATE) == 0 && !soc_was_on {
@@ -347,7 +370,6 @@ fn main() -> ! {
                 com_tx(current as u16);
             } else if rx == ComState::POWER_OFF.verb {
                 com_tx(power_csr.r(utra::power::POWER) as u16);
-                sprintln!("got power down request from soc!");
                 // ignore rapid, successive power down requests
                 if get_time_ms() - pd_loop_timer > 1500 {
                     let power =
