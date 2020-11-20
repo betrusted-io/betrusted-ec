@@ -293,25 +293,30 @@ fn main() -> ! {
                 } else {
                     voltage = gg_voltage(&mut i2c);
                     if voltage < BATTERY_PANIC_VOLTAGE {
-                        // put the device into "shipmode" which disconnects the battery from the system
-                        // NOTE: this may cause the loss of volatile keys
-                        charger.set_shipmode(&mut i2c);
-                        let power =
-                        power_csr.ms(utra::power::POWER_SELF, 1)
-                        | power_csr.ms(utra::power::POWER_DISCHARGE, 1);
-                        power_csr.wo(utra::power::POWER, power);
-                        set_msleep_target_ticks(500);
-                        delay_ms(10_000); // this is how long it takes for shipmode to kick in
+                        if gg_remaining_capacity(&mut i2c) < 50 {
+                            // put the device into "shipmode" which disconnects the battery from the system
+                            // NOTE: this may cause the loss of volatile keys
+                            charger.set_shipmode(&mut i2c);
+                            let power =
+                            power_csr.ms(utra::power::POWER_SELF, 1)
+                            | power_csr.ms(utra::power::POWER_DISCHARGE, 1);
+                            power_csr.wo(utra::power::POWER, power);
+                            set_msleep_target_ticks(500);
+                            delay_ms(10_000); // this is how long it takes for shipmode to kick in
+                        }
                     } else if voltage < BATTERY_LOW_VOLTAGE {
+                        // TODO: warn the SoC that power is about to go away using the COM_IRQ feature...
                         // NOTE: this should probably get more aggressive about shutting down wifi, etc.
-                        let power =
-                        power_csr.ms(utra::power::POWER_SELF, 1)
-                        | power_csr.ms(utra::power::POWER_DISCHARGE, 1);
-                        power_csr.wo(utra::power::POWER, power);
+                        if gg_remaining_capacity(&mut i2c) < 100 {
+                            let power =
+                            power_csr.ms(utra::power::POWER_SELF, 1)
+                            | power_csr.ms(utra::power::POWER_DISCHARGE, 1);
+                            power_csr.wo(utra::power::POWER, power);
 
-                        set_msleep_target_ticks(500); // extend next service so we can discharge
+                            set_msleep_target_ticks(500); // extend next service so we can discharge
 
-                        pd_loop_timer = get_time_ms();
+                            pd_loop_timer = get_time_ms();
+                        }
                     }
                     if power_csr.rf(utra::power::STATS_STATE) == 1 {
                         current = gg_avg_current(&mut i2c);
@@ -389,8 +394,12 @@ fn main() -> ! {
                 set_msleep_target_ticks(500); // extend next service so we can discharge
 
                 pd_loop_timer = get_time_ms();
-            } else if rx ==  ComState::READ_CHARGE_STATE.verb {
+            } else if rx ==  ComState::POWER_CHARGER_STATE.verb {
                 if charger.chg_is_charging(&mut i2c, false) { com_tx(1); } else { com_tx(0); }
+            } else if rx == ComState::POWER_SOC.verb {
+                com_tx(gg_state_of_charge(&mut i2c) as u16);
+            } else if rx == ComState::POWER_REMAINING.verb {
+                com_tx(gg_remaining_capacity(&mut i2c) as u16);
             } else if rx ==  ComState::GYRO_UPDATE.verb {
                 gyro.update_xyz();
             } else if rx ==  ComState::GYRO_READ.verb {
