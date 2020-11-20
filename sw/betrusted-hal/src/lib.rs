@@ -5,6 +5,9 @@ extern crate volatile;
 extern crate utralib;
 extern crate riscv;
 
+#[macro_use]
+mod debug;
+
 pub mod hal_hardi2c;
 pub mod hal_time;
 pub mod api_gasgauge;

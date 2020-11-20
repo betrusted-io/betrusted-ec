@@ -2,6 +2,7 @@ pub struct Uart {
     pub base: *mut u32,
 }
 
+#[allow(dead_code)]
 pub const CROSSOVER_UART: Uart = Uart {
     base: 0xE000_1800 as *mut u32,
 };

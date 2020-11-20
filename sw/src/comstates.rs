@@ -36,7 +36,8 @@ impl ComState {
     pub const BL_END: ComSpec                = ComSpec{verb: 0x6BFF, w_words: 0,     r_words: 0     ,response: false};
 
     pub const GAS_GAUGE: ComSpec             = ComSpec{verb: 0x7000, w_words: 0,     r_words: 4     ,response: false};
-    pub const GG_FACTORY_INIT: ComSpec       = ComSpec{verb: 0x7777, w_words: 0,     r_words: 0     ,response: false};
+    pub const GG_FACTORY_CAPACITY: ComSpec   = ComSpec{verb: 0x7676, w_words: 1,     r_words: 1     ,response: false};
+    pub const GG_GET_CAPACITY: ComSpec       = ComSpec{verb: 0x7600, w_words: 0,     r_words: 1     ,response: false};
 
     pub const STAT: ComSpec                  = ComSpec{verb: 0x8000, w_words: 0,     r_words: 16    ,response: false};
 

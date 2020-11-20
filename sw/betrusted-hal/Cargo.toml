@@ -14,3 +14,4 @@ utralib = { path = "../../utralib"}
 riscv = { git = "https://github.com/betrusted-io/riscv.git", tag = "v0.5.5" }
 
 [features]
+debug_uart = []

@@ -293,21 +293,29 @@ fn main() -> ! {
                 } else {
                     voltage = gg_voltage(&mut i2c);
                     if voltage < BATTERY_PANIC_VOLTAGE {
-                        if gg_remaining_capacity(&mut i2c) < 50 {
+                        if gg_state_of_charge(&mut i2c) < 5 {
                             // put the device into "shipmode" which disconnects the battery from the system
                             // NOTE: this may cause the loss of volatile keys
+                            backlight.set_brightness(&mut i2c, 0, 0); // make sure the backlight is off
+
                             charger.set_shipmode(&mut i2c);
                             let power =
                             power_csr.ms(utra::power::POWER_SELF, 1)
                             | power_csr.ms(utra::power::POWER_DISCHARGE, 1);
                             power_csr.wo(utra::power::POWER, power);
                             set_msleep_target_ticks(500);
-                            delay_ms(10_000); // this is how long it takes for shipmode to kick in
+                            delay_ms(16_000); // 15s max time for ship mode to kick in, add 1s just to be safe
                         }
                     } else if voltage < BATTERY_LOW_VOLTAGE {
                         // TODO: warn the SoC that power is about to go away using the COM_IRQ feature...
+                        // siginficantly: shutting down the SoC without its consent is not possible.
+                        // so this needs to be refactored once Xous gets to a state where it can handle a power state request
+                        // for now just make a NOP
+
                         // NOTE: this should probably get more aggressive about shutting down wifi, etc.
-                        if gg_remaining_capacity(&mut i2c) < 100 {
+                        /*
+                        if gg_state_of_charge(&mut i2c) < 10 {
+                            backlight.set_brightness(&mut i2c, 0, 0); // make sure the backlight is off
                             let power =
                             power_csr.ms(utra::power::POWER_SELF, 1)
                             | power_csr.ms(utra::power::POWER_DISCHARGE, 1);
@@ -317,6 +325,7 @@ fn main() -> ! {
 
                             pd_loop_timer = get_time_ms();
                         }
+                        */
                     }
                     if power_csr.rf(utra::power::STATS_STATE) == 1 {
                         current = gg_avg_current(&mut i2c);
@@ -359,10 +368,33 @@ fn main() -> ! {
                 com_tx((rx & 0xFF) | ((com_sentinel as u16 & 0xFF) << 8));
                 com_sentinel += 1;
             } else if rx == ComState::GAS_GAUGE.verb {
-                    com_tx(current as u16);
-                    com_tx(stby_current as u16);
-                    com_tx(voltage as u16);
-                    com_tx(power_csr.r(utra::power::POWER) as u16);
+                com_tx(current as u16);
+                com_tx(stby_current as u16);
+                com_tx(voltage as u16);
+                com_tx(power_csr.r(utra::power::POWER) as u16);
+            } else if rx == ComState::GG_FACTORY_CAPACITY.verb {
+                let mut error = false;
+                let mut capacity: u16 = 1100;
+                match com_rx(250) {
+                    Ok(result) => capacity = result,
+                    _ => error = true,
+                }
+                if !error {
+                    // some manual "sanity checks" so we really don't bork the gas guage in case of a protocol error
+                    if capacity >= 1900 {
+                        capacity = 1100;
+                    }
+                    if capacity <= 600 {
+                        capacity = 1100;
+                    }
+                    let old_capacity = gg_set_design_capacity(&mut i2c, Some(capacity));
+                    com_tx(old_capacity);
+                } else {
+                    com_tx(ComState::ERROR.verb); // return an erroneous former capacity
+                }
+            } else if rx == ComState::GG_GET_CAPACITY.verb {
+                let old_capacity = gg_set_design_capacity(&mut i2c, None);
+                com_tx(old_capacity);
             } else if rx == ComState::STAT.verb {
                 com_tx(0x8888);  // first is just a response to the initial command
                 charger.update_regs(&mut i2c);
@@ -375,6 +407,7 @@ fn main() -> ! {
             } else if rx == ComState::POWER_OFF.verb {
                 com_tx(power_csr.r(utra::power::POWER) as u16);
                 // ignore rapid, successive power down requests
+                backlight.set_brightness(&mut i2c, 0, 0); // make sure the backlight is off
                 if get_time_ms() - pd_loop_timer > 1500 {
                     let power =
                     power_csr.ms(utra::power::POWER_SELF, 1)
@@ -386,6 +419,7 @@ fn main() -> ! {
                     pd_loop_timer = get_time_ms();
                 }
             } else if rx ==  ComState::POWER_SHIPMODE.verb {
+                backlight.set_brightness(&mut i2c, 0, 0); // make sure the backlight is off
                 charger.set_shipmode(&mut i2c);
                 let power =
                 power_csr.ms(utra::power::POWER_SELF, 1)
