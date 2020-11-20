@@ -77,7 +77,6 @@ fn ticktimer_int_handler(_irq_no: usize) {
         power_csr.wo(utra::power::POWER, power);
 
         if power_csr.rf(utra::power::STATS_MONKEY) == 3 { // both keys have to be hit
-            sprintln!("detect power up event!");
             // power on the SOC
             let power =
             power_csr.ms(utra::power::POWER_SELF, 1)

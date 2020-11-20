@@ -1,6 +1,7 @@
 use bitflags::*;
 use volatile::*;
 use crate::hal_time::get_time_ticks_trunc;
+use riscv::register::mie;
 
 #[used]  // This is necessary to keep DBGSTR from being optimized out
 static mut I2C_DBGSTR: [u32; 8] = [0; 8];
@@ -346,6 +347,7 @@ impl Hardi2c {
             unsafe{ (*self.command).write((Command::RD).bits()); }
 
             for i in 0..rxbuf_checked.len() {
+                unsafe { mie::clear_mext(); } // lock out interrupts going into timing-critical region
                 if i == (rxbuf_checked.len() - 1) {
                     if rxbuf_checked.len() == 1 {
                         // HACK ALERT -- fail if we try to read just one byte
@@ -389,6 +391,7 @@ impl Hardi2c {
 
                     // RD command implicitly repeats -- no need to re-issue the command
                 }
+                unsafe { mie::set_mext(); } // restore interrupts after timing-critical region
             }
         }
         ret

@@ -47,6 +47,7 @@ version = "0.1.0"
 dependencies = [
  "bitflags",
  "c_types",
+ "riscv",
  "utralib",
  "volatile",
 ]
