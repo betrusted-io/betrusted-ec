@@ -28,6 +28,8 @@ const GG_EXT_BLKDATACLS  :  u8 = 0x3E;  // block data class
 const GG_EXT_BLKDATAOFF  :  u8 = 0x3F;  // block data offset
 const GG_EXT_BLKDATACHK  :  u8 = 0x60;  // block data checksum
 const GG_EXT_BLKDATABSE  :  u8 = 0x40;  // block data base
+const GG_EXT_DCAP_MSB    :  u8 = 0x3D;  // design capacity MSB
+const GG_EXT_DCAP_LSB    :  u8 = 0x3C;  // design capacity LSB
 
 // control command codes
 const GG_CODE_CTLSTAT :  u16 = 0x0000;
@@ -102,51 +104,51 @@ pub fn gg_control_status(i2c: &mut Hardi2c) -> i16 {
 
 #[doc = "Set the design capacity of the battery. Returns previously assigned capacity."]
 pub fn gg_set_design_capacity(i2c: &mut Hardi2c, mah: Option<u16>) -> u16 {
-    // unseal the gasguage by writing the unseal command twice
-    gg_set(i2c, GG_CMD_CNTL, GG_CODE_UNSEAL);
-    gg_set(i2c, GG_CMD_CNTL, GG_CODE_UNSEAL);
-
-    // set configuraton update command
-    gg_set(i2c, GG_CMD_CNTL, GG_CODE_CFGUPDATE);
-
-    loop {
-        let flags : i16 = gg_get(i2c, GG_CMD_FLAG);
-        if (flags & 0x10) != 0 { break; }
-    }
-
-    gg_set_byte(i2c, GG_EXT_BLKDATACTL, 0x0);    // enable block data memory control
-    gg_set_byte(i2c, GG_EXT_BLKDATACLS, 0x52);   // set data class to 0x52 -- state subclass
-    gg_set_byte(i2c, GG_EXT_BLKDATAOFF, 0x00);  // specify block data offset
-
-    /*
-      This is the desired result:
-        00: 00 00 00 00 00 81 0e db
-        08: 0e a8 04 4c 13 60 05 3c
-        10: 0c 80 00 c8 00 32 00 14
-        18: 03 e8 01 00 64 10 04 00
-        20: dd
-    */
     let design_capacity: u16;
-    if true {
-        // this targets all the bytes
+    if mah.is_some() {
+        // unseal the gasguage by writing the unseal command twice
+        gg_set(i2c, GG_CMD_CNTL, GG_CODE_UNSEAL);
+        gg_set(i2c, GG_CMD_CNTL, GG_CODE_UNSEAL);
 
-        // read the existing data block, extract design capacity, then update and writeback
-        let mut blockdata: [u8; 33] = [0; 33];
-        for i in 0..33 {
-            blockdata[i] = gg_get_byte(i2c, GG_EXT_BLKDATABSE + i as u8);
+        // set configuraton update command
+        gg_set(i2c, GG_CMD_CNTL, GG_CODE_CFGUPDATE);
+
+        loop {
+            let flags : i16 = gg_get(i2c, GG_CMD_FLAG);
+            if (flags & 0x10) != 0 { break; }
         }
+
+        gg_set_byte(i2c, GG_EXT_BLKDATACTL, 0x0);    // enable block data memory control
+        gg_set_byte(i2c, GG_EXT_BLKDATACLS, 0x52);   // set data class to 0x52 -- state subclass
+        gg_set_byte(i2c, GG_EXT_BLKDATAOFF, 0x00);  // specify block data offset
+
         /*
-        for i in 0..33 {
-            if (i % 8) == 0 {
-                sprint!("\n\r{:02x}: ", i)
+        This is the desired result:
+            00: 00 00 00 00 00 81 0e db
+            08: 0e a8 04 4c 13 60 05 3c
+            10: 0c 80 00 c8 00 32 00 14
+            18: 03 e8 01 00 64 10 04 00
+            20: dd
+        */
+        if true {
+            // this targets all the bytes
+
+            // read the existing data block, extract design capacity, then update and writeback
+            let mut blockdata: [u8; 33] = [0; 33];
+            for i in 0..33 {
+                blockdata[i] = gg_get_byte(i2c, GG_EXT_BLKDATABSE + i as u8);
             }
-            sprint!("{:02x} ", blockdata[i]);
-        }
-        sprintln!("");*/
+            /*
+            for i in 0..33 {
+                if (i % 8) == 0 {
+                    sprint!("\n\r{:02x}: ", i)
+                }
+                sprint!("{:02x} ", blockdata[i]);
+            }
+            sprintln!("");*/
 
-        design_capacity = (blockdata[11] as u16) | ((blockdata[10] as u16) << 8);
+            design_capacity = (blockdata[11] as u16) | ((blockdata[10] as u16) << 8);
 
-        if mah.is_some() {
             let newcap = mah.unwrap();
             blockdata[11] = (newcap & 0xFF) as u8;
             blockdata[10] = ((newcap >> 8) & 0xFF) as u8;
@@ -156,22 +158,20 @@ pub fn gg_set_design_capacity(i2c: &mut Hardi2c, mah: Option<u16>) -> u16 {
                 gg_set_byte(i2c, GG_EXT_BLKDATABSE + i as u8, blockdata[i]);
             }
             delay_ms(2); // some delay seems to be needed
-        }
-        /*
-        for i in 0..33 {
-            if (i % 8) == 0 {
-                sprint!("\n\r{:02x}: ", i)
+            /*
+            for i in 0..33 {
+                if (i % 8) == 0 {
+                    sprint!("\n\r{:02x}: ", i)
+                }
+                sprint!("{:02x} ", blockdata[i]);
             }
-            sprint!("{:02x} ", blockdata[i]);
-        }
-        sprintln!("");*/
-    } else {
-        // this targets just the capacity bytes per bq27421-G1 technical reference
-        let old_csum = gg_get_byte(i2c, GG_EXT_BLKDATABSE + 0x20);
-        let dc_msb = gg_get_byte(i2c, GG_EXT_BLKDATABSE + 0xA);
-        let dc_lsb = gg_get_byte(i2c, GG_EXT_BLKDATABSE + 0xB);
-        design_capacity = ((dc_msb as u16) << 8) | dc_lsb as u16;
-        if mah.is_some() {
+            sprintln!("");*/
+        } else {
+            // this targets just the capacity bytes per bq27421-G1 technical reference
+            let old_csum = gg_get_byte(i2c, GG_EXT_BLKDATABSE + 0x20);
+            let dc_msb = gg_get_byte(i2c, GG_EXT_BLKDATABSE + 0xA);
+            let dc_lsb = gg_get_byte(i2c, GG_EXT_BLKDATABSE + 0xB);
+            design_capacity = ((dc_msb as u16) << 8) | dc_lsb as u16;
             let newcap = mah.unwrap();
             gg_set_byte(i2c, GG_EXT_BLKDATABSE + 0xA, ((newcap >> 8) & 0xff) as u8);
             gg_set_byte(i2c, GG_EXT_BLKDATABSE + 0xB, (newcap & 0xff) as u8);
@@ -179,18 +179,20 @@ pub fn gg_set_design_capacity(i2c: &mut Hardi2c, mah: Option<u16>) -> u16 {
             let new_csum = 255 - (temp + (newcap & 0xff) as u8 + ((newcap >> 8) & 0xff) as u8);
             gg_set_byte(i2c, GG_EXT_BLKDATABSE + 0x20, new_csum);
         }
+
+        // reset the gasguage to get the new data to take hold
+        gg_set(i2c, GG_CMD_CNTL, GG_CODE_RESET);
+
+        loop {
+            let flags : i16 = gg_get(i2c, GG_CMD_FLAG);
+            if (flags & 0x10) != 0 { break; }
+        }
+
+        // seal the gas gauge
+        gg_set(i2c, GG_CMD_CNTL, GG_CODE_SEAL);
+    } else {
+        design_capacity = ((gg_get_byte(i2c, GG_EXT_DCAP_MSB) as u16) << 8) | gg_get_byte(i2c, GG_EXT_DCAP_LSB) as u16;
     }
-
-    // reset the gasguage to get the new data to take hold
-    gg_set(i2c, GG_CMD_CNTL, GG_CODE_RESET);
-
-    loop {
-        let flags : i16 = gg_get(i2c, GG_CMD_FLAG);
-        if (flags & 0x10) != 0 { break; }
-    }
-
-    // seal the gas gauge
-    gg_set(i2c, GG_CMD_CNTL, GG_CODE_SEAL);
 
     design_capacity
 }

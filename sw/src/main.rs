@@ -200,7 +200,12 @@ fn main() -> ! {
 
     let use_wifi: bool = true;
 
-/*  // quick test routine for SPI flashing
+    // check that the gas gauge capacity is correct; if not, reset it
+    if gg_set_design_capacity(&mut i2c, None) != 1100 {
+        gg_set_design_capacity(&mut i2c, Some(1100));
+    }
+
+/*  // kept around as a quick test routine for SPI flashing
     let mut idcode: [u8; 3] = [0; 3];
     spi_cmd(CMD_RDID, None, Some(&mut idcode));
     sprintln!("SPI ID code: {:02x} {:02x} {:02x}", idcode[0], idcode[1], idcode[2]);
@@ -218,8 +223,7 @@ fn main() -> ! {
 
     dump_rom_addr(test_addr);
 */
-
-    spi_standby();
+    spi_standby(); // make sure the OE's are off, no spurious power consumption
 
     xous_nommu::syscalls::sys_interrupt_claim(utra::ticktimer::TICKTIMER_IRQ, ticktimer_int_handler).unwrap();
     set_msleep_target_ticks(50);
@@ -299,6 +303,7 @@ fn main() -> ! {
                             backlight.set_brightness(&mut i2c, 0, 0); // make sure the backlight is off
 
                             charger.set_shipmode(&mut i2c);
+                            gg_set_hibernate(&mut i2c);
                             let power =
                             power_csr.ms(utra::power::POWER_SELF, 1)
                             | power_csr.ms(utra::power::POWER_DISCHARGE, 1);
@@ -421,6 +426,7 @@ fn main() -> ! {
             } else if rx ==  ComState::POWER_SHIPMODE.verb {
                 backlight.set_brightness(&mut i2c, 0, 0); // make sure the backlight is off
                 charger.set_shipmode(&mut i2c);
+                gg_set_hibernate(&mut i2c);
                 let power =
                 power_csr.ms(utra::power::POWER_SELF, 1)
                 | power_csr.ms(utra::power::POWER_DISCHARGE, 1);
