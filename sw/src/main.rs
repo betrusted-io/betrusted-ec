@@ -293,6 +293,10 @@ fn main() -> ! {
                     charger.chg_keepalive_ping(&mut i2c);
                     if !usb_cc_event {
                         usb_cc_event = usb_cc.check_event(&mut i2c);
+                        if usb_cc.status[1] & 0xC0 == 0x80 {
+                            // Attached.SNK transition
+                            charger.chg_start(&mut i2c);
+                        }
                     }
                 } else {
                     voltage = gg_voltage(&mut i2c);
