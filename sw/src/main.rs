@@ -172,6 +172,7 @@ fn main() -> ! {
     let mut stby_current: i16 = 0;
     let mut pd_loop_timer: u32 = 0;
     let mut soc_was_on: bool;
+    let mut battery_panic = false;
     if power_csr.rf(utra::power::STATS_STATE) == 1 { soc_was_on = true; } else { soc_was_on = false; }
 
     // this needs to be one of the first things called after I2C comes up
@@ -301,7 +302,8 @@ fn main() -> ! {
                 } else {
                     voltage = gg_voltage(&mut i2c);
                     if voltage < BATTERY_PANIC_VOLTAGE {
-                        if gg_state_of_charge(&mut i2c) < 5 {
+                        let cursoc = gg_state_of_charge(&mut i2c);
+                        if cursoc < 5 && battery_panic {
                             // in case of a cold boot, give the charger a few seconds to recognize charging and raise the voltage
                             // also don't attempt to go shipmode if the charger is indicating it is trying to charge
                             if get_time_ticks() > 8000 && !charger.chg_is_charging(&mut i2c, false) {
@@ -318,6 +320,11 @@ fn main() -> ! {
                                 set_msleep_target_ticks(500);
                                 delay_ms(16_000); // 15s max time for ship mode to kick in, add 1s just to be safe
                             }
+                        } else if cursoc < 5 {
+                            // require a second check before shutting things down, to rule out temporary glitches in measurement
+                            battery_panic = true;
+                        } else {
+                            battery_panic = false;
                         }
                     } else if voltage < BATTERY_LOW_VOLTAGE {
                         // TODO: warn the SoC that power is about to go away using the COM_IRQ feature...
