@@ -302,18 +302,22 @@ fn main() -> ! {
                     voltage = gg_voltage(&mut i2c);
                     if voltage < BATTERY_PANIC_VOLTAGE {
                         if gg_state_of_charge(&mut i2c) < 5 {
-                            // put the device into "shipmode" which disconnects the battery from the system
-                            // NOTE: this may cause the loss of volatile keys
-                            backlight.set_brightness(&mut i2c, 0, 0); // make sure the backlight is off
+                            // in case of a cold boot, give the charger a few seconds to recognize charging and raise the voltage
+                            // also don't attempt to go shipmode if the charger is indicating it is trying to charge
+                            if get_time_ticks() > 8000 && !charger.chg_is_charging(&mut i2c, false) {
+                                // put the device into "shipmode" which disconnects the battery from the system
+                                // NOTE: this may cause the loss of volatile keys
+                                backlight.set_brightness(&mut i2c, 0, 0); // make sure the backlight is off
 
-                            charger.set_shipmode(&mut i2c);
-                            gg_set_hibernate(&mut i2c);
-                            let power =
-                            power_csr.ms(utra::power::POWER_SELF, 1)
-                            | power_csr.ms(utra::power::POWER_DISCHARGE, 1);
-                            power_csr.wo(utra::power::POWER, power);
-                            set_msleep_target_ticks(500);
-                            delay_ms(16_000); // 15s max time for ship mode to kick in, add 1s just to be safe
+                                charger.set_shipmode(&mut i2c);
+                                gg_set_hibernate(&mut i2c);
+                                let power =
+                                power_csr.ms(utra::power::POWER_SELF, 1)
+                                | power_csr.ms(utra::power::POWER_DISCHARGE, 1);
+                                power_csr.wo(utra::power::POWER, power);
+                                set_msleep_target_ticks(500);
+                                delay_ms(16_000); // 15s max time for ship mode to kick in, add 1s just to be safe
+                            }
                         }
                     } else if voltage < BATTERY_LOW_VOLTAGE {
                         // TODO: warn the SoC that power is about to go away using the COM_IRQ feature...
