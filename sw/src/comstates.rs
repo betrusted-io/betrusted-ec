@@ -38,14 +38,16 @@ impl ComState {
     pub const GAS_GAUGE: ComSpec             = ComSpec{verb: 0x7000, w_words: 0,     r_words: 4     ,response: false};
     pub const GG_FACTORY_CAPACITY: ComSpec   = ComSpec{verb: 0x7676, w_words: 1,     r_words: 1     ,response: false};
     pub const GG_GET_CAPACITY: ComSpec       = ComSpec{verb: 0x7600, w_words: 0,     r_words: 1     ,response: false};
+    pub const GG_DEBUG: ComSpec              = ComSpec{verb: 0x7200, w_words: 0,     r_words: 1     ,response: false};
+    pub const GG_SOC: ComSpec                = ComSpec{verb: 0x7300, w_words: 0,     r_words: 1     ,response: false};
+    pub const GG_REMAINING: ComSpec          = ComSpec{verb: 0x7400, w_words: 0,     r_words: 1     ,response: false};
+    pub const GG_FULL_CAPACITY: ComSpec      = ComSpec{verb: 0x7402, w_words: 0,     r_words: 1,     response: false};
 
     pub const STAT: ComSpec                  = ComSpec{verb: 0x8000, w_words: 0,     r_words: 16    ,response: false};
 
     pub const POWER_OFF: ComSpec             = ComSpec{verb: 0x9000, w_words: 0,     r_words: 1     ,response: false};
     pub const POWER_CHARGER_STATE: ComSpec   = ComSpec{verb: 0x9100, w_words: 0,     r_words: 1     ,response: false};
     pub const POWER_SHIPMODE: ComSpec        = ComSpec{verb: 0x9200, w_words: 0,     r_words: 0     ,response: false};
-    pub const POWER_SOC: ComSpec             = ComSpec{verb: 0x9300, w_words: 0,     r_words: 1     ,response: false};
-    pub const POWER_REMAINING: ComSpec       = ComSpec{verb: 0x9400, w_words: 0,     r_words: 1     ,response: false};
 
     pub const GYRO_UPDATE: ComSpec           = ComSpec{verb: 0xA000, w_words: 0,     r_words: 0     ,response: false};
     pub const GYRO_READ: ComSpec             = ComSpec{verb: 0xA100, w_words: 0,     r_words: 4     ,response: false};

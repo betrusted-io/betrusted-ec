@@ -81,6 +81,7 @@ pub fn gg_voltage(i2c: &mut Hardi2c) -> i16 { gg_get(i2c, GG_CMD_VOLT) }
 pub fn gg_avg_current(i2c: &mut Hardi2c) -> i16  { gg_get(i2c, GG_CMD_AVGCUR) }
 pub fn gg_avg_power(i2c: &mut Hardi2c) -> i16  { gg_get(i2c, GG_CMD_AVGPWR) }
 pub fn gg_remaining_capacity(i2c: &mut Hardi2c) -> i16  { gg_get(i2c, GG_CMD_RM) }
+pub fn gg_full_capacity(i2c: &mut Hardi2c) -> i16 { gg_get(i2c, GG_CMD_FCC) }
 pub fn gg_state_of_charge(i2c: &mut Hardi2c) -> i16  { gg_get(i2c, GG_CMD_SOC) }
 
 fn compute_checksum(blockdata: &[u8]) -> u8 {

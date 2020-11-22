@@ -168,11 +168,13 @@ fn main() -> ! {
     let mut last_run_time : u32 = get_time_ms();
     let mut loopcounter: u32 = 0; // in seconds, so this will last ~125 years
     let mut voltage : i16 = 0;
+    let mut last_voltage = voltage;
     let mut current: i16 = 0;
     let mut stby_current: i16 = 0;
     let mut pd_loop_timer: u32 = 0;
     let mut soc_was_on: bool;
     let mut battery_panic = false;
+    let mut voltage_glitch: bool = false;
     if power_csr.rf(utra::power::STATS_STATE) == 1 { soc_was_on = true; } else { soc_was_on = false; }
 
     // this needs to be one of the first things called after I2C comes up
@@ -201,10 +203,11 @@ fn main() -> ! {
 
     let use_wifi: bool = true;
 
+    /*
     // check that the gas gauge capacity is correct; if not, reset it
     if gg_set_design_capacity(&mut i2c, None) != 1100 {
         gg_set_design_capacity(&mut i2c, Some(1100));
-    }
+    } */  // seems to work better with the default 1340mAh capacity even though that's not our actual capacity
 
 /*  // kept around as a quick test routine for SPI flashing
     let mut idcode: [u8; 3] = [0; 3];
@@ -301,12 +304,17 @@ fn main() -> ! {
                     }
                 } else {
                     voltage = gg_voltage(&mut i2c);
+                    if voltage < 0 { // there are monitoring glitches during charge mode transitions, try to catch and filter them out
+                        voltage = last_voltage;
+                        voltage_glitch = true;
+                    }
+                    last_voltage = voltage;
                     if voltage < BATTERY_PANIC_VOLTAGE {
                         let cursoc = gg_state_of_charge(&mut i2c);
                         if cursoc < 5 && battery_panic {
                             // in case of a cold boot, give the charger a few seconds to recognize charging and raise the voltage
                             // also don't attempt to go shipmode if the charger is indicating it is trying to charge
-                            if get_time_ticks() > 8000 && !charger.chg_is_charging(&mut i2c, false) {
+                            if get_time_ticks() > 8000 && !charger.chg_is_charging(&mut i2c, false) && gg_voltage(&mut i2c) < BATTERY_PANIC_VOLTAGE {
                                 // put the device into "shipmode" which disconnects the battery from the system
                                 // NOTE: this may cause the loss of volatile keys
                                 backlight.set_brightness(&mut i2c, 0, 0); // make sure the backlight is off
@@ -323,8 +331,6 @@ fn main() -> ! {
                         } else if cursoc < 5 {
                             // require a second check before shutting things down, to rule out temporary glitches in measurement
                             battery_panic = true;
-                        } else {
-                            battery_panic = false;
                         }
                     } else if voltage < BATTERY_LOW_VOLTAGE {
                         // TODO: warn the SoC that power is about to go away using the COM_IRQ feature...
@@ -346,6 +352,8 @@ fn main() -> ! {
                             pd_loop_timer = get_time_ms();
                         }
                         */
+                    } else {
+                        battery_panic = false;
                     }
                     if power_csr.rf(utra::power::STATS_STATE) == 1 {
                         current = gg_avg_current(&mut i2c);
@@ -415,6 +423,9 @@ fn main() -> ! {
             } else if rx == ComState::GG_GET_CAPACITY.verb {
                 let old_capacity = gg_set_design_capacity(&mut i2c, None);
                 com_tx(old_capacity);
+            } else if rx == ComState::GG_DEBUG.verb {
+                if voltage_glitch { com_tx(1); } else { com_tx(0); }
+                voltage_glitch = false;
             } else if rx == ComState::STAT.verb {
                 com_tx(0x8888);  // first is just a response to the initial command
                 charger.update_regs(&mut i2c);
@@ -451,10 +462,12 @@ fn main() -> ! {
                 pd_loop_timer = get_time_ms();
             } else if rx ==  ComState::POWER_CHARGER_STATE.verb {
                 if charger.chg_is_charging(&mut i2c, false) { com_tx(1); } else { com_tx(0); }
-            } else if rx == ComState::POWER_SOC.verb {
+            } else if rx == ComState::GG_SOC.verb {
                 com_tx(gg_state_of_charge(&mut i2c) as u16);
-            } else if rx == ComState::POWER_REMAINING.verb {
+            } else if rx == ComState::GG_REMAINING.verb {
                 com_tx(gg_remaining_capacity(&mut i2c) as u16);
+            } else if rx == ComState::GG_FULL_CAPACITY.verb {
+                com_tx(gg_full_capacity(&mut i2c) as u16);
             } else if rx ==  ComState::GYRO_UPDATE.verb {
                 gyro.update_xyz();
             } else if rx ==  ComState::GYRO_READ.verb {
