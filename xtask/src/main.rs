@@ -37,9 +37,9 @@ fn print_help() {
     eprintln!(
         "Tasks:
 hw-image [soc.svd]      builds an image for real hardware
-docs                    Planned: updates the documentation tree
-push                    Planned: deploys files to burner Rpi
-update                  Planned: burns firmware to a a Precursor via USB
+docs                    updates the documentation tree
+push                    deploys files to burner Rpi, requires a target host argument and an option SSH ID file
+update                  burns firmware to a a Precursor via USB
 "
     )
 }
