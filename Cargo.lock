@@ -110,6 +110,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "com_rs"
+version = "0.1.0"
+
+[[package]]
 name = "const_format"
 version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -435,6 +439,7 @@ name = "sw"
 version = "0.1.0"
 dependencies = [
  "betrusted-hal",
+ "com_rs",
  "gyro_bindings",
  "gyro_rs",
  "gyro_sys",

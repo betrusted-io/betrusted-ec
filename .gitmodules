@@ -43,3 +43,6 @@
 [submodule "deps/pythondata-software-compiler_rt"]
 	path = deps/pythondata-software-compiler_rt
 	url = https://github.com/litex-hub/pythondata-software-compiler_rt.git
+[submodule "sw/com_rs"]
+	path = sw/com_rs
+	url = https://github.com/betrusted-io/com_rs.git

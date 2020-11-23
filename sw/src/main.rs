@@ -41,8 +41,8 @@ mod debug;
 
 mod spi;
 use spi::*;
-mod comstates;
-use comstates::*;
+extern crate com_rs;
+use com_rs::*;
 
 const BATTERY_PANIC_VOLTAGE: i16 = 3500;  // this is the voltage that we hard shut down the device to avoid battery damage
 const BATTERY_LOW_VOLTAGE: i16 = 3575;  // this is the reserve voltage where we attempt to shut off the SoC so that BBRAM keys, RTC are preserved
