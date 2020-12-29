@@ -70,6 +70,37 @@ impl Default for SsidResult {
     }
 }
 
+static mut RX_STATS_RAW: sl_wfx_indication_data_u = sl_wfx_indication_data_u {
+    raw_data: [0; 376],
+};
+
+pub fn wf200_get_rx_stats() -> sl_wfx_rx_stats_s {
+    let ret: sl_wfx_rx_stats_s;
+    unsafe { ret = RX_STATS_RAW.rx_stats; }
+    ret
+}
+
+pub fn wf200_get_rx_stats_raw() -> [u8; 376] {
+    let ret: [u8; 376];
+    unsafe { ret = RX_STATS_RAW.raw_data; }
+    ret
+}
+
+/// Note -- PDS spec says max PDS size is 256 bytes, so let's just pin the buffer at that
+/// returns true if send was OK
+pub fn wf200_send_pds(data: [u8; 256], length: u16) -> bool {
+    if length >= 256 {
+        return false
+    }
+
+    let pds_data: *const c_types::c_char = (&data).as_ptr() as *const c_types::c_char;
+    if unsafe{ sl_wfx_send_configuration(pds_data, length as u_int32_t) } == SL_STATUS_OK {
+        true
+    } else {
+        false
+    }
+}
+
 // can't use initializer because calls in statics aren't allowed. :-/ that was a waste of time
 static mut SSID_ARRAY: [SsidResult; 6] = [
     SsidResult{mac: [0;6], ssid: [0; 32], rssi: 0, channel: 0},
@@ -178,6 +209,10 @@ static mut WIFI_CONTEXT: sl_wfx_context_t = sl_wfx_context_t {
     mac_addr_1: sl_wfx_mac_address_t{ octet: [0; 6usize]},
     state: 0,
 };
+
+pub fn wf200_fw_build() -> u8 { unsafe{WIFI_CONTEXT.firmware_build} }
+pub fn wf200_fw_minor() -> u8 { unsafe{WIFI_CONTEXT.firmware_minor} }
+pub fn wf200_fw_major() -> u8 { unsafe{WIFI_CONTEXT.firmware_major} }
 
 pub fn wfx_init() -> sl_status_t {
     unsafe{ sl_wfx_init(&mut WIFI_CONTEXT) }  // use this to drive porting of the wfx library
@@ -921,7 +956,14 @@ pub unsafe extern "C" fn sl_wfx_host_post_event(event_payload: *mut sl_wfx_gener
             unimplemented!();
         },
         sl_wfx_general_indications_ids_e_SL_WFX_GENERIC_IND_ID => {
-            // nothing to do here, huh.
+            let generic_indication: *const sl_wfx_generic_ind_t = event_payload as *const sl_wfx_generic_ind_t;
+            if (*generic_indication).body.indication_type == sl_wfx_generic_indication_type_e_SL_WFX_GENERIC_INDICATION_TYPE_RX_STATS {
+                unsafe {
+                    RX_STATS_RAW = (*generic_indication).body.indication_data;
+                }
+            } else {
+                unimplemented!();
+            }
         },
         sl_wfx_general_indications_ids_e_SL_WFX_EXCEPTION_IND_ID => {
             sprintln!("Firmware exception");

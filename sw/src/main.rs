@@ -29,6 +29,9 @@ use wfx_rs::hal_wf200::wfx_handle_event;
 use wfx_rs::hal_wf200::wf200_mutex_get;
 use wfx_rs::hal_wf200::wf200_ssid_get_list;
 use wfx_rs::hal_wf200::wf200_ssid_updated;
+use wfx_rs::hal_wf200::wf200_get_rx_stats_raw;
+use wfx_rs::hal_wf200::wf200_send_pds;
+use wfx_rs::hal_wf200::{wf200_fw_build, wf200_fw_major, wf200_fw_minor};
 use wfx_bindings::*;
 
 use gyro_rs::hal_gyro::BtGyro;
@@ -149,6 +152,7 @@ fn main() -> ! {
     let mut crg_csr = CSR::new(HW_CRG_BASE as *mut u32);
     let mut ticktimer_csr = CSR::new(HW_TICKTIMER_BASE as *mut u32);
     let mut wifi_csr = CSR::new(HW_WIFI_BASE as *mut u32);
+    let git_csr = CSR::new(HW_GIT_BASE as *mut u32);
 
     let com_rd_ptr: *mut u32 = utralib::HW_COM_MEM as *mut u32;
     let com_rd = com_rd_ptr as *mut Volatile<u32>;
@@ -558,6 +562,44 @@ fn main() -> ! {
                 wifi_csr.wfo(utra::wifi::EV_ENABLE_WIRQ, 1);
             } else if rx == ComState::FLASH_WAITACK.verb {
                 com_tx(ComState::FLASH_ACK.verb);
+            } else if rx == ComState::WFX_RXSTAT_GET.verb {
+                let rx_stat_raw: [u8; 376] = wf200_get_rx_stats_raw();
+                for i in 0..rx_stat_raw.len()/2 {
+                    com_tx( rx_stat_raw[i*2] as u16 | ((rx_stat_raw[i*2+1] as u16) << 8));
+                }
+            } else if rx == ComState::WFX_PDS_SET.verb {
+                let mut error = false;
+                let mut pds_data: [u8; 256] = [0; 256];
+                let mut pds_length: u16 = 0;
+                match com_rx(100) {
+                    Ok(result) => pds_length = result,
+                    _ => error = true,
+                }
+                if pds_length >= 256 { // length is in BYTES not words
+                    error = true;
+                }
+                // even if length error, do receive, because we have to clear the rx queue for proper operation
+                for i in 0..128 as usize { // ALWAYS expect 128 pds data elements, even if length < 256
+                    match com_rx(100) {
+                        Ok(result) => {
+                            let b = result.to_le_bytes();
+                            pds_data[i*2] = b[0];
+                            pds_data[i*2+1] = b[1];
+                        },
+                        _ => error = true,
+                    }
+                }
+                if !error {
+                    wf200_send_pds(pds_data, pds_length);
+                }
+            } else if rx == ComState::WFX_FW_REV_GET.verb {
+                com_tx(wf200_fw_major() as u16);
+                com_tx(wf200_fw_minor() as u16);
+                com_tx(wf200_fw_build() as u16);
+            } else if rx == ComState::EC_GIT_REV.verb {
+                com_tx( (git_csr.rf(utra::git::GITREV_GITREV) >> 16) as u16);
+                com_tx( (git_csr.rf(utra::git::GITREV_GITREV) & 0xFFFF) as u16);
+                com_tx( git_csr.rf(utra::git::DIRTY_DIRTY) as u16 );
             } else {
                 com_tx(ComState::ERROR.verb);
             }

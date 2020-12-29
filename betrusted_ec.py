@@ -9,6 +9,7 @@ LX_DEPENDENCIES = ["riscv", "icestorm", "yosys"]
 import lxbuildenv
 import argparse
 import os
+import subprocess
 
 from migen import *
 from migen import Module, Signal, Instance, ClockDomain, If
@@ -423,6 +424,91 @@ class BtPower(Module, AutoCSR, AutoDoc):
             self.soc_on.eq(self.power.fields.soc_on),
         ]
 
+# a pared-down version of GitInfo to use less gates
+class GitInfo(Module, AutoCSR, AutoDoc):
+    def __init__(self):
+        self.intro = ModuleDoc("""SoC Version Information
+
+            This block contains various information about the state of the source code
+            repository when this SoC was built.
+            """)
+
+        def makeint(i, base=10):
+            try:
+                return int(i, base=base)
+            except:
+                return 0
+        def get_gitver():
+            major = 0
+            minor = 0
+            rev = 0
+            gitrev = 0
+            gitextra = 0
+            dirty = 0
+
+            def decode_version(v):
+                version = v.split(".")
+                major = 0
+                minor = 0
+                rev = 0
+                if len(version) >= 3:
+                    rev = makeint(version[2])
+                if len(version) >= 2:
+                    minor = makeint(version[1])
+                if len(version) >= 1:
+                    major = makeint(version[0])
+                return (major, minor, rev)
+            git_rev_cmd = subprocess.Popen(["git", "describe", "--tags", "--long", "--dirty=+", "--abbrev=8"],
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE)
+            (git_stdout, _) = git_rev_cmd.communicate()
+            if git_rev_cmd.wait() != 0:
+                print('unable to get git version')
+                return (major, minor, rev, gitrev, gitextra, dirty)
+            raw_git_rev = git_stdout.decode().strip()
+
+            if raw_git_rev[-1] == "+":
+                raw_git_rev = raw_git_rev[:-1]
+                dirty = 1
+
+            parts = raw_git_rev.split("-")
+
+            if len(parts) >= 3:
+                if parts[0].startswith("v"):
+                    version = parts[0]
+                    if version.startswith("v"):
+                        version = parts[0][1:]
+                    (major, minor, rev) = decode_version(version)
+                gitextra = makeint(parts[1])
+                if parts[2].startswith("g"):
+                    gitrev = makeint(parts[2][1:], base=16)
+            elif len(parts) >= 2:
+                if parts[1].startswith("g"):
+                    gitrev = makeint(parts[1][1:], base=16)
+                version = parts[0]
+                if version.startswith("v"):
+                    version = parts[0][1:]
+                (major, minor, rev) = decode_version(version)
+            elif len(parts) >= 1:
+                version = parts[0]
+                if version.startswith("v"):
+                    version = parts[0][1:]
+                (major, minor, rev) = decode_version(version)
+
+            return (major, minor, rev, gitrev, gitextra, dirty)
+
+        (major, minor, rev, gitrev, gitextra, dirty) = get_gitver()
+
+        self.gitrev = CSRStatus(32, reset=gitrev, description="First 32-bits of the git revision.  This documentation was built from git rev ``{:08x}``, so this value is {}, which should be enough to check out the exact git version used to build this firmware.".format(gitrev, gitrev))
+        self.dirty = CSRStatus(fields=[
+            CSRField("dirty", reset=dirty, description="Set to ``1`` if this device was built from a git repo with uncommitted modifications.")
+        ])
+
+        self.comb += [
+            self.gitrev.status.eq(gitrev),
+            self.dirty.fields.dirty.eq(dirty),
+        ]
+
 class BaseSoC(SoCCore):
     SoCCore.mem_map = {
         "rom":      0x00000000,  # (default shadow @0x80000000)
@@ -451,6 +537,10 @@ class BaseSoC(SoCCore):
 
         self.submodules.crg = platform.CRG(platform)
         self.add_csr("crg")
+
+        # Version ----------------------------------------------------------------------------------------
+        self.submodules.git = GitInfo()
+        self.add_csr("git")
 
         # Power management -------------------------------------------------------------------------------
         # Betrusted Power management interface
