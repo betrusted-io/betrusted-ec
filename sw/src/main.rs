@@ -567,7 +567,7 @@ fn main() -> ! {
                 for i in 0..rx_stat_raw.len()/2 {
                     com_tx( rx_stat_raw[i*2] as u16 | ((rx_stat_raw[i*2+1] as u16) << 8));
                 }
-            } else if rx == ComState::WFX_PDS_SET.verb {
+            } else if rx == ComState::WFX_PDS_LINE_SET.verb { // set one line of the PDS record (up to 256 bytes length)
                 let mut error = false;
                 let mut pds_data: [u8; 256] = [0; 256];
                 let mut pds_length: u16 = 0;
