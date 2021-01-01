@@ -246,15 +246,16 @@ fn main() -> ! {
 
     let mut com_sentinel: u16 = 0;  // for link debugging mostly
     let mut flash_update_lock = false;
+    let do_scan = false;
     loop {
         if !flash_update_lock {
             //////////////////////// WIFI HANDLER BLOCK ---------
-            if !use_wifi && (get_time_ms() - start_time > 1500) {
+            if !use_wifi && (get_time_ms() - start_time > 1000) {
                 delay_ms(250); // force just a delay, so requests queue up
                 start_time = get_time_ms();
             }
             // slight delay to allow for wishbone-tool to connect for debuggening
-            if (get_time_ms() - start_time > 1500) && !wifi_ready && use_wifi {
+            if (get_time_ms() - start_time > 1000) && !wifi_ready && use_wifi {
                 sprintln!("initializing wifi!");
                 // delay_ms(250); // let the message print
                 // init the wifi interface
@@ -266,24 +267,26 @@ fn main() -> ! {
                 }
                 start_time = get_time_ms();
             }
-            if wifi_ready && use_wifi {
-                if get_time_ms() - start_time > 20_000 {
-                    sprintln!("starting ssid scan");
-                    wfx_start_scan();
-                    start_time = get_time_ms();
+            if do_scan {
+                if wifi_ready && use_wifi {
+                    if get_time_ms() - start_time > 20_000 {
+                        sprintln!("starting ssid scan");
+                        wfx_start_scan();  // turn this off for FCC testing
+                        start_time = get_time_ms();
+                    }
                 }
-            }
-            if wfx_rs::hal_wf200::wf200_event_get() && use_wifi {
-                // first thing -- clear the event. So that if we get another event
-                // while handling this packet, we have a chance of detecting that.
-                // we lack mutexes, so we need to think about this behavior very carefully.
+                if wfx_rs::hal_wf200::wf200_event_get() && use_wifi {
+                    // first thing -- clear the event. So that if we get another event
+                    // while handling this packet, we have a chance of detecting that.
+                    // we lack mutexes, so we need to think about this behavior very carefully.
 
-                if wf200_mutex_get() { // don't process events while the driver has locked us out
-                    wfx_rs::hal_wf200::wf200_event_clear();
+                    if wf200_mutex_get() { // don't process events while the driver has locked us out
+                        wfx_rs::hal_wf200::wf200_event_clear();
 
-                    // handle the Rx packet
-                    if wfx_scan_ongoing() {
-                        wfx_handle_event();
+                        // handle the Rx packet
+                        if wfx_scan_ongoing() {
+                            wfx_handle_event();
+                        }
                     }
                 }
             }
@@ -571,7 +574,7 @@ fn main() -> ! {
                 let mut error = false;
                 let mut pds_data: [u8; 256] = [0; 256];
                 let mut pds_length: u16 = 0;
-                match com_rx(100) {
+                match com_rx(500) {
                     Ok(result) => pds_length = result,
                     _ => error = true,
                 }
@@ -580,7 +583,7 @@ fn main() -> ! {
                 }
                 // even if length error, do receive, because we have to clear the rx queue for proper operation
                 for i in 0..128 as usize { // ALWAYS expect 128 pds data elements, even if length < 256
-                    match com_rx(100) {
+                    match com_rx(500) {
                         Ok(result) => {
                             let b = result.to_le_bytes();
                             pds_data[i*2] = b[0];
@@ -592,6 +595,8 @@ fn main() -> ! {
                 if !error {
                     wf200_send_pds(pds_data, pds_length);
                 }
+                com_csr.wfo(utra::com::CONTROL_RESET, 1);  // reset fifos
+                com_csr.wfo(utra::com::CONTROL_CLRERR, 1); // clear all error flags
             } else if rx == ComState::WFX_FW_REV_GET.verb {
                 com_tx(wf200_fw_major() as u16);
                 com_tx(wf200_fw_minor() as u16);
