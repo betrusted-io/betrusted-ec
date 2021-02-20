@@ -145,8 +145,19 @@ fn com_rx(timeout: u32) -> Result<u16, &'static str> {
     Ok(unsafe{ (*com_rd).read() as u16 })
 }
 
+fn ll_debug(msg: &str) {
+    if cfg!(feature = "debug_uart") {
+        sprintln!("{}", msg);
+        // delay_ms(50);
+    }
+}
+
 #[entry]
 fn main() -> ! {
+    /* loop {  // a tiny sanity check stub
+        (debug::Uart {}).putc('a' as u8);
+    } */
+    ll_debug("Hello world!");
     let mut power_csr = CSR::new(HW_POWER_BASE as *mut u32);
     let mut com_csr = CSR::new(HW_COM_BASE as *mut u32);
     let mut crg_csr = CSR::new(HW_CRG_BASE as *mut u32);
@@ -157,17 +168,22 @@ fn main() -> ! {
     let com_rd_ptr: *mut u32 = utralib::HW_COM_MEM as *mut u32;
     let com_rd = com_rd_ptr as *mut Volatile<u32>;
 
+    ll_debug("before nommu");
     // Initialize the no-MMU version of Xous, which will give us
     // basic access to tasks and interrupts.
     xous_nommu::init();
 
     let mut i2c = Hardi2c::new();
+    ll_debug("i2c");
 
     time_init();
+    ll_debug("time_init");
 
     i2c.i2c_init(CONFIG_CLOCK_FREQUENCY);
+    ll_debug("i2c_init");
 
     let mut charger: BtCharger = BtCharger::new();
+    ll_debug("charger");
 
     let mut last_run_time : u32 = get_time_ms();
     let mut loopcounter: u32 = 0; // in seconds, so this will last ~125 years
@@ -183,25 +199,34 @@ fn main() -> ! {
 
     // this needs to be one of the first things called after I2C comes up
     charger.chg_set_safety(&mut i2c);
+    ll_debug("chg_set_safety");
 
     gg_start(&mut i2c);
+    ll_debug("gg_start");
 
     charger.chg_set_autoparams(&mut i2c);
+    ll_debug("chg_set_autoparams");
     charger.chg_start(&mut i2c);
+    ll_debug("chg_start");
 
     let mut usb_cc = BtUsbCc::new();
-    usb_cc.init(&mut i2c);
+    ll_debug("BtUsbCc:new");
+    let tusb320_rev = usb_cc.init(&mut i2c);
+    ll_debug("usb_cc");
 
     let mut gyro: BtGyro = BtGyro::new();
     gyro.init();
+    ll_debug("gyro_init");
 
     let mut backlight : BtBacklight = BtBacklight::new();
     backlight.set_brightness(&mut i2c, 0, 0); // make sure the backlight is off on boot
+    ll_debug("backlight");
 
     let mut start_time: u32 = get_time_ms();
     let mut wifi_ready: bool = false;
 
     charger.update_regs(&mut i2c);
+    ll_debug("charger.update_regs");
 
     let mut usb_cc_event = false;
 
@@ -232,6 +257,7 @@ fn main() -> ! {
     dump_rom_addr(test_addr);
 */
     spi_standby(); // make sure the OE's are off, no spurious power consumption
+    ll_debug("spi_standby");
 
     xous_nommu::syscalls::sys_interrupt_claim(utra::ticktimer::TICKTIMER_IRQ, ticktimer_int_handler).unwrap();
     set_msleep_target_ticks(50);
@@ -239,7 +265,11 @@ fn main() -> ! {
     ticktimer_csr.wfo(utra::ticktimer::EV_ENABLE_ALARM, 1); // enable the interrupt
 
     /////// NOTE TO SELF: if using GDB, must disable the watchdog!!!
-    crg_csr.wfo(utra::crg::WATCHDOG_ENABLE, 1); // enable the watchdog reset
+    if cfg!(feature = "debug_uart") {
+        ll_debug("debug_uart selected: watchdog is not enabled");
+    } else {
+        crg_csr.wfo(utra::crg::WATCHDOG_ENABLE, 0); // 1 = enable the watchdog reset
+    }
 
     xous_nommu::syscalls::sys_interrupt_claim(utra::com::COM_IRQ, com_int_handler).unwrap();
     com_csr.wfo(utra::com::EV_ENABLE_SPI_AVAIL, 1);
@@ -247,6 +277,8 @@ fn main() -> ! {
     let mut com_sentinel: u16 = 0;  // for link debugging mostly
     let mut flash_update_lock = false;
     let do_scan = false;
+    ll_debug("main loop");
+    delay_ms(250);
     loop {
         if !flash_update_lock {
             //////////////////////// WIFI HANDLER BLOCK ---------
@@ -487,6 +519,7 @@ fn main() -> ! {
                 for i in 0..3 {
                     com_tx(usb_cc.status[i] as u16);
                 }
+                com_tx(tusb320_rev as u16);
             } else if rx == ComState::CHG_START.verb { // charging mode
                 charger.chg_start(&mut i2c);
             } else if rx == ComState::CHG_BOOST_ON.verb { // boost on

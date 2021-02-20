@@ -10,8 +10,9 @@ use core::str;
 
 use utralib::generated::*;
 
-pub const DEBUGGING: bool = false;
-pub const DEBUGGING2: bool = false;  // more verbose debugging
+pub const DEBUGGING: bool = true;
+pub const DEBUG_SPI: bool = false;
+pub const DEBUGGING2: bool = true;  // more verbose debugging
 
 #[macro_use]
 mod debug;
@@ -218,6 +219,26 @@ pub fn wfx_init() -> sl_status_t {
     unsafe{ sl_wfx_init(&mut WIFI_CONTEXT) }  // use this to drive porting of the wfx library
 }
 
+#[export_name = "sl_wfx_host_log"]
+pub unsafe extern "C" fn sl_wfx_host_log(dbgstr: *const c_types::c_char) {
+    let mut length: usize = 0;
+    while(dbgstr).add(length).read() != 0 {
+        length += 1;
+    }
+    let s = unsafe{ str::from_utf8(slice::from_raw_parts(dbgstr as *const u8, length)).expect("unable to parse")};
+    sprintln!("{}", s);
+}
+
+#[export_name = "sl_wfx_host_log_2"]
+pub unsafe extern "C" fn sl_wfx_host_log_2(dbgstr: *const c_types::c_char, a: u32, b: u32) {
+    let mut length: usize = 0;
+    while(dbgstr).add(length).read() != 0 {
+        length += 1;
+    }
+    let s = unsafe{ str::from_utf8(slice::from_raw_parts(dbgstr as *const u8, length)).expect("unable to parse")};
+    sprintln!("{} {}/{}", s, a, b);
+}
+
 #[export_name = "sl_wfx_host_spi_cs_assert"]
 pub unsafe extern "C" fn sl_wfx_host_spi_cs_assert() -> sl_status_t {
     let mut wifi_csr = CSR::new(HW_WIFI_BASE as *mut u32);
@@ -343,13 +364,13 @@ pub unsafe extern "C" fn sl_wfx_host_spi_transfer_no_cs_assert(
     unsafe {
         let mut header_len_mtu = header_length / 2; // we do "MTU" in case header_len is odd. should never be but...this is their API
         let mut header_pos: usize = 0;
-        if DEBUGGING { sprintln!("headerlen: {}", header_length); }
+        if DEBUG_SPI { sprintln!("headerlen: {}", header_length); }
         let headeru16: *mut u16 = header as *mut u16;
         while header_len_mtu > 0 {
             //let word: u16 = ((header.add(header_pos).read() as u16) << 8) | (header.add(header_pos + 1).read() as u16);
             let word: u16 = headeru16.add(header_pos).read();
             wifi_csr.wo(utra::wifi::TX, word as u32);
-            if DEBUGGING { sprintln!("header: {:02x} {:02x}", word >> 8, word & 0xff); }
+            if DEBUG_SPI { sprintln!("header: {:02x} {:02x}", word >> 8, word & 0xff); }
             header_len_mtu -= 1;
             header_pos += 1;
 
@@ -358,7 +379,7 @@ pub unsafe extern "C" fn sl_wfx_host_spi_transfer_no_cs_assert(
             wifi_csr.wfo(utra::wifi::CONTROL_GO, 0);
         }
         if type_ == sl_wfx_host_bus_transfer_type_t_SL_WFX_BUS_READ {
-            if DEBUGGING { sprintln!("rxlen: {}", buffer_length); }
+            if DEBUG_SPI { sprintln!("rxlen: {}", buffer_length); }
             let mut buffer_len_mtu = buffer_length / 2;
             let mut buffer_pos: usize = 0;
             let mut bufferu16: *mut u16 = buffer as *mut u16;
@@ -370,7 +391,7 @@ pub unsafe extern "C" fn sl_wfx_host_spi_transfer_no_cs_assert(
                 wifi_csr.wfo(utra::wifi::CONTROL_GO, 0);
 
                 let word: u16 = wifi_csr.rf(utra::wifi::RX_RX) as u16;
-                if DEBUGGING { sprintln!("rx: {:02x} {:02x}", word >> 8, word & 0xff); }
+                if DEBUG_SPI { sprintln!("rx: {:02x} {:02x}", word >> 8, word & 0xff); }
                 bufferu16.add(buffer_pos).write(word);
                 //buffer.add(buffer_pos).write((word >> 8) as u8);
                 //buffer.add(buffer_pos+1).write((word & 0xff) as u8);
@@ -378,7 +399,7 @@ pub unsafe extern "C" fn sl_wfx_host_spi_transfer_no_cs_assert(
                 buffer_pos += 1;
             }
         } else {
-            if DEBUGGING { sprintln!("txlen: {}", buffer_length); }
+            if DEBUG_SPI { sprintln!("txlen: {}", buffer_length); }
             // transmit the buffer
             let mut buffer_len_mtu: usize = buffer_length as usize / 2;
             let mut buffer_pos: usize = 0;
@@ -387,7 +408,7 @@ pub unsafe extern "C" fn sl_wfx_host_spi_transfer_no_cs_assert(
                 //let word: u16 = ((buffer.add(buffer_pos).read() as u16) << 8) | (buffer.add(buffer_pos+1).read() as u16);
                 let word: u16 = bufferu16.add(buffer_pos).read();
                 wifi_csr.wo(utra::wifi::TX, word as u32);
-                if DEBUGGING { sprintln!("tx: {:02x} {:02x}", word >> 8, word & 0xff); }
+                if DEBUG_SPI { sprintln!("tx: {:02x} {:02x}", word >> 8, word & 0xff); }
 //                buffer_len_mtu -= 1;
                 buffer_pos += 1;
 

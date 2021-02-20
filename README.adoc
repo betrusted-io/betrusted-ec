@@ -43,6 +43,11 @@ Note that if you do compile the EC kernel with debug printing enabled, you
 /must/ have the wishbone tunnel connected, otherwise the firmware will hang
 as the UART buffer fills up and it will block execution.
 
+Before attempting to use GDB for debugging, be sure to disable the
+watchdog timer, or else the EC will continuously reset itself before
+you're able to do anything over GDB. See the `Cargo.toml` for notes
+on this.
+
 To connect to the EC for GDB debugging, you must have a version of
 the riscv GDB toolchain installed. For example, from an Ubuntu host,
 you may be able to run `riscv64-unknown-elf-gdb`, and then use

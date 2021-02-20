@@ -78,6 +78,8 @@ bitflags! {
 
 pub const TUSB320LAI_A0_REV: usize = 0xA0;
 pub const TUSB320LAI_REVISION_EXPECTED: u8 = 0x02;
+pub const TUSB320LAI_REVISION_EXPECTED_ALT: u8 = 0x06;
+
 
 const TUSB320_TIMEOUT_MS: u32 = 1;
 
@@ -91,7 +93,7 @@ impl BtUsbCc {
         BtUsbCc { id: [0; 8], status: [0; 3] }
     }
 
-    pub fn init(&mut self, i2c: &mut Hardi2c) {
+    pub fn init(&mut self, i2c: &mut Hardi2c) -> u8 {
         let mut txbuf: [u8; 1] = [TUSB320LAI_00_ID as u8];
         let mut rxbuf: [u8; 8] = [0; 8];
 
@@ -105,7 +107,12 @@ impl BtUsbCc {
         txbuf = [TUSB320LAI_A0_REV as u8];
         let mut rxrev: [u8; 1] = [0; 1];
         while i2c.i2c_controller(TUSB320LAI_ADDR, Some(&txbuf), Some(&mut rxrev), TUSB320_TIMEOUT_MS) != 0 {}
-        assert!(rxrev[0] == TUSB320LAI_REVISION_EXPECTED);
+        if cfg!(feature = "debug_uart") {
+            sprintln!("tusb320lai_rev: {:08x}", rxrev[0]);
+            crate::hal_time::delay_ms(50);
+        }
+        let rev = rxrev[0];
+        // assert!((rxrev[0] == TUSB320LAI_REVISION_EXPECTED) || (rxrev[0] == TUSB320LAI_REVISION_EXPECTED_ALT));
 
         // fill in other parameter inits
         // we want to initially look like a UFP, advertising 500mA current
@@ -128,6 +135,8 @@ impl BtUsbCc {
         // enable the regchange event
         let mut i2c_csr = CSR::new(HW_I2C_BASE as *mut u32);
         i2c_csr.wfo(utra::i2c::EV_ENABLE_USBCC_INT, 1);
+
+        rev
     }
 
     pub fn check_event(&mut self, i2c: &mut Hardi2c) -> bool {
