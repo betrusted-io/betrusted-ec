@@ -1,22 +1,16 @@
-pub struct Uart {
-    pub base: *mut u32,
-}
-
 #[allow(dead_code)]
-pub const CROSSOVER_UART: Uart = Uart {
-    base: 0xE000_1800 as *mut u32,
-};
+use utralib::generated::*;
+
+pub struct Uart {
+}
 
 #[cfg(feature = "debug_uart")]
 impl Uart {
     pub fn putc(&self, c: u8) {
-        unsafe {
-            // Wait until TXFULL is `0`
-            while self.base.add(1).read_volatile() != 0 {
-                ()
-            }
-            self.base.add(0).write_volatile(c as u32)
-        };
+        let mut uart_csr = CSR::new(HW_UART_BASE as *mut u32);
+        // Wait until TXFULL is `0`
+        while uart_csr.rf(utra::uart::TXFULL_TXFULL) != 0 {}
+        uart_csr.wfo(utra::uart::RXTX_RXTX, c as u32)
     }
 }
 
@@ -41,7 +35,7 @@ macro_rules! sprint
 {
 	($($args:tt)+) => ({
 			use core::fmt::Write;
-			let _ = write!(crate::hal_wf200::debug::CROSSOVER_UART, $($args)+);
+			let _ = write!(crate::hal_wf200::debug::Uart {}, $($args)+);
 	});
 }
 
