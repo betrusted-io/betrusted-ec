@@ -1,4 +1,4 @@
-#[allow(dead_code)]
+#[cfg(feature = "debug_uart")]
 use utralib::generated::*;
 
 pub struct Uart {
