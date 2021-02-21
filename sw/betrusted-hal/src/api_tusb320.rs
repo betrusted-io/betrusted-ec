@@ -136,6 +136,11 @@ impl BtUsbCc {
         let mut i2c_csr = CSR::new(HW_I2C_BASE as *mut u32);
         i2c_csr.wfo(utra::i2c::EV_ENABLE_USBCC_INT, 1);
 
+        // clear the REGCHANGE_INTERRUPT bit before returning, in case it was set
+        let txwrbuf: [u8; 2] = [TUSB320LAI_09_CSR1 as u8,
+           (ConfigStatus1::DISABLE_UFP_ACCESSORY | ConfigStatus1::DRP_ADVERT_DUTYCYCLE_30PCT | ConfigStatus1::REGCHANGE_INTERRUPT).bits()];
+        while i2c.i2c_controller(TUSB320LAI_ADDR, Some(&txwrbuf), None, TUSB320_TIMEOUT_MS) != 0 {}
+
         rev
     }
 
@@ -148,9 +153,12 @@ impl BtUsbCc {
             for i in 0..3 {
                 self.status[i] = status_regs[i];
             }
-            // clear the interrupt in the TUSB320 by writing a `1` to it
-            let update: [u8; 2] = [TUSB320LAI_09_CSR1 as u8, self.status[1] | ConfigStatus1::REGCHANGE_INTERRUPT.bits()];
-            while i2c.i2c_controller(TUSB320LAI_ADDR, Some(&update), None, TUSB320_TIMEOUT_MS) != 0 {}
+
+            // clear the REGCHANGE_INTERRUPT bit by writing a `1` to it
+            let txwrbuf: [u8; 2] = [TUSB320LAI_09_CSR1 as u8,
+            (ConfigStatus1::DISABLE_UFP_ACCESSORY | ConfigStatus1::DRP_ADVERT_DUTYCYCLE_30PCT | ConfigStatus1::REGCHANGE_INTERRUPT).bits()];
+            while i2c.i2c_controller(TUSB320LAI_ADDR, Some(&txwrbuf), None, TUSB320_TIMEOUT_MS) != 0 {}
+
             // clear the interrupt in the CPU by writing a 1 to the pending bit
             i2c_csr.wfo(utra::i2c::EV_PENDING_USBCC_INT, 1);
             true

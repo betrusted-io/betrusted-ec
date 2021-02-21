@@ -25,6 +25,10 @@ you have installed and cloned the `betrusted-scripts` repo (https://github.com/b
 on the Raspberry Pi. The commands in this section are run on the Rasperry Pi
 thus configured.
 
+Note that the debugging interface is more stable when power is applied from
+the debug cable itself using the `vbus_on.sh` script (rather than being
+applied via USB or relying on the battery).
+
 The EC UART port is selected by running the `betrusted-scripts/uart_up5k.sh` script.
 
 `wishbone-tool` has some trouble reliably making connection with the wisbone

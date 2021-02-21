@@ -268,7 +268,8 @@ fn main() -> ! {
     if cfg!(feature = "debug_uart") {
         ll_debug("debug_uart selected: watchdog is not enabled");
     } else {
-        crg_csr.wfo(utra::crg::WATCHDOG_ENABLE, 0); // 1 = enable the watchdog reset
+        ll_debug("**WATCHDOG ENABLED**, but debugging: GDB will not work.");
+        crg_csr.wfo(utra::crg::WATCHDOG_ENABLE, 1); // 1 = enable the watchdog reset
     }
 
     xous_nommu::syscalls::sys_interrupt_claim(utra::com::COM_IRQ, com_int_handler).unwrap();
@@ -515,7 +516,8 @@ fn main() -> ! {
                 com_tx(gyro.z);
                 com_tx(gyro.id as u16);
             } else if rx == ComState::POLL_USB_CC.verb {
-                if usb_cc_event { com_tx(1) } else { com_tx(0) } usb_cc_event = false; // clear the usb_cc_event pending flag as its been checked
+                if usb_cc_event { com_tx(1) } else { com_tx(0) }
+                usb_cc_event = false; // clear the usb_cc_event pending flag as its been checked
                 for i in 0..3 {
                     com_tx(usb_cc.status[i] as u16);
                 }
