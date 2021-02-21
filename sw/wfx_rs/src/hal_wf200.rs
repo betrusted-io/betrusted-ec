@@ -10,9 +10,9 @@ use core::str;
 
 use utralib::generated::*;
 
-pub const DEBUGGING: bool = true;
+pub const DEBUGGING: bool = false;
 pub const DEBUG_SPI: bool = false;
-pub const DEBUGGING2: bool = true;  // more verbose debugging
+pub const DEBUGGING2: bool = false;  // more verbose debugging
 
 #[macro_use]
 mod debug;
@@ -30,7 +30,7 @@ pub const WIFI_EVENT_WIRQ: u32 = 0x1;
 
 // locate firmware at SPI top minus 400kiB. Datasheet says reserve at least 350kiB for firmwares.
 pub const WFX_FIRMWARE_OFFSET: usize = 0x2000_0000 + 1024*1024 - 400*1024; // 0x2009_C000
-pub const WFX_FIRMWARE_SIZE: usize = 290896; // version C0, as burned to ROM
+pub const WFX_FIRMWARE_SIZE: usize = 305232; // version C0, as burned to ROM
 
 /// make a very shitty, temporary malloc that can hold up to 16 entries in the 32k space
 /// this is all to avoid including the "alloc" crate, which is "nightly" and not "stable"
@@ -227,6 +227,16 @@ pub unsafe extern "C" fn sl_wfx_host_log(dbgstr: *const c_types::c_char) {
     }
     let s = unsafe{ str::from_utf8(slice::from_raw_parts(dbgstr as *const u8, length)).expect("unable to parse")};
     sprintln!("{}", s);
+}
+
+#[export_name = "sl_wfx_host_log_1"]
+pub unsafe extern "C" fn sl_wfx_host_log_1(dbgstr: *const c_types::c_char, a: u32) {
+    let mut length: usize = 0;
+    while(dbgstr).add(length).read() != 0 {
+        length += 1;
+    }
+    let s = unsafe{ str::from_utf8(slice::from_raw_parts(dbgstr as *const u8, length)).expect("unable to parse")};
+    sprintln!("{}: {}", s, a);
 }
 
 #[export_name = "sl_wfx_host_log_2"]
