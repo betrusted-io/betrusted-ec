@@ -277,7 +277,7 @@ fn main() -> ! {
 
     let mut com_sentinel: u16 = 0;  // for link debugging mostly
     let mut flash_update_lock = false;
-    let do_scan = false;
+    let do_scan = true;
     ll_debug("main loop");
     delay_ms(250);
     loop {
