@@ -277,7 +277,7 @@ fn main() -> ! {
 
     let mut com_sentinel: u16 = 0;  // for link debugging mostly
     let mut flash_update_lock = false;
-    let do_scan = true;
+    let do_scan = false;
     ll_debug("main loop");
     delay_ms(250);
     loop {
@@ -626,6 +626,15 @@ fn main() -> ! {
                         },
                         _ => error = true,
                     }
+                }
+                if false { // nuggets for debugging PDS issues
+                    ll_debug("got wfx_pds_line_set command");
+                    //let s = unsafe{ core::str::from_utf8_unchecked(&pds_data[0..(pds_length as usize)]) };
+                    //ll_debug(s);
+                    sprintln!("length {}", pds_length);
+                    sprintln!("{:?}", pds_data);
+                    sprintln!("error {:?}", error);
+                    delay_ms(50);
                 }
                 if !error {
                     wf200_send_pds(pds_data, pds_length);

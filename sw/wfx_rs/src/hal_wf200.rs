@@ -13,6 +13,7 @@ use utralib::generated::*;
 pub const DEBUGGING: bool = false;
 pub const DEBUG_SPI: bool = false;
 pub const DEBUGGING2: bool = false;  // more verbose debugging
+pub const DEBUG_MALLOC: bool = false;
 
 #[macro_use]
 mod debug;
@@ -30,7 +31,8 @@ pub const WIFI_EVENT_WIRQ: u32 = 0x1;
 
 // locate firmware at SPI top minus 400kiB. Datasheet says reserve at least 350kiB for firmwares.
 pub const WFX_FIRMWARE_OFFSET: usize = 0x2000_0000 + 1024*1024 - 400*1024; // 0x2009_C000
-pub const WFX_FIRMWARE_SIZE: usize = 305232; // version C0, as burned to ROM
+//pub const WFX_FIRMWARE_SIZE: usize = 290896; // version C0, as burned to ROM v3.3.2
+pub const WFX_FIRMWARE_SIZE: usize = 305232; // version C0, as burned to ROM v3.12.1
 
 /// make a very shitty, temporary malloc that can hold up to 16 entries in the 32k space
 /// this is all to avoid including the "alloc" crate, which is "nightly" and not "stable"
@@ -38,7 +40,7 @@ pub const WFX_FIRMWARE_SIZE: usize = 305232; // version C0, as burned to ROM
 pub const WFX_RAM_LENGTH: usize = 32*1024;
 pub const WFX_RAM_OFFSET: usize = 0x1000_0000 + 128*1024 - WFX_RAM_LENGTH; // 1001_8000
 static mut WFX_RAM_ALLOC: usize = WFX_RAM_OFFSET;
-pub const WFX_MAX_PTRS: usize = 16;
+pub const WFX_MAX_PTRS: usize = 8;
 static mut WFX_PTR_COUNT: u8 = 0;
 static mut WFX_PTR_LIST: [usize; WFX_MAX_PTRS] = [0; WFX_MAX_PTRS];
 
@@ -441,6 +443,7 @@ pub unsafe extern "C" fn sl_wfx_host_spi_transfer_no_cs_assert(
 #[doc = ""]
 #[doc = " @note Called by the driver every time it needs memory"]
 #[export_name = "sl_wfx_host_allocate_buffer"]
+/*
 pub unsafe extern "C" fn sl_wfx_host_allocate_buffer(
     buffer: *mut *mut c_types::c_void,
     type_: sl_wfx_buffer_type_t,
@@ -459,6 +462,29 @@ pub unsafe extern "C" fn sl_wfx_host_allocate_buffer(
         SL_STATUS_ALLOCATION_FAILED
     }
 }
+*/
+pub unsafe extern "C" fn sl_wfx_host_allocate_buffer(
+    buffer: *mut *mut c_types::c_void,
+    type_: sl_wfx_buffer_type_t,
+    buffer_size: u32,
+) -> sl_status_t {
+    unsafe {
+        // find the first "0" entry in the pointer list
+        let mut i = 0;
+        while (WFX_PTR_LIST[i] != 0) && (i < WFX_MAX_PTRS as usize) {
+            i += 1;
+        }
+        if i == WFX_MAX_PTRS {
+            if DEBUG_MALLOC {sprintln!("malloc failed");}
+            return SL_STATUS_ALLOCATION_FAILED
+        }
+        WFX_PTR_LIST[i] = WFX_RAM_ALLOC + i * (WFX_RAM_LENGTH / WFX_MAX_PTRS);
+        *buffer = WFX_PTR_LIST[i] as *mut c_types::c_void;
+        if DEBUG_MALLOC { sprintln!("allocated index {}|{:08x} reqlen {} bytes", i, *buffer as u32, buffer_size); }
+    }
+
+    SL_STATUS_OK
+}
 
 #[doc = " @brief Called when the driver wants to free memory"]
 #[doc = ""]
@@ -466,6 +492,7 @@ pub unsafe extern "C" fn sl_wfx_host_allocate_buffer(
 #[doc = " @param type is the type of buffer to free (see ::sl_wfx_buffer_type_t)"]
 #[doc = " @returns Returns SL_STATUS_OK if successful, SL_STATUS_FAIL otherwise"]
 #[export_name = "sl_wfx_host_free_buffer"]
+/*
 pub unsafe extern "C" fn sl_wfx_host_free_buffer(
     buffer: *mut c_types::c_void,
     type_: sl_wfx_buffer_type_t,
@@ -512,6 +539,26 @@ pub unsafe extern "C" fn sl_wfx_host_free_buffer(
             SL_STATUS_OK
         }
     }
+}*/
+pub unsafe extern "C" fn sl_wfx_host_free_buffer(
+    buffer: *mut c_types::c_void,
+    type_: sl_wfx_buffer_type_t,
+) -> sl_status_t {
+    unsafe {
+        let mut i = 0;
+        let addr: usize = (buffer as *mut c_types::c_uint) as usize;
+        if DEBUG_MALLOC { sprintln!("request to free {:08x}", addr); }
+        while (WFX_PTR_LIST[i] != addr) && (i < WFX_MAX_PTRS as usize) {
+            i = i + 1;
+        }
+        if i == WFX_MAX_PTRS {
+            if DEBUG_MALLOC { sprintln!("free failed"); }
+            return SL_STATUS_ALLOCATION_FAILED;
+        }
+        if DEBUG_MALLOC { sprintln!("freeing index {}|{:08x}", i, WFX_PTR_LIST[i]); }
+        WFX_PTR_LIST[i] = 0;
+    }
+    SL_STATUS_OK
 }
 
 /// clear the shitty allocator list if we're re-initializing the driver
@@ -993,7 +1040,20 @@ pub unsafe extern "C" fn sl_wfx_host_post_event(event_payload: *mut sl_wfx_gener
                     RX_STATS_RAW = (*generic_indication).body.indication_data;
                 }
             } else {
-                unimplemented!();
+                if DEBUGGING { sprintln!("SL_WFX_GENERIC_IND_ID type {}, attempting to dispach", (*generic_indication).body.indication_type); }
+                if (*generic_indication).body.indication_type == sl_wfx_generic_indication_type_e_SL_WFX_GENERIC_INDICATION_TYPE_STRING {
+                    let dbgstr = (*generic_indication).body.indication_data.raw_data;
+                    if DEBUGGING {
+                        let mut length = 0;
+                        while dbgstr[length] != 0 {
+                            length += 1;
+                        }
+                        let s = unsafe { str::from_utf8_unchecked(&dbgstr[0..length]) };
+                        sprintln!("String repr: {}", s);
+                    }
+                } else {
+                    if DEBUGGING {sprintln!("type not handled, ignoring");}
+                }
             }
         },
         sl_wfx_general_indications_ids_e_SL_WFX_EXCEPTION_IND_ID => {
