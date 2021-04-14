@@ -277,20 +277,15 @@ fn main() -> ! {
 
     let mut com_sentinel: u16 = 0;  // for link debugging mostly
     let mut flash_update_lock = false;
-    let do_scan = true;
+    let mut do_scan = false;
     ll_debug("main loop");
     delay_ms(250);
     loop {
         if !flash_update_lock {
             //////////////////////// WIFI HANDLER BLOCK ---------
-            if !use_wifi && (get_time_ms() - start_time > 1000) {
-                delay_ms(250); // force just a delay, so requests queue up
-                start_time = get_time_ms();
-            }
             // slight delay to allow for wishbone-tool to connect for debuggening
             if (get_time_ms() - start_time > 1000) && !wifi_ready && use_wifi {
                 sprintln!("initializing wifi!");
-                // delay_ms(250); // let the message print
                 // init the wifi interface
                 if wfx_init() == SL_STATUS_OK {
                     sprintln!("Wifi ready");
@@ -655,20 +650,32 @@ fn main() -> ! {
                         if result == 0 {
                             wifi_ready = false;
                             use_wifi = true;
-                            unsafe{sl_wfx_host_reset_chip();}
+                            wifi_csr.rmwf(utra::wifi::WIFI_RESET, 1);
+                            delay_ms(10);
+                            wifi_csr.rmwf(utra::wifi::WIFI_RESET, 0);
+                            delay_ms(10);
+                            start_time = get_time_ms();
                         } else {
                             wifi_ready = false;
                             use_wifi = false;
-                            unsafe{sl_wfx_host_hold_in_reset();}
+                            wifi_csr.rmwf(utra::wifi::WIFI_RESET, 1);
                         }
                     },
                     _ => {
                         // default to a normal reset
                         wifi_ready = false;
                         use_wifi = true;
-                        unsafe{sl_wfx_host_reset_chip();}
+                        wifi_csr.rmwf(utra::wifi::WIFI_RESET, 1);
+                        delay_ms(10);
+                        wifi_csr.rmwf(utra::wifi::WIFI_RESET, 0);
+                        delay_ms(10);
+                        start_time = get_time_ms();
                     },
                 }
+            } else if rx == ComState::SSID_SCAN_ON.verb {
+                do_scan = true;
+            } else if rx == ComState::SSID_SCAN_OFF.verb {
+                do_scan = false;
             } else {
                 com_tx(ComState::ERROR.verb);
             }
