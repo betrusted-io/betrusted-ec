@@ -230,7 +230,7 @@ fn main() -> ! {
 
     let mut usb_cc_event = false;
 
-    let use_wifi: bool = true;
+    let mut use_wifi: bool = true;
 
     /*
     // check that the gas gauge capacity is correct; if not, reset it
@@ -649,6 +649,26 @@ fn main() -> ! {
                 com_tx( (git_csr.rf(utra::git::GITREV_GITREV) >> 16) as u16);
                 com_tx( (git_csr.rf(utra::git::GITREV_GITREV) & 0xFFFF) as u16);
                 com_tx( git_csr.rf(utra::git::DIRTY_DIRTY) as u16 );
+            } else if rx == ComState::WF200_RESET.verb {
+                match com_rx(250) {
+                    Ok(result) => {
+                        if result == 0 {
+                            wifi_ready = false;
+                            use_wifi = true;
+                            unsafe{sl_wfx_host_reset_chip();}
+                        } else {
+                            wifi_ready = false;
+                            use_wifi = false;
+                            unsafe{sl_wfx_host_hold_in_reset();}
+                        }
+                    },
+                    _ => {
+                        // default to a normal reset
+                        wifi_ready = false;
+                        use_wifi = true;
+                        unsafe{sl_wfx_host_reset_chip();}
+                    },
+                }
             } else {
                 com_tx(ComState::ERROR.verb);
             }

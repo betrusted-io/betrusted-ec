@@ -38,7 +38,7 @@ fn print_help() {
         "Tasks:
 hw-image [soc.svd]      builds an image for real hardware
 docs                    updates the documentation tree
-push                    deploys files to burner Rpi, requires a target host argument and an option SSH ID file
+push  [ip] [id]         deploys files to burner Rpi. Example: push 192.168.1.2 ~/id_rsa. Assumes 'pi' as the user.
 update                  burns firmware to a a Precursor via USB
 "
     )
