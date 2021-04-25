@@ -13,7 +13,7 @@ Compiled documentation: https://ci.betrusted.io/betrusted-ec/doc/[latest registe
 
 1. Ensure you have a toolchain installed, including a compiler, Python 3.5+, `nextpnr-ice40`, and `yosys`.  These can all be obtained by downloading the [Fomu toolchain](https://github.com/im-tomu/fomu-toolchain/releases/latest) and adding it to your `PATH`.
 1. Check out this repo with `git clone --recurse-submodules <repo>`.
-1. Run `./betrusted-ec.py --revision=pvt` (or `python3 ./betrusted-ec.py --revision=pvt`) to build the "PVT" version of the EC
+1. Run `./betrusted_ec.py --revision=pvt` (or `python3 ./betrusted_ec.py --revision=pvt`) to build the "PVT" version of the EC
 1. Run `cargo xtask hw-image` to build the burnable ROM image
 1. Run `cargo xtask docs` to update the HTML document tree
 1. Run `cargo xtask push <target> [idfile]` to push the files to a Raspberry Pi with a debug hat for burning. `idfile` is the ssh ID file if you use one.
