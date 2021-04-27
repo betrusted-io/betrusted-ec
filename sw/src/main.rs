@@ -71,7 +71,7 @@ fn ticktimer_int_handler(_irq_no: usize) {
     crg_csr.wfo(utra::crg::WATCHDOG_RESET_CODE, 0xc0de);
 
     // fast-monitor the keyboard wakeup inputs if the soc is in the off state
-    if power_csr.rf(utra::power::POWER_SOC_ON) == 0 {
+    if (power_csr.rf(utra::power::POWER_SOC_ON) == 0) && (power_csr.rf(utra::power::STATS_STATE) == 0) {
         // drive sense for keyboard
         let power =
         power_csr.ms(utra::power::POWER_SELF, 1)
@@ -400,7 +400,7 @@ fn main() -> ! {
                 }
 
                 // check if we should turn the SoC on or not based on power status change events
-                if charger.chg_is_charging(&mut i2c, false) || (power_csr.rf(utra::power::STATS_STATE) == 1) {
+                if charger.chg_is_charging(&mut i2c, false) {
                     // sprintln!("charger insert or soc on event!");
                     let power =
                         power_csr.ms(utra::power::POWER_SELF, 1)
@@ -414,6 +414,11 @@ fn main() -> ! {
 
         //////////////////////// COM HANDLER BLOCK ---------
         while com_csr.rf(utra::com::STATUS_RX_AVAIL) == 1 {
+            // if we've received data from the SOC, we don't have to assert its power-on line any more to boot it up.
+            // De-activate it, so that the SOC is entirely in control of its own power state.
+            power_csr.rmwf(utra::power::POWER_SOC_ON, 0);
+            // note: this line is occasionally re-asserted whenever the charger is detected as present
+
             let rx: u16;
             unsafe{ rx = (*com_rd).read() as u16; }
 
