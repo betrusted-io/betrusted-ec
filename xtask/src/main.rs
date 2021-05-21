@@ -13,6 +13,8 @@ const TARGET: &str = "riscv32i-unknown-none-elf";
 const IMAGE_PATH: &'static str = formatcp!("target/{}/release/bt-ec.bin", TARGET);
 const DEST_FILE: &'static str = formatcp!("bt-ec.bin");
 const DESTDIR: &'static str = "code/precursors/";
+const UPDATE_EC: &'static str = "precursors/ec-fw.bin";
+const UPDATE_WF: &'static str = "precursors/wf200-fw.bin";
 
 fn main() {
     if let Err(e) = try_main() {
@@ -28,6 +30,7 @@ fn try_main() -> Result<(), DynError> {
         Some("docs") => make_docs()?,
         Some("push") => push_to_pi(env::args().nth(2), env::args().nth(3))?,
         Some("update") => update_usb()?,
+        Some("copy-precursors") => copy_precursors()?,
         _ => print_help(),
     }
     Ok(())
@@ -40,6 +43,7 @@ hw-image [soc.svd]      builds an image for real hardware
 docs                    updates the documentation tree
 push  [ip] [id]         deploys files to burner Rpi. Example: push 192.168.1.2 ~/id_rsa. Assumes 'pi' as the user.
 update                  burns firmware to a a Precursor via USB
+copy-precursors         copy precursors from a local build of the FPGA to the default location used by xtask
 "
     )
 }
@@ -85,7 +89,7 @@ fn push_to_pi(target: Option<String>, id: Option<String>) -> Result<(), DynError
         _ => return Err("md5sum check of image file failed".into()),
     };
     let csv_md5 = Command::new("md5sum")
-        .arg("build/csr.csv")
+        .arg("precursors/csr.csv")
         .output();
     match csv_md5 {
         Ok(md5) => print!("{}", std::str::from_utf8(&md5.stdout)?),
@@ -97,13 +101,20 @@ fn push_to_pi(target: Option<String>, id: Option<String>) -> Result<(), DynError
 
     let dest_str = DESTDIR.to_string() + "ec-csr.csv";
     let dest = Path::new(&dest_str);
-    scp(&target_str.clone(), "pi", id.clone(), Path::new("build/csr.csv"), &dest);
+    scp(&target_str.clone(), "pi", id.clone(), Path::new("precursors/csr.csv"), &dest);
 
     Ok(())
 }
 
 fn update_usb() -> Result<(), DynError> {
     println!("Placeholder function, doesn't do anything yet!");
+    Ok(())
+}
+
+fn copy_precursors() -> Result<(), DynError> {
+    std::fs::copy("build/csr.csv", "precursors/csr.csv")?;
+    std::fs::copy("build/software/soc.svd", "precursors/soc.svd")?;
+    std::fs::copy("build/gateware/betrusted_ec.bin", "precursors/betrusted_ec.bin")?;
     Ok(())
 }
 
@@ -121,7 +132,7 @@ fn make_docs() -> Result<(), DynError> {
 fn build_hw_image(debug: bool, svd: Option<String>) -> Result<(), DynError> {
     let svd_file = match svd {
         Some(s) => s,
-        None => {println!("Using default soc.svd location of build/software/soc.svd"); "build/software/soc.svd".to_string() },
+        None => {println!("Using default soc.svd location of precursors/soc.svd"); "precursors/soc.svd".to_string() },
     };
 
     let path = std::path::Path::new(&svd_file);
@@ -135,8 +146,8 @@ fn build_hw_image(debug: bool, svd: Option<String>) -> Result<(), DynError> {
     let sw = build_sw(debug)?;
 
     let loaderpath = PathBuf::from("sw/loader.S");
-    let gatewarepath = PathBuf::from("build/gateware/betrusted_ec.bin");
-    let output_bundle = create_image(&sw, &loaderpath, &gatewarepath)?;
+    let gatewarepath = PathBuf::from("precursors/betrusted_ec.bin");
+    let output_bundle = create_image(&sw, &loaderpath, &gatewarepath, Some(&PathBuf::from(UPDATE_WF)))?;
     println!();
     println!(
         "EC software image bundle is available at {}",
@@ -192,6 +203,7 @@ fn create_image(
     kernel: &Path,
     loader: &PathBuf,
     gateware: &PathBuf,
+    wf200: Option<&PathBuf>,
 ) -> Result<PathBuf, DynError> {
     let loader_bin_path = &format!("target/{}/release/loader.bin", TARGET);
     let kernel_bin_path = &format!("target/{}/release/kernel.bin", TARGET);
@@ -264,6 +276,52 @@ fn create_image(
     image.write(&gateware_bin)?;
     image.write(&loader)?;
     image.write(&kernel_bin)?;
+
+    let mut ec_fw: Vec<u8> = Vec::new();
+    // build the header
+    ec_fw.write(&[0; 32])?; // pad some space for the hash
+    ec_fw.write(&[0x70, 0x72, 0x65, 0x63])?; // signature 'prec' in BE
+    ec_fw.write(&(1 as u32).to_le_bytes())?;
+    ec_fw.write( &((gateware_bin.len() + loader.len() + kernel_bin.len()) as u32).to_le_bytes())?;
+    ec_fw.resize(4096, 0xff); // extend the header to the next page
+    // write the firmware
+    ec_fw.write(&gateware_bin)?;
+    ec_fw.write(&loader)?;
+    ec_fw.write(&kernel_bin)?;
+    // compute the hash
+    use sha2::Digest;
+    let mut hasher = sha2::Sha512Trunc256::new();
+    hasher.update(&ec_fw[32..]);
+    let result = hasher.finalize();
+    ec_fw[..32].clone_from_slice(&result);
+    // output the final image
+    let mut ec_fw_file = std::fs::File::create(PathBuf::from(UPDATE_EC))?;
+    ec_fw_file.write(&ec_fw)?;
+
+    if let Some(wf200_path) = wf200 {
+        let mut wf_fw: Vec<u8> = Vec::new();
+        // build the header
+        wf_fw.write(&[0; 32])?; // pad some space for the hash
+        wf_fw.write(&[0x77, 0x66, 0x32, 0x30])?; // signature 'wf20' in BE
+        wf_fw.write(&(1 as u32).to_le_bytes())?;
+        // load the wf200 firmware blob
+        let mut wf200_fw_file = std::fs::File::open(PathBuf::from("sw/imports/wfx-firmware/wfm_wf200_C0.sec"))?;
+        let mut wf200_fw: Vec<u8> = Vec::new();
+        wf200_fw_file.read_to_end(&mut wf200_fw)?;
+        // note the length & resize
+        wf_fw.write(&(wf200_fw.len() as u32).to_le_bytes())?;
+        wf_fw.resize(4096, 0xff);
+        // write the firmware
+        wf_fw.write(&wf200_fw)?;
+        // compute the hash
+        let mut hasher = sha2::Sha512Trunc256::new();
+        hasher.update(&wf_fw[32..]);
+        let result = hasher.finalize();
+        wf_fw[..32].clone_from_slice(&result);
+        // output the final image
+        let mut wf200_formatted_file = std::fs::File::create(wf200_path)?;
+        wf200_formatted_file.write(&wf_fw)?;
+    }
 
     Ok(project_root().join(&IMAGE_PATH))
 }

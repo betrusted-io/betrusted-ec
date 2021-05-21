@@ -11,12 +11,28 @@ Compiled documentation: https://ci.betrusted.io/betrusted-ec/doc/[latest registe
 
 ## Getting Started
 
+### Building the CPU
 1. Ensure you have a toolchain installed, including a compiler, Python 3.5+, `nextpnr-ice40`, and `yosys`.  These can all be obtained by downloading the [Fomu toolchain](https://github.com/im-tomu/fomu-toolchain/releases/latest) and adding it to your `PATH`.
-1. Check out this repo with `git clone --recurse-submodules <repo>`.
+1. Check out this repo with `git clone --recurse-submodules <repo>`. It will consume ~800MiB of disk space (sorry!).
 1. Run `./betrusted_ec.py --revision=pvt` (or `python3 ./betrusted_ec.py --revision=pvt`) to build the "PVT" version of the EC
-1. Run `cargo xtask hw-image` to build the burnable ROM image
-1. Run `cargo xtask docs` to update the HTML document tree
-1. Run `cargo xtask push <target> [idfile]` to push the files to a Raspberry Pi with a debug hat for burning. `idfile` is the ssh ID file if you use one.
+1. Run `cargo xtask copy-precursors` to copy your newly built CPU to the staging area for firmware images
+1. (Optional) Run `cargo xtask docs` to create an HTML document tree of all the CPU registers
+
+### Building the firmware binaries
+1. Ensure that you have a toolchain installed, including a gcc compiler and Rust. gcc is necessary to handle the FFI bindings.
+1. Run `cargo xtask hw-image` to build the burnable ROM image artifacts
+
+### Updating the EC
+In case of any doubt the [wiki](https://github.com/betrusted-io/betrusted-wiki/wiki/Updating-Your-Device) is actively maintained
+and should be consulted if the instructions below seem out of date.
+
+1. Run `cargo xtask update` to copy the firmware artifacts to a Precursor that is attached via USB
+1. Run the EC updater command on the Precursor (`ecup`)
+
+Alternatively:
+
+2. Run `cargo xtask push <target> [idfile]` to push the files to a Raspberry Pi with a debug hat for burning. `idfile` is the ssh ID file if you use one.
+2. On the Raspberry Pi, run `config_up5k.sh` from the `betrusted-scripts` repo as explained below.
 
 ## Debugging Notes
 The UP5K is debugged principally via wishbone-tool running over a UART, using
