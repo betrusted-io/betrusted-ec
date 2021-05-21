@@ -81,20 +81,20 @@ fn push_to_pi(target: Option<String>, id: Option<String>) -> Result<(), DynError
         Some(tgt) => tgt + ":22",
         _ => {println!("Must specify a target for push."); return Err("Must specify a target for push".into())},
     };
-    let im_md5 = Command::new("md5sum")
-        .arg(&IMAGE_PATH)
-        .output();
-    match im_md5 {
-        Ok(md5) => print!("{}", std::str::from_utf8(&md5.stdout)?),
-        _ => return Err("md5sum check of image file failed".into()),
-    };
-    let csv_md5 = Command::new("md5sum")
-        .arg("precursors/csr.csv")
-        .output();
-    match csv_md5 {
-        Ok(md5) => print!("{}", std::str::from_utf8(&md5.stdout)?),
-        _ => return Err("md5sum check of csr.csv file failed".into()),
-    };
+
+    // print some short, non-cryptographic checksums so we can easily sanity check versions across machines
+    let mut csr_vec = Vec::new();
+    let mut csr_file = std::fs::File::open("precursors/csr.csv")?;
+    csr_file.read_to_end(&mut csr_vec)?;
+    let digest = md5::compute(&csr_vec);
+    print!("csr.csv: {}\n", format!("{:x}", digest));
+
+    let mut image_vec = Vec::new();
+    let mut image_file = std::fs::File::open(IMAGE_PATH)?;
+    image_file.read_to_end(&mut image_vec)?;
+    let digest_image = md5::compute(&image_vec);
+    print!("bt-ec.bin: {}\n", format!("{:x}", digest_image));
+
     let dest_str = DESTDIR.to_string() + DEST_FILE;
     let dest = Path::new(&dest_str);
     scp(&target_str.clone(), "pi", id.clone(), Path::new(&IMAGE_PATH), &dest);
