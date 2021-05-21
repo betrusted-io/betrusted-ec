@@ -112,6 +112,7 @@ fn update_usb() -> Result<(), DynError> {
 }
 
 fn copy_precursors() -> Result<(), DynError> {
+    println!("copying csr.csv, soc.svd, and betrusted_ec.bin from default build location to precursors/...");
     std::fs::copy("build/csr.csv", "precursors/csr.csv")?;
     std::fs::copy("build/software/soc.svd", "precursors/soc.svd")?;
     std::fs::copy("build/gateware/betrusted_ec.bin", "precursors/betrusted_ec.bin")?;
