@@ -13,8 +13,8 @@ const TARGET: &str = "riscv32i-unknown-none-elf";
 const IMAGE_PATH: &'static str = formatcp!("target/{}/release/bt-ec.bin", TARGET);
 const DEST_FILE: &'static str = formatcp!("bt-ec.bin");
 const DESTDIR: &'static str = "code/precursors/";
-const UPDATE_EC: &'static str = "precursors/ec-fw.bin";
-const UPDATE_WF: &'static str = "precursors/wf200-fw.bin";
+const UPDATE_EC: &'static str = "precursors/ec_fw.bin";
+const UPDATE_WF: &'static str = "precursors/wf200_fw.bin";
 
 fn main() {
     if let Err(e) = try_main() {
