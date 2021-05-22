@@ -4,14 +4,14 @@
 
 ### Installation: Linux
 
-* `pip3 install pyusb`
+* `pip3 install pyusb progressbar2`
 * you probably need to run as `sudo`: `sudo ./usb_update.py` to access the USB port; add the appropriate command line arguments
 * if you don't like using `sudo`, I hear somethig involving udev can solve this problem, but I've never been able to get it to work. If someone can contribute a simple, solid cross-distro guide to USB `udev` rules I'm guessing the Internet would appreciate it.
 
 ### Installation: Windows 10
 
 * You will need to install python3 from the Windows App store
-* Run `pip3 install pyusb` from a Powershell
+* Run `pip3 install pyusb progressbar2` from a Powershell
 * use [zadig](https://zadig.akeo.ie/) to remap `Precursor pvt2`'s Windows driver to `libusb-win32`
 * Run `python3 .\usb_update.py` (with your desired arguments) from a Powershell
 
