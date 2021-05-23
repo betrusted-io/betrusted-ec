@@ -197,7 +197,7 @@ class PrecursorUsb:
         )
 
     def load_csrs(self):
-        LOC_CSRCSV = 0x20278000
+        LOC_CSRCSV = 0x20278000 # this address shouldn't change because it's how we figure out our version number
 
         csr_data = self.burst_read(LOC_CSRCSV, 0x8000)
         hasher = hashlib.sha512()
@@ -342,12 +342,6 @@ def auto_int(x):
     return int(x, 0)
 
 def main():
-    LOC_SOC    = 0x00000000
-    LOC_LOADER = 0x00500000
-    LOC_KERNEL = 0x00980000
-    LOC_WF200  = 0x07F80000
-    LOC_EC     = 0x07FCE000
-
     parser = argparse.ArgumentParser(description="Update/upload to a Precursor device running Xous 0.8/0.9")
     parser.add_argument(
         "-s", "--soc", required=False, help="SoC gateware", type=str, nargs='?', metavar=('SoC gateware file'), const='soc_csr.bin'
@@ -381,6 +375,9 @@ def main():
     )
     parser.add_argument(
         "-n", "--no-verify", help="Skip readback verification (may be necessary for large files to avoid WDT timeout). Only honored with -i.", action='store_true'
+    )
+    parser.add_argument(
+        "-f", "--force", help="Ignore gitrev version on SoC and try to burn an image anyways", action="store_true"
     )
     args = parser.parse_args()
 
@@ -425,6 +422,23 @@ def main():
         exit(0)
 
     pc_usb.load_csrs() # prime the CSR values
+    if "v0.8" in pc_usb.gitrev:
+        LOC_SOC    = 0x00000000
+        LOC_LOADER = 0x00500000
+        LOC_KERNEL = 0x00980000
+        LOC_WF200  = 0x07F80000
+        LOC_EC     = 0x07FCE000
+    elif args.force == True:
+        # try the v0.8 offsets
+        LOC_SOC    = 0x00000000
+        LOC_LOADER = 0x00500000
+        LOC_KERNEL = 0x00980000
+        LOC_WF200  = 0x07F80000
+        LOC_EC     = 0x07FCE000
+    else:
+        print("SoC is from an unknow rev, use --force to continue anyways with v0.8 firmware offsets")
+        exit(1)
+
     vexdbg_addr = int(pc_usb.regions['vexriscv_debug'][0], 0)
     pc_usb.ping_wdt()
     print("Halting CPU.")
@@ -470,8 +484,15 @@ def main():
 
     print("Resuming CPU.")
     pc_usb.poke(vexdbg_addr, 0x02000000)
-    print("Resetting CPU...")
-    pc_usb.poke(pc_usb.register('reboot_cpu_reset'), 0x1, display=False)
+
+    print("Resetting SOC...")
+    try:
+        pc_usb.poke(pc_usb.register('reboot_soc_reset'), 0xac, display=False)
+    except usb.core.USBError:
+        pass # we expect an error because we reset the SOC and that includes the USB core
+
+    print("If you need to run more commands, please unplug and re-plug your device in, as the Precursor USB core was just reset")
 
 if __name__ == "__main__":
     main()
+    exit(0)

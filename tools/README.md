@@ -2,25 +2,38 @@
 
 ## usb_update.py
 
-### Installation: Linux
+`usb_update.py` is the script for copying firmware packages from a host onto a Precursor device.
 
-* `pip3 install pyusb progressbar2`
-* you probably need to run as `sudo`: `sudo ./usb_update.py` to access the USB port; add the appropriate command line arguments
-* if you don't like using `sudo`, I hear somethig involving udev can solve this problem, but I've never been able to get it to work. If someone can contribute a simple, solid cross-distro guide to USB `udev` rules I'm guessing the Internet would appreciate it.
+### Installation: Linux (Ubuntu/Debian)
+
+* `sudo pip3 install pyusb progressbar2` (you need `pyusb` and `progressbar2` in the sudo environment)
+* you probably need to run as `sudo`: `sudo ./usb_update.py [args]` to access the USB port; add the appropriate command line arguments
+
+If you don't like/can't use `sudo`, I hear something involving udev can solve this problem, but I've never been able to get it to work. If someone can contribute a simple, robust cross-distro guide to USB `udev` rules that ages well, I'm guessing the Internet would appreciate it.
 
 ### Installation: Windows 10
 
 * You will need to install python3 from the Windows App store
-* Run `pip3 install pyusb progressbar2` from a Powershell
+* Run `pip3 install pyusb progressbar2 [args]` from a Powershell
 * use [zadig](https://zadig.akeo.ie/) to remap `Precursor pvt2`'s Windows driver to `libusb-win32`
-* Run `python3 .\usb_update.py` (with your desired arguments) from a Powershell
+* Run `python3 .\usb_update.py [args]` from a Powershell; elevated privs are not necessary after using `zadig`.
 
 ![zadig screenshot](zadig.png)
 
-### Installation: MacOS
+### Installation: iOS
 
-We have no experience with MacOS, nor do we own any Apple machines. In short, we have no idea, and
-no way to figure it out or test it. If someone can contribute a guide that'd be great.
+We have no experience with iOS, nor do we own any modern Apple machines. In short, we have no idea
+how to iOS.
+
+I hear it's popular with the cool kids in Silicon Valley. If someone can contribute a guide that'd be great.
+
+### Performance Note
+
+Systems using an AMD Ryzen chipset run about 5x
+slower than others (e.g. Raspberry Pi, Intel chipsets). This holds true across Linux/Windows OS. The
+effect has been confirmed on both B450 and B550 Socket AM4 motherboards. It seems to be linked with
+full-speed packet rates being throttled on AMD motherboards by the chipset, but TBD. Write speed is
+~8.5kiB/s on AMD, vs ~44kiB/s on Raspberry Pi.
 
 ### Usage
 
