@@ -570,16 +570,16 @@ fn main() -> ! {
                 let mut address: u32 = 0;
                 let mut page: [u8; 256] = [0; 256];
                 // receive address in "network order" (big endian)
-                match com_rx(100) {
+                match com_rx(200) {
                     Ok(result) => address = (result as u32) << 16,
                     _ => error = true,
                 }
-                match com_rx(100) {
+                match com_rx(200) {
                     Ok(result) => address |= (result as u32) & 0xFFFF,
                     _ => error = true,
                 }
                 for i in 0..128 {
-                    match com_rx(100) {
+                    match com_rx(200) {
                         Ok(result) => {
                             let b = result.to_le_bytes();
                             page[i*2] = b[0];
