@@ -254,10 +254,10 @@ pub fn spi_erase_region(addr: u32, len: u32) {
                 break;
             }
         }
-        if (len - erased >= 0x1_0000) && ((addr & 0xFFFF) == 0) {
+        if (len - erased >= 0x1_0000) && (((addr + erased) & 0xFFFF) == 0) {
             spi_cmd(CMD_BE64K, Some(addr + erased), None);
             erased += 65536;
-        } else if (len - erased >= 0x8000) && ((addr & 0x7FFF) == 0) {
+        } else if (len - erased >= 0x8000) && (((addr + erased) & 0x7FFF) == 0) {
             spi_cmd(CMD_BE32K, Some(addr + erased), None);
             erased += 32768;
         } else {
