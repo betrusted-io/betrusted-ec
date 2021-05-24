@@ -132,7 +132,7 @@ fn com_rx(timeout: u32) -> Result<u16, &'static str> {
     let com_rd_ptr: *mut u32 = utralib::HW_COM_MEM as *mut u32;
     let com_rd = com_rd_ptr as *mut Volatile<u32>;
 
-    if timeout != 0 && (com_csr.rf(utra::com::STATUS_RX_AVAIL) != 0) {
+    if timeout != 0 && (com_csr.rf(utra::com::STATUS_RX_AVAIL) == 0) {
         let start = get_time_ms();
         loop {
             if com_csr.rf(utra::com::STATUS_RX_AVAIL) == 1 {
@@ -570,11 +570,11 @@ fn main() -> ! {
                 let mut address: u32 = 0;
                 let mut page: [u8; 256] = [0; 256];
                 // receive address in "network order" (big endian)
-                match com_rx(200) {
+                match com_rx(100) {
                     Ok(result) => address = (result as u32) << 16,
                     _ => error = true,
                 }
-                match com_rx(200) {
+                match com_rx(100) {
                     Ok(result) => address |= (result as u32) & 0xFFFF,
                     _ => error = true,
                 }
