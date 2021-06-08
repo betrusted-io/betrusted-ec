@@ -614,7 +614,7 @@ class BaseSoC(SoCCore):
         self.add_interrupt("i2c")
 
         # High-resolution tick timer ---------------------------------------------------------------------
-        self.submodules.ticktimer = TickTimer(1000, clk_freq, bits=40)
+        self.submodules.ticktimer = TickTimer(1000, clk_freq, bits=32)
         self.add_csr("ticktimer")
         self.add_interrupt("ticktimer")
 
