@@ -1,4 +1,5 @@
 #[cfg(feature = "debug_uart")]
+use betrusted_hal::hal_time::delay_ms;
 use utralib::generated::*;
 
 pub struct Uart {
@@ -8,9 +9,16 @@ pub struct Uart {
 impl Uart {
     pub fn putc(&self, c: u8) {
         let mut uart_csr = CSR::new(HW_UART_BASE as *mut u32);
-        // Wait until TXFULL is `0`
-        while uart_csr.rf(utra::uart::TXFULL_TXFULL) != 0 {}
-        uart_csr.wfo(utra::uart::RXTX_RXTX, c as u32)
+        if uart_csr.rf(utra::uart::TXFULL_TXFULL) == 1 {
+            // If nobody has connected `wishbone-tool ... -s terminal ...` to
+            // the debug UART, TXFULL will get stuck at 1. Also possible for
+            // connection to be okay but debug prints happening too quickly.
+            delay_ms(10);
+        }
+        // Caution! This silently drops a character if TX buffer is still full
+        if uart_csr.rf(utra::uart::TXFULL_TXFULL) == 0 {
+            uart_csr.wfo(utra::uart::RXTX_RXTX, c as u32);
+        }
     }
 }
 

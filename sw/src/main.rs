@@ -145,7 +145,43 @@ fn com_rx(timeout: u32) -> Result<u16, &'static str> {
     Ok(unsafe{ (*com_rd).read() as u16 })
 }
 
+static mut LL_DEBUG_MUTED: bool = true;
+
+fn ll_debug_mute() {
+    unsafe { LL_DEBUG_MUTED = true; }
+}
+
+fn ll_debug_unmute() {
+    unsafe { LL_DEBUG_MUTED = false; }
+}
+
 fn ll_debug(msg: &str) {
+    let uart_csr = utralib::generated::CSR::new(HW_UART_BASE as *mut u32);
+    // Anticipate intermittent wishbone-bridge crossover UART connection
+    // (perhaps interupted by keyboard scan)
+    if unsafe{ LL_DEBUG_MUTED } {
+        if uart_csr.rf(utra::uart::TXEMPTY_TXEMPTY) == 1 {
+            // Yay... looks like wishbone-bridge connection is back up!
+            ll_debug_unmute();
+        } else {
+            return;
+        }
+    } else {
+        if uart_csr.rf(utra::uart::TXFULL_TXFULL) == 1 {
+            // Hmm... TX buffer is backed up, so watch to see if it drains...
+            for _ in 0..10 {
+                delay_ms(5);
+                if uart_csr.rf(utra::uart::TXFULL_TXFULL) == 0 {
+                    break;
+                }
+            }
+            if uart_csr.rf(utra::uart::TXFULL_TXFULL) == 1 {
+                // Boo... Nope. Looks like the wishbone-bridge connection is down.
+                ll_debug_mute();
+                return;
+            }
+        }
+    }
     if cfg!(feature = "debug_uart") && true { // extra boolean for finer-grained control of debug spew
         sprintln!("{}", msg);
         // delay_ms(50);
@@ -154,10 +190,23 @@ fn ll_debug(msg: &str) {
 
 #[entry]
 fn main() -> ! {
+    let uart_csr = utralib::generated::CSR::new(HW_UART_BASE as *mut u32);
     /* loop {  // a tiny sanity check stub
         (debug::Uart {}).putc('a' as u8);
     } */
+    ll_debug_unmute();
     ll_debug("Hello world!");
+    // Check to see if the initial message gets removed from the TX buffer
+    // within a reasonble timeout. Use that as a heuristic to decide whether
+    // any further debug messages should be printed to the UART.
+    ll_debug_mute();
+    for _ in 0..20 {
+        delay_ms(5);
+        if uart_csr.rf(utra::uart::TXEMPTY_TXEMPTY) == 1 {
+            ll_debug_unmute();
+            break;
+        }
+    }
     let mut power_csr = CSR::new(HW_POWER_BASE as *mut u32);
     let mut com_csr = CSR::new(HW_COM_BASE as *mut u32);
     let mut crg_csr = CSR::new(HW_CRG_BASE as *mut u32);
