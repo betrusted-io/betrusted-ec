@@ -157,7 +157,7 @@ fn main() -> ! {
     /* loop {  // a tiny sanity check stub
         (debug::Uart {}).putc('a' as u8);
     } */
-    ll_debug("Hello world!");
+    ll_debug("\r\n====UP5K====");
     let mut power_csr = CSR::new(HW_POWER_BASE as *mut u32);
     let mut com_csr = CSR::new(HW_COM_BASE as *mut u32);
     let mut crg_csr = CSR::new(HW_CRG_BASE as *mut u32);
