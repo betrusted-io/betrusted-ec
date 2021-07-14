@@ -10,29 +10,29 @@ extern crate betrusted_hal;
 extern crate utralib;
 extern crate volatile;
 
-use betrusted_hal::hal_hardi2c::*;
-use betrusted_hal::hal_time::*;
+use betrusted_hal::api_bq25618::*;
 use betrusted_hal::api_gasgauge::*;
 use betrusted_hal::api_lm3509::*;
-use betrusted_hal::api_bq25618::*;
 use betrusted_hal::api_tusb320::*;
+use betrusted_hal::hal_hardi2c::*;
+use betrusted_hal::hal_time::*;
 
-extern crate wfx_sys;
-extern crate wfx_rs;
 extern crate wfx_bindings;
+extern crate wfx_rs;
+extern crate wfx_sys;
 
 extern crate xous_nommu;
+use wfx_bindings::*;
+use wfx_rs::hal_wf200::wf200_get_rx_stats_raw;
+use wfx_rs::hal_wf200::wf200_mutex_get;
+use wfx_rs::hal_wf200::wf200_send_pds;
+use wfx_rs::hal_wf200::wf200_ssid_get_list;
+use wfx_rs::hal_wf200::wf200_ssid_updated;
+use wfx_rs::hal_wf200::wfx_handle_event;
 use wfx_rs::hal_wf200::wfx_init;
 use wfx_rs::hal_wf200::wfx_scan_ongoing;
 use wfx_rs::hal_wf200::wfx_start_scan;
-use wfx_rs::hal_wf200::wfx_handle_event;
-use wfx_rs::hal_wf200::wf200_mutex_get;
-use wfx_rs::hal_wf200::wf200_ssid_get_list;
-use wfx_rs::hal_wf200::wf200_ssid_updated;
-use wfx_rs::hal_wf200::wf200_get_rx_stats_raw;
-use wfx_rs::hal_wf200::wf200_send_pds;
 use wfx_rs::hal_wf200::{wf200_fw_build, wf200_fw_major, wf200_fw_minor};
-use wfx_bindings::*;
 
 use gyro_rs::hal_gyro::BtGyro;
 
@@ -47,13 +47,13 @@ use spi::*;
 extern crate com_rs;
 use com_rs::*;
 
-const BATTERY_PANIC_VOLTAGE: i16 = 3500;  // this is the voltage that we hard shut down the device to avoid battery damage
-const BATTERY_LOW_VOLTAGE: i16 = 3575;  // this is the reserve voltage where we attempt to shut off the SoC so that BBRAM keys, RTC are preserved
+const BATTERY_PANIC_VOLTAGE: i16 = 3500; // this is the voltage that we hard shut down the device to avoid battery damage
+const BATTERY_LOW_VOLTAGE: i16 = 3575; // this is the reserve voltage where we attempt to shut off the SoC so that BBRAM keys, RTC are preserved
 
 const CONFIG_CLOCK_FREQUENCY: u32 = 18_000_000;
 
 // allocate a global, unsafe static string for debug output
-#[used]  // This is necessary to keep DBGSTR from being optimized out
+#[used] // This is necessary to keep DBGSTR from being optimized out
 static mut DBGSTR: [u32; 4] = [0, 0, 0, 0];
 
 #[panic_handler]
@@ -71,26 +71,26 @@ fn ticktimer_int_handler(_irq_no: usize) {
     crg_csr.wfo(utra::crg::WATCHDOG_RESET_CODE, 0xc0de);
 
     // fast-monitor the keyboard wakeup inputs if the soc is in the off state
-    if (power_csr.rf(utra::power::POWER_SOC_ON) == 0) && (power_csr.rf(utra::power::STATS_STATE) == 0) {
+    if (power_csr.rf(utra::power::POWER_SOC_ON) == 0)
+        && (power_csr.rf(utra::power::STATS_STATE) == 0)
+    {
         // drive sense for keyboard
-        let power =
-        power_csr.ms(utra::power::POWER_SELF, 1)
-        | power_csr.ms(utra::power::POWER_DISCHARGE, 1)
-        | power_csr.ms(utra::power::POWER_KBDDRIVE, 1);
+        let power = power_csr.ms(utra::power::POWER_SELF, 1)
+            | power_csr.ms(utra::power::POWER_DISCHARGE, 1)
+            | power_csr.ms(utra::power::POWER_KBDDRIVE, 1);
         power_csr.wo(utra::power::POWER, power);
 
-        if power_csr.rf(utra::power::STATS_MONKEY) == 3 { // both keys have to be hit
+        if power_csr.rf(utra::power::STATS_MONKEY) == 3 {
+            // both keys have to be hit
             // power on the SOC
-            let power =
-            power_csr.ms(utra::power::POWER_SELF, 1)
-            | power_csr.ms(utra::power::POWER_SOC_ON, 1);
+            let power = power_csr.ms(utra::power::POWER_SELF, 1)
+                | power_csr.ms(utra::power::POWER_SOC_ON, 1);
             power_csr.wo(utra::power::POWER, power);
         } else {
             // re-engage discharge fets, disable keyboard drive
-            let power =
-            power_csr.ms(utra::power::POWER_SELF, 1)
-            | power_csr.ms(utra::power::POWER_KBDDRIVE, 0)
-            | power_csr.ms(utra::power::POWER_DISCHARGE, 1);
+            let power = power_csr.ms(utra::power::POWER_SELF, 1)
+                | power_csr.ms(utra::power::POWER_KBDDRIVE, 0)
+                | power_csr.ms(utra::power::POWER_DISCHARGE, 1);
             power_csr.wo(utra::power::POWER, power);
         }
     }
@@ -106,7 +106,7 @@ fn com_int_handler(_irq_no: usize) {
     com_csr.wfo(utra::com::EV_PENDING_SPI_AVAIL, 1);
 }
 
-#[allow(dead_code)]  // used for debugging
+#[allow(dead_code)] // used for debugging
 fn dump_rom_addr(addr: u32) {
     let rom_ptr: *mut u32 = (addr + HW_SPIFLASH_MEM as u32) as *mut u32;
     let rom = rom_ptr as *mut Volatile<u32>;
@@ -114,8 +114,14 @@ fn dump_rom_addr(addr: u32) {
         if i % 8 == 0 {
             sprint!("\n\r0x{:06x}: ", addr + i * 4);
         }
-        let data: u32 = unsafe{(*rom.add(i as usize)).read()};
-        sprint!("{:02x} {:02x} {:02x} {:02x} ", data & 0xFF, (data >> 8) & 0xff, (data >> 16) & 0xff, (data >> 24) & 0xff);
+        let data: u32 = unsafe { (*rom.add(i as usize)).read() };
+        sprint!(
+            "{:02x} {:02x} {:02x} {:02x} ",
+            data & 0xFF,
+            (data >> 8) & 0xff,
+            (data >> 16) & 0xff,
+            (data >> 24) & 0xff
+        );
     }
     sprintln!("");
 }
@@ -124,7 +130,9 @@ fn com_tx(tx: u16) {
     let com_ptr: *mut u32 = utralib::HW_COM_MEM as *mut u32;
     let com_fifo = com_ptr as *mut Volatile<u32>;
 
-    unsafe{ (*com_fifo).write(tx as u32); }
+    unsafe {
+        (*com_fifo).write(tx as u32);
+    }
 }
 
 fn com_rx(timeout: u32) -> Result<u16, &'static str> {
@@ -138,15 +146,16 @@ fn com_rx(timeout: u32) -> Result<u16, &'static str> {
             if com_csr.rf(utra::com::STATUS_RX_AVAIL) == 1 {
                 break;
             } else if start + timeout < get_time_ms() {
-                return Err("timeout")
+                return Err("timeout");
             }
         }
     }
-    Ok(unsafe{ (*com_rd).read() as u16 })
+    Ok(unsafe { (*com_rd).read() as u16 })
 }
 
 fn ll_debug(msg: &str) {
-    if cfg!(feature = "debug_uart") && true { // extra boolean for finer-grained control of debug spew
+    if cfg!(feature = "debug_uart") && true {
+        // extra boolean for finer-grained control of debug spew
         sprintln!("{}", msg);
         // delay_ms(50);
     }
@@ -185,9 +194,9 @@ fn main() -> ! {
     let mut charger: BtCharger = BtCharger::new();
     ll_debug("charger");
 
-    let mut last_run_time : u32 = get_time_ms();
+    let mut last_run_time: u32 = get_time_ms();
     let mut loopcounter: u32 = 0; // in seconds, so this will last ~125 years
-    let mut voltage : i16 = 0;
+    let mut voltage: i16 = 0;
     let mut last_voltage = voltage;
     let mut current: i16 = 0;
     let mut stby_current: i16 = 0;
@@ -195,7 +204,11 @@ fn main() -> ! {
     let mut soc_was_on: bool;
     let mut battery_panic = false;
     let mut voltage_glitch: bool = false;
-    if power_csr.rf(utra::power::STATS_STATE) == 1 { soc_was_on = true; } else { soc_was_on = false; }
+    if power_csr.rf(utra::power::STATS_STATE) == 1 {
+        soc_was_on = true;
+    } else {
+        soc_was_on = false;
+    }
 
     // this needs to be one of the first things called after I2C comes up
     charger.chg_set_safety(&mut i2c);
@@ -218,7 +231,7 @@ fn main() -> ! {
     gyro.init();
     ll_debug("gyro_init");
 
-    let mut backlight : BtBacklight = BtBacklight::new();
+    let mut backlight: BtBacklight = BtBacklight::new();
     backlight.set_brightness(&mut i2c, 0, 0); // make sure the backlight is off on boot
     ll_debug("backlight");
 
@@ -236,30 +249,35 @@ fn main() -> ! {
     // check that the gas gauge capacity is correct; if not, reset it
     if gg_set_design_capacity(&mut i2c, None) != 1100 {
         gg_set_design_capacity(&mut i2c, Some(1100));
-    } */  // seems to work better with the default 1340mAh capacity even though that's not our actual capacity
+    } */
+ // seems to work better with the default 1340mAh capacity even though that's not our actual capacity
 
-/*  // kept around as a quick test routine for SPI flashing
-    let mut idcode: [u8; 3] = [0; 3];
-    spi_cmd(CMD_RDID, None, Some(&mut idcode));
-    sprintln!("SPI ID code: {:02x} {:02x} {:02x}", idcode[0], idcode[1], idcode[2]);
-    let test_addr = 0x8_0000;
-    dump_rom_addr(test_addr);
-    spi_erase_region(test_addr, 4096);
+    /*  // kept around as a quick test routine for SPI flashing
+        let mut idcode: [u8; 3] = [0; 3];
+        spi_cmd(CMD_RDID, None, Some(&mut idcode));
+        sprintln!("SPI ID code: {:02x} {:02x} {:02x}", idcode[0], idcode[1], idcode[2]);
+        let test_addr = 0x8_0000;
+        dump_rom_addr(test_addr);
+        spi_erase_region(test_addr, 4096);
 
-    dump_rom_addr(test_addr);
+        dump_rom_addr(test_addr);
 
-    let mut test_data: [u8; 256] = [0; 256];
-    for i in 0..256 {
-        test_data[i] = (255 - i) as u8;
-    }
-    spi_program_page(test_addr, &mut test_data);
+        let mut test_data: [u8; 256] = [0; 256];
+        for i in 0..256 {
+            test_data[i] = (255 - i) as u8;
+        }
+        spi_program_page(test_addr, &mut test_data);
 
-    dump_rom_addr(test_addr);
-*/
+        dump_rom_addr(test_addr);
+    */
     spi_standby(); // make sure the OE's are off, no spurious power consumption
     ll_debug("spi_standby");
 
-    xous_nommu::syscalls::sys_interrupt_claim(utra::ticktimer::TICKTIMER_IRQ, ticktimer_int_handler).unwrap();
+    xous_nommu::syscalls::sys_interrupt_claim(
+        utra::ticktimer::TICKTIMER_IRQ,
+        ticktimer_int_handler,
+    )
+    .unwrap();
     set_msleep_target_ticks(50);
     ticktimer_csr.wfo(utra::ticktimer::EV_PENDING_ALARM, 1); // clear the pending signal just in case
     ticktimer_csr.wfo(utra::ticktimer::EV_ENABLE_ALARM, 1); // enable the interrupt
@@ -275,7 +293,7 @@ fn main() -> ! {
     xous_nommu::syscalls::sys_interrupt_claim(utra::com::COM_IRQ, com_int_handler).unwrap();
     com_csr.wfo(utra::com::EV_ENABLE_SPI_AVAIL, 1);
 
-    let mut com_sentinel: u16 = 0;  // for link debugging mostly
+    let mut com_sentinel: u16 = 0; // for link debugging mostly
     let mut flash_update_lock = false;
     let mut do_scan = false;
     ll_debug("main loop");
@@ -299,7 +317,7 @@ fn main() -> ! {
                 if wifi_ready && use_wifi {
                     if get_time_ms() - start_time > 20_000 {
                         sprintln!("starting ssid scan");
-                        wfx_start_scan();  // turn this off for FCC testing
+                        wfx_start_scan(); // turn this off for FCC testing
                         start_time = get_time_ms();
                     }
                 }
@@ -308,7 +326,8 @@ fn main() -> ! {
                     // while handling this packet, we have a chance of detecting that.
                     // we lack mutexes, so we need to think about this behavior very carefully.
 
-                    if wf200_mutex_get() { // don't process events while the driver has locked us out
+                    if wf200_mutex_get() {
+                        // don't process events while the driver has locked us out
                         wfx_rs::hal_wf200::wf200_event_clear();
 
                         // handle the Rx packet
@@ -339,7 +358,8 @@ fn main() -> ! {
                     }
                 } else {
                     voltage = gg_voltage(&mut i2c);
-                    if voltage < 0 { // there are monitoring glitches during charge mode transitions, try to catch and filter them out
+                    if voltage < 0 {
+                        // there are monitoring glitches during charge mode transitions, try to catch and filter them out
                         voltage = last_voltage;
                         voltage_glitch = true;
                     }
@@ -349,16 +369,18 @@ fn main() -> ! {
                         if cursoc < 5 && battery_panic {
                             // in case of a cold boot, give the charger a few seconds to recognize charging and raise the voltage
                             // also don't attempt to go shipmode if the charger is indicating it is trying to charge
-                            if get_time_ticks() > 8000 && !charger.chg_is_charging(&mut i2c, false) && gg_voltage(&mut i2c) < BATTERY_PANIC_VOLTAGE {
+                            if get_time_ticks() > 8000
+                                && !charger.chg_is_charging(&mut i2c, false)
+                                && gg_voltage(&mut i2c) < BATTERY_PANIC_VOLTAGE
+                            {
                                 // put the device into "shipmode" which disconnects the battery from the system
                                 // NOTE: this may cause the loss of volatile keys
                                 backlight.set_brightness(&mut i2c, 0, 0); // make sure the backlight is off
 
                                 charger.set_shipmode(&mut i2c);
                                 gg_set_hibernate(&mut i2c);
-                                let power =
-                                power_csr.ms(utra::power::POWER_SELF, 1)
-                                | power_csr.ms(utra::power::POWER_DISCHARGE, 1);
+                                let power = power_csr.ms(utra::power::POWER_SELF, 1)
+                                    | power_csr.ms(utra::power::POWER_DISCHARGE, 1);
                                 power_csr.wo(utra::power::POWER, power);
                                 set_msleep_target_ticks(500);
                                 delay_ms(16_000); // 15s max time for ship mode to kick in, add 1s just to be safe
@@ -396,14 +418,17 @@ fn main() -> ! {
                         // only sample if the last state was also powered off, so we aren't averaging in ~1s worth of "power on" current while this loop triggers
                         stby_current = gg_avg_current(&mut i2c);
                     }
-                    if power_csr.rf(utra::power::STATS_STATE) == 1 { soc_was_on = true; } else { soc_was_on = false; }
+                    if power_csr.rf(utra::power::STATS_STATE) == 1 {
+                        soc_was_on = true;
+                    } else {
+                        soc_was_on = false;
+                    }
                 }
 
                 // check if we should turn the SoC on or not based on power status change events
                 if charger.chg_is_charging(&mut i2c, false) {
                     // sprintln!("charger insert or soc on event!");
-                    let power =
-                        power_csr.ms(utra::power::POWER_SELF, 1)
+                    let power = power_csr.ms(utra::power::POWER_SELF, 1)
                         | power_csr.ms(utra::power::POWER_SOC_ON, 1)
                         | power_csr.ms(utra::power::POWER_DISCHARGE, 0);
                     power_csr.wo(utra::power::POWER, power); // turn off discharge if the soc is up
@@ -420,16 +445,23 @@ fn main() -> ! {
             // note: this line is occasionally re-asserted whenever the charger is detected as present
 
             let rx: u16;
-            unsafe{ rx = (*com_rd).read() as u16; }
+            unsafe {
+                rx = (*com_rd).read() as u16;
+            }
 
             if rx == ComState::SSID_CHECK.verb {
-                if wf200_ssid_updated() { com_tx(1); } else { com_tx(0); }
+                if wf200_ssid_updated() {
+                    com_tx(1);
+                } else {
+                    com_tx(0);
+                }
             } else if rx == ComState::SSID_FETCH.verb {
                 let ssid_list = wf200_ssid_get_list();
 
                 for index in 0..16 * 6 {
-                    com_tx(ssid_list[index / 16].ssid[(index % 16)*2] as u16 |
-                                ((ssid_list[index / 16].ssid[(index % 16)*2+1] as u16) << 8)
+                    com_tx(
+                        ssid_list[index / 16].ssid[(index % 16) * 2] as u16
+                            | ((ssid_list[index / 16].ssid[(index % 16) * 2 + 1] as u16) << 8),
                     );
                 }
             } else if rx == ComState::LOOP_TEST.verb {
@@ -464,10 +496,14 @@ fn main() -> ! {
                 let old_capacity = gg_set_design_capacity(&mut i2c, None);
                 com_tx(old_capacity);
             } else if rx == ComState::GG_DEBUG.verb {
-                if voltage_glitch { com_tx(1); } else { com_tx(0); }
+                if voltage_glitch {
+                    com_tx(1);
+                } else {
+                    com_tx(0);
+                }
                 voltage_glitch = false;
             } else if rx == ComState::STAT.verb {
-                com_tx(0x8888);  // first is just a response to the initial command
+                com_tx(0x8888); // first is just a response to the initial command
                 charger.update_regs(&mut i2c);
                 for i in 0..0xC {
                     com_tx(charger.registers[i] as u16);
@@ -480,64 +516,73 @@ fn main() -> ! {
                 // ignore rapid, successive power down requests
                 backlight.set_brightness(&mut i2c, 0, 0); // make sure the backlight is off
                 if get_time_ms() - pd_loop_timer > 1500 {
-                    let power =
-                    power_csr.ms(utra::power::POWER_SELF, 1)
-                    | power_csr.ms(utra::power::POWER_DISCHARGE, 1);
+                    let power = power_csr.ms(utra::power::POWER_SELF, 1)
+                        | power_csr.ms(utra::power::POWER_DISCHARGE, 1);
                     power_csr.wo(utra::power::POWER, power);
 
                     set_msleep_target_ticks(500); // extend next service so we can discharge
 
                     pd_loop_timer = get_time_ms();
                 }
-            } else if rx ==  ComState::POWER_SHIPMODE.verb {
+            } else if rx == ComState::POWER_SHIPMODE.verb {
                 backlight.set_brightness(&mut i2c, 0, 0); // make sure the backlight is off
                 charger.set_shipmode(&mut i2c);
                 gg_set_hibernate(&mut i2c);
-                let power =
-                power_csr.ms(utra::power::POWER_SELF, 1)
-                | power_csr.ms(utra::power::POWER_DISCHARGE, 1);
+                let power = power_csr.ms(utra::power::POWER_SELF, 1)
+                    | power_csr.ms(utra::power::POWER_DISCHARGE, 1);
                 power_csr.wo(utra::power::POWER, power);
                 set_msleep_target_ticks(500); // extend next service so we can discharge
 
                 pd_loop_timer = get_time_ms();
-            } else if rx ==  ComState::POWER_CHARGER_STATE.verb {
-                if charger.chg_is_charging(&mut i2c, false) { com_tx(1); } else { com_tx(0); }
+            } else if rx == ComState::POWER_CHARGER_STATE.verb {
+                if charger.chg_is_charging(&mut i2c, false) {
+                    com_tx(1);
+                } else {
+                    com_tx(0);
+                }
             } else if rx == ComState::GG_SOC.verb {
                 com_tx(gg_state_of_charge(&mut i2c) as u16);
             } else if rx == ComState::GG_REMAINING.verb {
                 com_tx(gg_remaining_capacity(&mut i2c) as u16);
             } else if rx == ComState::GG_FULL_CAPACITY.verb {
                 com_tx(gg_full_capacity(&mut i2c) as u16);
-            } else if rx ==  ComState::GYRO_UPDATE.verb {
+            } else if rx == ComState::GYRO_UPDATE.verb {
                 gyro.update_xyz();
-            } else if rx ==  ComState::GYRO_READ.verb {
+            } else if rx == ComState::GYRO_READ.verb {
                 com_tx(gyro.x);
                 com_tx(gyro.y);
                 com_tx(gyro.z);
                 com_tx(gyro.id as u16);
             } else if rx == ComState::POLL_USB_CC.verb {
-                if usb_cc_event { com_tx(1) } else { com_tx(0) }
+                if usb_cc_event {
+                    com_tx(1)
+                } else {
+                    com_tx(0)
+                }
                 usb_cc_event = false; // clear the usb_cc_event pending flag as its been checked
                 for i in 0..3 {
                     com_tx(usb_cc.status[i] as u16);
                 }
                 com_tx(tusb320_rev as u16);
-            } else if rx == ComState::CHG_START.verb { // charging mode
+            } else if rx == ComState::CHG_START.verb {
+                // charging mode
                 charger.chg_start(&mut i2c);
-            } else if rx == ComState::CHG_BOOST_ON.verb { // boost on
+            } else if rx == ComState::CHG_BOOST_ON.verb {
+                // boost on
                 charger.chg_boost(&mut i2c);
-            } else if rx == ComState::CHG_BOOST_OFF.verb { // boost off
+            } else if rx == ComState::CHG_BOOST_OFF.verb {
+                // boost off
                 charger.chg_boost_off(&mut i2c);
             } else if rx >= ComState::BL_START.verb && rx <= ComState::BL_END.verb {
                 let main_bl_level: u8 = (rx & 0x1F) as u8;
                 let sec_bl_level: u8 = ((rx >> 5) & 0x1F) as u8;
                 backlight.set_brightness(&mut i2c, main_bl_level, sec_bl_level);
             } else if rx == ComState::LINK_READ.verb {
-                    // this a "read continuation" command, in other words, return read data
-                    // based on the current ComState
+                // this a "read continuation" command, in other words, return read data
+                // based on the current ComState
             } else if rx == ComState::LINK_SYNC.verb {
                 // sync link command, when received, empty all the FIFOs, and prime Tx with dummy data
-                com_csr.wfo(utra::com::CONTROL_RESET, 1);  // reset fifos
+                com_csr.wfo(utra::com::CONTROL_RESET, 1); // reset fifos
                 com_csr.wfo(utra::com::CONTROL_CLRERR, 1); // clear all error flags
             } else if rx == ComState::FLASH_ERASE.verb {
                 let mut error = false;
@@ -582,9 +627,9 @@ fn main() -> ! {
                     match com_rx(200) {
                         Ok(result) => {
                             let b = result.to_le_bytes();
-                            page[i*2] = b[0];
-                            page[i*2+1] = b[1];
-                        },
+                            page[i * 2] = b[0];
+                            page[i * 2 + 1] = b[1];
+                        }
                         _ => error = true,
                     }
                 }
@@ -602,10 +647,11 @@ fn main() -> ! {
                 com_tx(ComState::FLASH_ACK.verb);
             } else if rx == ComState::WFX_RXSTAT_GET.verb {
                 let rx_stat_raw: [u8; 376] = wf200_get_rx_stats_raw();
-                for i in 0..rx_stat_raw.len()/2 {
-                    com_tx( rx_stat_raw[i*2] as u16 | ((rx_stat_raw[i*2+1] as u16) << 8));
+                for i in 0..rx_stat_raw.len() / 2 {
+                    com_tx(rx_stat_raw[i * 2] as u16 | ((rx_stat_raw[i * 2 + 1] as u16) << 8));
                 }
-            } else if rx == ComState::WFX_PDS_LINE_SET.verb { // set one line of the PDS record (up to 256 bytes length)
+            } else if rx == ComState::WFX_PDS_LINE_SET.verb {
+                // set one line of the PDS record (up to 256 bytes length)
                 let mut error = false;
                 let mut pds_data: [u8; 256] = [0; 256];
                 let mut pds_length: u16 = 0;
@@ -613,21 +659,24 @@ fn main() -> ! {
                     Ok(result) => pds_length = result,
                     _ => error = true,
                 }
-                if pds_length >= 256 { // length is in BYTES not words
+                if pds_length >= 256 {
+                    // length is in BYTES not words
                     error = true;
                 }
                 // even if length error, do receive, because we have to clear the rx queue for proper operation
-                for i in 0..128 as usize { // ALWAYS expect 128 pds data elements, even if length < 256
+                for i in 0..128 as usize {
+                    // ALWAYS expect 128 pds data elements, even if length < 256
                     match com_rx(500) {
                         Ok(result) => {
                             let b = result.to_le_bytes();
-                            pds_data[i*2] = b[0];
-                            pds_data[i*2+1] = b[1];
-                        },
+                            pds_data[i * 2] = b[0];
+                            pds_data[i * 2 + 1] = b[1];
+                        }
                         _ => error = true,
                     }
                 }
-                if false { // nuggets for debugging PDS issues
+                if false {
+                    // nuggets for debugging PDS issues
                     ll_debug("got wfx_pds_line_set command");
                     //let s = unsafe{ core::str::from_utf8_unchecked(&pds_data[0..(pds_length as usize)]) };
                     //ll_debug(s);
@@ -639,16 +688,16 @@ fn main() -> ! {
                 if !error {
                     wf200_send_pds(pds_data, pds_length);
                 }
-                com_csr.wfo(utra::com::CONTROL_RESET, 1);  // reset fifos
+                com_csr.wfo(utra::com::CONTROL_RESET, 1); // reset fifos
                 com_csr.wfo(utra::com::CONTROL_CLRERR, 1); // clear all error flags
             } else if rx == ComState::WFX_FW_REV_GET.verb {
                 com_tx(wf200_fw_major() as u16);
                 com_tx(wf200_fw_minor() as u16);
                 com_tx(wf200_fw_build() as u16);
             } else if rx == ComState::EC_GIT_REV.verb {
-                com_tx( (git_csr.rf(utra::git::GITREV_GITREV) >> 16) as u16);
-                com_tx( (git_csr.rf(utra::git::GITREV_GITREV) & 0xFFFF) as u16);
-                com_tx( git_csr.rf(utra::git::DIRTY_DIRTY) as u16 );
+                com_tx((git_csr.rf(utra::git::GITREV_GITREV) >> 16) as u16);
+                com_tx((git_csr.rf(utra::git::GITREV_GITREV) & 0xFFFF) as u16);
+                com_tx(git_csr.rf(utra::git::DIRTY_DIRTY) as u16);
             } else if rx == ComState::WF200_RESET.verb {
                 match com_rx(250) {
                     Ok(result) => {
@@ -665,7 +714,7 @@ fn main() -> ! {
                             use_wifi = false;
                             wifi_csr.rmwf(utra::wifi::WIFI_RESET, 1);
                         }
-                    },
+                    }
                     _ => {
                         // default to a normal reset
                         wifi_ready = false;
@@ -675,7 +724,7 @@ fn main() -> ! {
                         wifi_csr.rmwf(utra::wifi::WIFI_RESET, 0);
                         delay_ms(10);
                         start_time = get_time_ms();
-                    },
+                    }
                 }
             } else if rx == ComState::SSID_SCAN_ON.verb {
                 do_scan = true;
