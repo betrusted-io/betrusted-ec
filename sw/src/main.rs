@@ -10,19 +10,24 @@ extern crate betrusted_hal;
 extern crate utralib;
 extern crate volatile;
 
-use betrusted_hal::api_bq25618::*;
-use betrusted_hal::api_gasgauge::*;
-use betrusted_hal::api_lm3509::*;
-use betrusted_hal::api_tusb320::*;
-use betrusted_hal::hal_hardi2c::*;
-use betrusted_hal::hal_time::*;
+use betrusted_hal::api_bq25618::BtCharger;
+use betrusted_hal::api_gasgauge::{
+    gg_avg_current, gg_full_capacity, gg_remaining_capacity, gg_set_design_capacity,
+    gg_set_hibernate, gg_start, gg_state_of_charge, gg_voltage,
+};
+use betrusted_hal::api_lm3509::BtBacklight;
+use betrusted_hal::api_tusb320::BtUsbCc;
+use betrusted_hal::hal_hardi2c::Hardi2c;
+use betrusted_hal::hal_time::{
+    delay_ms, get_time_ms, get_time_ticks, set_msleep_target_ticks, time_init,
+};
 
 extern crate wfx_bindings;
 extern crate wfx_rs;
 extern crate wfx_sys;
 
 extern crate xous_nommu;
-use wfx_bindings::*;
+use wfx_bindings::SL_STATUS_OK;
 use wfx_rs::hal_wf200::wf200_get_rx_stats_raw;
 use wfx_rs::hal_wf200::wf200_mutex_get;
 use wfx_rs::hal_wf200::wf200_send_pds;
@@ -36,16 +41,19 @@ use wfx_rs::hal_wf200::{wf200_fw_build, wf200_fw_major, wf200_fw_minor};
 
 use gyro_rs::hal_gyro::BtGyro;
 
-use utralib::generated::*;
+use utralib::generated::{
+    utra, CSR, HW_COM_BASE, HW_CRG_BASE, HW_GIT_BASE, HW_POWER_BASE, HW_SPIFLASH_MEM,
+    HW_TICKTIMER_BASE, HW_WIFI_BASE,
+};
 use volatile::Volatile;
 
 #[macro_use]
 mod debug;
 
 mod spi;
-use spi::*;
+use spi::{spi_erase_region, spi_program_page, spi_standby};
 extern crate com_rs;
-use com_rs::*;
+use com_rs::ComState;
 
 const BATTERY_PANIC_VOLTAGE: i16 = 3500; // this is the voltage that we hard shut down the device to avoid battery damage
 const BATTERY_LOW_VOLTAGE: i16 = 3575; // this is the reserve voltage where we attempt to shut off the SoC so that BBRAM keys, RTC are preserved
@@ -250,7 +258,7 @@ fn main() -> ! {
     if gg_set_design_capacity(&mut i2c, None) != 1100 {
         gg_set_design_capacity(&mut i2c, Some(1100));
     } */
- // seems to work better with the default 1340mAh capacity even though that's not our actual capacity
+    // seems to work better with the default 1340mAh capacity even though that's not our actual capacity
 
     /*  // kept around as a quick test routine for SPI flashing
         let mut idcode: [u8; 3] = [0; 3];
