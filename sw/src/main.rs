@@ -38,11 +38,13 @@ use wfx_rs::hal_wf200::{
 };
 
 // Modules from this crate
+mod com_bus;
 #[macro_use]
 mod debug;
 mod power_mgmt;
 mod spi;
 
+use com_bus::{com_int_handler, com_rx, com_tx};
 use power_mgmt::charger_handler;
 use spi::{spi_erase_region, spi_program_page, spi_standby};
 
@@ -97,12 +99,6 @@ fn ticktimer_int_handler(_irq_no: usize) {
     ticktimer_csr.wfo(utra::ticktimer::EV_PENDING_ALARM, 1);
 }
 
-fn com_int_handler(_irq_no: usize) {
-    let mut com_csr = CSR::new(HW_COM_BASE as *mut u32);
-    // nop handler, here just to wake up the CPU in case of an incoming SPI packet and run the normal loop
-    com_csr.wfo(utra::com::EV_PENDING_SPI_AVAIL, 1);
-}
-
 #[allow(dead_code)] // used for debugging
 fn dump_rom_addr(addr: u32) {
     let rom_ptr: *mut u32 = (addr + HW_SPIFLASH_MEM as u32) as *mut u32;
@@ -123,33 +119,6 @@ fn dump_rom_addr(addr: u32) {
     sprintln!("");
 }
 
-fn com_tx(tx: u16) {
-    let com_ptr: *mut u32 = utralib::HW_COM_MEM as *mut u32;
-    let com_fifo = com_ptr as *mut Volatile<u32>;
-
-    unsafe {
-        (*com_fifo).write(tx as u32);
-    }
-}
-
-fn com_rx(timeout: u32) -> Result<u16, &'static str> {
-    let com_csr = CSR::new(HW_COM_BASE as *mut u32);
-    let com_rd_ptr: *mut u32 = utralib::HW_COM_MEM as *mut u32;
-    let com_rd = com_rd_ptr as *mut Volatile<u32>;
-
-    if timeout != 0 && (com_csr.rf(utra::com::STATUS_RX_AVAIL) == 0) {
-        let start = get_time_ms();
-        loop {
-            if com_csr.rf(utra::com::STATUS_RX_AVAIL) == 1 {
-                break;
-            } else if start + timeout < get_time_ms() {
-                return Err("timeout");
-            }
-        }
-    }
-    Ok(unsafe { (*com_rd).read() as u16 })
-}
-
 fn ll_debug(msg: &str) {
     if cfg!(feature = "debug_uart") && true {
         // extra boolean for finer-grained control of debug spew
@@ -163,7 +132,7 @@ fn main() -> ! {
     /* loop {  // a tiny sanity check stub
         (debug::Uart {}).putc('a' as u8);
     } */
-    ll_debug("\r\n====UP5K==02");
+    ll_debug("\r\n====UP5K==03");
     let mut power_csr: CSR<u32> = CSR::new(HW_POWER_BASE as *mut u32);
     let mut com_csr = CSR::new(HW_COM_BASE as *mut u32);
     let mut crg_csr = CSR::new(HW_CRG_BASE as *mut u32);
