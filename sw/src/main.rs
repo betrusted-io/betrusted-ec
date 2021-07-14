@@ -163,7 +163,7 @@ fn main() -> ! {
     /* loop {  // a tiny sanity check stub
         (debug::Uart {}).putc('a' as u8);
     } */
-    ll_debug("\r\n====UP5K==01");
+    ll_debug("\r\n====UP5K==02");
     let mut power_csr: CSR<u32> = CSR::new(HW_POWER_BASE as *mut u32);
     let mut com_csr = CSR::new(HW_COM_BASE as *mut u32);
     let mut crg_csr = CSR::new(HW_CRG_BASE as *mut u32);
@@ -193,19 +193,17 @@ fn main() -> ! {
 
     let mut last_run_time: u32 = get_time_ms();
     let mut loopcounter: u32 = 0; // in seconds, so this will last ~125 years
-    let mut voltage: i16 = 0;
-    let mut last_voltage = voltage;
-    let mut current: i16 = 0;
-    let mut stby_current: i16 = 0;
     let mut pd_loop_timer: u32 = 0;
-    let mut soc_was_on: bool;
-    let mut battery_panic = false;
-    let mut voltage_glitch: bool = false;
-    if power_csr.rf(utra::power::STATS_STATE) == 1 {
-        soc_was_on = true;
-    } else {
-        soc_was_on = false;
-    }
+    let mut pow = power_mgmt::PowerState {
+        voltage: 0,
+        last_voltage: 0,
+        current: 0,
+        stby_current: 0,
+        soc_was_on: power_csr.rf(utra::power::STATS_STATE) == 1,
+        battery_panic: false,
+        voltage_glitch: false,
+        usb_cc_event: false,
+    };
 
     // this needs to be one of the first things called after I2C comes up
     charger.chg_set_safety(&mut i2c);
@@ -237,8 +235,6 @@ fn main() -> ! {
 
     charger.update_regs(&mut i2c);
     ll_debug("charger.update_regs");
-
-    let mut usb_cc_event = false;
 
     let mut use_wifi: bool = true;
 
@@ -339,20 +335,13 @@ fn main() -> ! {
             //////////////////////// CHARGER HANDLER BLOCK -----
             charger_handler(
                 &mut power_csr,
-                &mut charger,
                 &mut i2c,
-                &mut last_run_time,
-                &mut loopcounter,
-                &mut voltage,
-                &mut last_voltage,
-                &mut current,
-                &mut stby_current,
-                &mut soc_was_on,
-                &mut battery_panic,
-                &mut voltage_glitch,
-                &mut usb_cc_event,
+                &mut charger,
                 &mut usb_cc,
                 &mut backlight,
+                &mut last_run_time,
+                &mut loopcounter,
+                &mut pow,
             );
             //////////////////////// ---------------------------
         }
@@ -388,9 +377,9 @@ fn main() -> ! {
                 com_tx((rx & 0xFF) | ((com_sentinel as u16 & 0xFF) << 8));
                 com_sentinel += 1;
             } else if rx == ComState::GAS_GAUGE.verb {
-                com_tx(current as u16);
-                com_tx(stby_current as u16);
-                com_tx(voltage as u16);
+                com_tx(pow.current as u16);
+                com_tx(pow.stby_current as u16);
+                com_tx(pow.voltage as u16);
                 com_tx(power_csr.r(utra::power::POWER) as u16);
             } else if rx == ComState::GG_FACTORY_CAPACITY.verb {
                 let mut error = false;
@@ -416,21 +405,21 @@ fn main() -> ! {
                 let old_capacity = gg_set_design_capacity(&mut i2c, None);
                 com_tx(old_capacity);
             } else if rx == ComState::GG_DEBUG.verb {
-                if voltage_glitch {
+                if pow.voltage_glitch {
                     com_tx(1);
                 } else {
                     com_tx(0);
                 }
-                voltage_glitch = false;
+                pow.voltage_glitch = false;
             } else if rx == ComState::STAT.verb {
                 com_tx(0x8888); // first is just a response to the initial command
                 charger.update_regs(&mut i2c);
                 for i in 0..0xC {
                     com_tx(charger.registers[i] as u16);
                 }
-                com_tx(voltage as u16);
-                com_tx(stby_current as u16);
-                com_tx(current as u16);
+                com_tx(pow.voltage as u16);
+                com_tx(pow.stby_current as u16);
+                com_tx(pow.current as u16);
             } else if rx == ComState::POWER_OFF.verb {
                 com_tx(power_csr.r(utra::power::POWER) as u16);
                 // ignore rapid, successive power down requests
@@ -474,12 +463,12 @@ fn main() -> ! {
                 com_tx(gyro.z);
                 com_tx(gyro.id as u16);
             } else if rx == ComState::POLL_USB_CC.verb {
-                if usb_cc_event {
+                if pow.usb_cc_event {
                     com_tx(1)
                 } else {
                     com_tx(0)
                 }
-                usb_cc_event = false; // clear the usb_cc_event pending flag as its been checked
+                pow.usb_cc_event = false; // clear the usb_cc_event pending flag as its been checked
                 for i in 0..3 {
                     com_tx(usb_cc.status[i] as u16);
                 }

@@ -28,6 +28,18 @@ const BATTERY_LOW_VOLTAGE: i16 = 3575;
 // through the commit history and review the changes step by step.
 // ============================================================================
 
+/// Variables to track Precursor's I2C power management subsystem
+pub struct PowerState {
+    pub voltage: i16,
+    pub last_voltage: i16,
+    pub current: i16,
+    pub stby_current: i16,
+    pub soc_was_on: bool,
+    pub battery_panic: bool,
+    pub voltage_glitch: bool,
+    pub usb_cc_event: bool,
+}
+
 /// This function wraps a tricky chunk of I2C driver code that manages battery
 /// and power subsystem stuff, including:
 /// - Activating ship-mode
@@ -43,20 +55,13 @@ const BATTERY_LOW_VOLTAGE: i16 = 3575;
 ///
 pub fn charger_handler(
     power_csr: &mut CSR<u32>,
-    charger: &mut BtCharger,
     mut i2c: &mut Hardi2c,
-    last_run_time: &mut u32,
-    loopcounter: &mut u32,
-    voltage: &mut i16,
-    last_voltage: &mut i16,
-    current: &mut i16,
-    stby_current: &mut i16,
-    soc_was_on: &mut bool,
-    battery_panic: &mut bool,
-    voltage_glitch: &mut bool,
-    usb_cc_event: &mut bool,
+    charger: &mut BtCharger,
     usb_cc: &mut BtUsbCc,
     backlight: &mut BtBacklight,
+    last_run_time: &mut u32,
+    loopcounter: &mut u32,
+    pow: &mut PowerState,
 ) {
     // I2C can't happen inside an interrupt routine, so we do it in the main loop
     // real time response is also not critical; note this runs "lazily", only if the COM loop is idle
@@ -67,25 +72,25 @@ pub fn charger_handler(
         // routine pings & housekeeping; split i2c traffic across two phases to even the CPU load
         if *loopcounter % 2 == 0 {
             charger.chg_keepalive_ping(&mut i2c);
-            if !(*usb_cc_event) {
-                *usb_cc_event = usb_cc.check_event(&mut i2c);
+            if !(pow.usb_cc_event) {
+                pow.usb_cc_event = usb_cc.check_event(&mut i2c);
                 if usb_cc.status[1] & 0xC0 == 0x80 {
                     // Attached.SNK transition
                     charger.chg_start(&mut i2c);
                 }
             }
         } else {
-            *voltage = gg_voltage(&mut i2c);
-            if *voltage < 0 {
+            pow.voltage = gg_voltage(&mut i2c);
+            if pow.voltage < 0 {
                 // there are monitoring glitches during charge mode transitions, try to catch and
                 // filter them out
-                *voltage = *last_voltage;
-                *voltage_glitch = true;
+                pow.voltage = pow.last_voltage;
+                pow.voltage_glitch = true;
             }
-            *last_voltage = *voltage;
-            if *voltage < BATTERY_PANIC_VOLTAGE {
+            pow.last_voltage = pow.voltage;
+            if pow.voltage < BATTERY_PANIC_VOLTAGE {
                 let cursoc = gg_state_of_charge(&mut i2c);
-                if cursoc < 5 && *battery_panic {
+                if cursoc < 5 && pow.battery_panic {
                     // in case of a cold boot, give the charger a few seconds to recognize charging
                     // and raise the voltage also don't attempt to go shipmode if the charger is
                     // indicating it is trying to charge
@@ -108,9 +113,9 @@ pub fn charger_handler(
                 } else if cursoc < 5 {
                     // require a second check before shutting things down, to rule out temporary
                     // glitches in measurement
-                    *battery_panic = true;
+                    pow.battery_panic = true;
                 }
-            } else if *voltage < BATTERY_LOW_VOLTAGE {
+            } else if pow.voltage < BATTERY_LOW_VOLTAGE {
                 // TODO: warn the SoC that power is about to go away using the COM_IRQ feature...
                 // siginficantly: shutting down the SoC without its consent is not possible. so this
                 // needs to be refactored once Xous gets to a state where it can handle a power
@@ -131,19 +136,19 @@ pub fn charger_handler(
                 }
                 */
             } else {
-                *battery_panic = false;
+                pow.battery_panic = false;
             }
             if power_csr.rf(utra::power::STATS_STATE) == 1 {
-                *current = gg_avg_current(&mut i2c);
-            } else if power_csr.rf(utra::power::STATS_STATE) == 0 && !(*soc_was_on) {
+                pow.current = gg_avg_current(&mut i2c);
+            } else if power_csr.rf(utra::power::STATS_STATE) == 0 && !(pow.soc_was_on) {
                 // only sample if the last state was also powered off, so we aren't averaging in ~1s
                 // worth of "power on" current while this loop triggers
-                *stby_current = gg_avg_current(&mut i2c);
+                pow.stby_current = gg_avg_current(&mut i2c);
             }
             if power_csr.rf(utra::power::STATS_STATE) == 1 {
-                *soc_was_on = true;
+                pow.soc_was_on = true;
             } else {
-                *soc_was_on = false;
+                pow.soc_was_on = false;
             }
         }
 
