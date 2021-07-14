@@ -129,11 +129,7 @@ fn ll_debug(msg: &str) {
 
 #[entry]
 fn main() -> ! {
-    /* loop {  // a tiny sanity check stub
-        (debug::Uart {}).putc('a' as u8);
-    } */
-    ll_debug("\r\n====UP5K==03");
-    let mut power_csr: CSR<u32> = CSR::new(HW_POWER_BASE as *mut u32);
+    ll_debug("\r\n====UP5K==04");
     let mut com_csr = CSR::new(HW_COM_BASE as *mut u32);
     let mut crg_csr = CSR::new(HW_CRG_BASE as *mut u32);
     let mut ticktimer_csr = CSR::new(HW_TICKTIMER_BASE as *mut u32);
@@ -143,69 +139,74 @@ fn main() -> ! {
     let com_rd_ptr: *mut u32 = utralib::HW_COM_MEM as *mut u32;
     let com_rd = com_rd_ptr as *mut Volatile<u32>;
 
-    ll_debug("before nommu");
-    // Initialize the no-MMU version of Xous, which will give us
-    // basic access to tasks and interrupts.
-    xous_nommu::init();
-
-    let mut i2c = Hardi2c::new();
-    ll_debug("i2c");
-
-    time_init();
-    ll_debug("time_init");
-
-    i2c.i2c_init(CONFIG_CLOCK_FREQUENCY);
-    ll_debug("i2c_init");
-
-    let mut charger: BtCharger = BtCharger::new();
-    ll_debug("charger");
-
-    let mut last_run_time: u32 = get_time_ms();
     let mut loopcounter: u32 = 0; // in seconds, so this will last ~125 years
     let mut pd_loop_timer: u32 = 0;
+
+    let mut i2c = Hardi2c::new();
+    let mut hw = power_mgmt::PowerHardware {
+        power_csr: CSR::new(HW_POWER_BASE as *mut u32),
+        charger: BtCharger::new(),
+        usb_cc: BtUsbCc::new(),
+        backlight: BtBacklight::new(),
+    };
     let mut pow = power_mgmt::PowerState {
         voltage: 0,
         last_voltage: 0,
         current: 0,
         stby_current: 0,
-        soc_was_on: power_csr.rf(utra::power::STATS_STATE) == 1,
+        soc_was_on: hw.power_csr.rf(utra::power::STATS_STATE) == 1,
         battery_panic: false,
         voltage_glitch: false,
         usb_cc_event: false,
     };
+    let mut gyro: BtGyro = BtGyro::new();
+    let mut last_run_time: u32;
+    let mut start_time: u32;
+    let mut com_sentinel: u16 = 0; // for link debugging mostly
+    let mut flash_update_lock = false;
+
+    let mut wifi_ready: bool = false;
+    let mut use_wifi: bool = true;
+    let mut do_scan = false;
+
+    // Initialize the no-MMU version of Xous, which will give us
+    // basic access to tasks and interrupts.
+    ll_debug("pre-nommu");
+    xous_nommu::init();
+
+    time_init();
+    ll_debug("time");
+    last_run_time = get_time_ms();
+
+    i2c.i2c_init(CONFIG_CLOCK_FREQUENCY);
+    ll_debug("i2c");
 
     // this needs to be one of the first things called after I2C comes up
-    charger.chg_set_safety(&mut i2c);
-    ll_debug("chg_set_safety");
+    hw.charger.chg_set_safety(&mut i2c);
+    ll_debug("chgSafe");
 
     gg_start(&mut i2c);
-    ll_debug("gg_start");
+    ll_debug("ggStart");
 
-    charger.chg_set_autoparams(&mut i2c);
-    ll_debug("chg_set_autoparams");
-    charger.chg_start(&mut i2c);
-    ll_debug("chg_start");
+    hw.charger.chg_set_autoparams(&mut i2c);
+    ll_debug("chgAutoparams");
+    hw.charger.chg_start(&mut i2c);
+    ll_debug("chgStart");
 
-    let mut usb_cc = BtUsbCc::new();
-    ll_debug("BtUsbCc:new");
-    let tusb320_rev = usb_cc.init(&mut i2c);
+    let tusb320_rev = hw.usb_cc.init(&mut i2c);
     ll_debug("usb_cc");
 
-    let mut gyro: BtGyro = BtGyro::new();
     gyro.init();
-    ll_debug("gyro_init");
+    ll_debug("gyro");
 
-    let mut backlight: BtBacklight = BtBacklight::new();
-    backlight.set_brightness(&mut i2c, 0, 0); // make sure the backlight is off on boot
+    // make sure the backlight is off on boot
+    hw.backlight.set_brightness(&mut i2c, 0, 0);
     ll_debug("backlight");
 
-    let mut start_time: u32 = get_time_ms();
-    let mut wifi_ready: bool = false;
+    start_time = get_time_ms();
 
-    charger.update_regs(&mut i2c);
+    hw.charger.update_regs(&mut i2c);
     ll_debug("charger.update_regs");
-
-    let mut use_wifi: bool = true;
 
     /*
     // check that the gas gauge capacity is correct; if not, reset it
@@ -246,18 +247,15 @@ fn main() -> ! {
 
     /////// NOTE TO SELF: if using GDB, must disable the watchdog!!!
     if cfg!(feature = "debug_uart") {
-        ll_debug("debug_uart selected: watchdog is not enabled");
+        ll_debug("debug_uart: watchdog OFF");
     } else {
-        ll_debug("**WATCHDOG ENABLED**, but debugging: GDB will not work.");
+        ll_debug("**WATCHDOG ON**: GDB will not work.");
         crg_csr.wfo(utra::crg::WATCHDOG_ENABLE, 1); // 1 = enable the watchdog reset
     }
 
     xous_nommu::syscalls::sys_interrupt_claim(utra::com::COM_IRQ, com_int_handler).unwrap();
     com_csr.wfo(utra::com::EV_ENABLE_SPI_AVAIL, 1);
 
-    let mut com_sentinel: u16 = 0; // for link debugging mostly
-    let mut flash_update_lock = false;
-    let mut do_scan = false;
     ll_debug("main loop");
     delay_ms(250);
     loop {
@@ -303,13 +301,11 @@ fn main() -> ! {
 
             //////////////////////// CHARGER HANDLER BLOCK -----
             charger_handler(
-                &mut power_csr,
+                &mut hw,
                 &mut i2c,
-                &mut charger,
-                &mut usb_cc,
-                &mut backlight,
                 &mut last_run_time,
                 &mut loopcounter,
+                &mut pd_loop_timer,
                 &mut pow,
             );
             //////////////////////// ---------------------------
@@ -319,7 +315,7 @@ fn main() -> ! {
         while com_csr.rf(utra::com::STATUS_RX_AVAIL) == 1 {
             // if we've received data from the SOC, we don't have to assert its power-on line any more to boot it up.
             // De-activate it, so that the SOC is entirely in control of its own power state.
-            power_csr.rmwf(utra::power::POWER_SOC_ON, 0);
+            hw.power_csr.rmwf(utra::power::POWER_SOC_ON, 0);
             // note: this line is occasionally re-asserted whenever the charger is detected as present
 
             let rx: u16;
@@ -349,7 +345,7 @@ fn main() -> ! {
                 com_tx(pow.current as u16);
                 com_tx(pow.stby_current as u16);
                 com_tx(pow.voltage as u16);
-                com_tx(power_csr.r(utra::power::POWER) as u16);
+                com_tx(hw.power_csr.r(utra::power::POWER) as u16);
             } else if rx == ComState::GG_FACTORY_CAPACITY.verb {
                 let mut error = false;
                 let mut capacity: u16 = 1100;
@@ -358,7 +354,8 @@ fn main() -> ! {
                     _ => error = true,
                 }
                 if !error {
-                    // some manual "sanity checks" so we really don't bork the gas guage in case of a protocol error
+                    // some manual "sanity checks" so we really don't bork the
+                    // gas guage in case of a protocol error
                     if capacity >= 1900 {
                         capacity = 1100;
                     }
@@ -382,38 +379,38 @@ fn main() -> ! {
                 pow.voltage_glitch = false;
             } else if rx == ComState::STAT.verb {
                 com_tx(0x8888); // first is just a response to the initial command
-                charger.update_regs(&mut i2c);
+                hw.charger.update_regs(&mut i2c);
                 for i in 0..0xC {
-                    com_tx(charger.registers[i] as u16);
+                    com_tx(hw.charger.registers[i] as u16);
                 }
                 com_tx(pow.voltage as u16);
                 com_tx(pow.stby_current as u16);
                 com_tx(pow.current as u16);
             } else if rx == ComState::POWER_OFF.verb {
-                com_tx(power_csr.r(utra::power::POWER) as u16);
+                com_tx(hw.power_csr.r(utra::power::POWER) as u16);
                 // ignore rapid, successive power down requests
-                backlight.set_brightness(&mut i2c, 0, 0); // make sure the backlight is off
+                hw.backlight.set_brightness(&mut i2c, 0, 0); // make sure the backlight is off
                 if get_time_ms() - pd_loop_timer > 1500 {
-                    let power = power_csr.ms(utra::power::POWER_SELF, 1)
-                        | power_csr.ms(utra::power::POWER_DISCHARGE, 1);
-                    power_csr.wo(utra::power::POWER, power);
+                    let power = hw.power_csr.ms(utra::power::POWER_SELF, 1)
+                        | hw.power_csr.ms(utra::power::POWER_DISCHARGE, 1);
+                    hw.power_csr.wo(utra::power::POWER, power);
 
                     set_msleep_target_ticks(500); // extend next service so we can discharge
 
                     pd_loop_timer = get_time_ms();
                 }
             } else if rx == ComState::POWER_SHIPMODE.verb {
-                backlight.set_brightness(&mut i2c, 0, 0); // make sure the backlight is off
-                charger.set_shipmode(&mut i2c);
+                hw.backlight.set_brightness(&mut i2c, 0, 0); // make sure the backlight is off
+                hw.charger.set_shipmode(&mut i2c);
                 gg_set_hibernate(&mut i2c);
-                let power = power_csr.ms(utra::power::POWER_SELF, 1)
-                    | power_csr.ms(utra::power::POWER_DISCHARGE, 1);
-                power_csr.wo(utra::power::POWER, power);
+                let power = hw.power_csr.ms(utra::power::POWER_SELF, 1)
+                    | hw.power_csr.ms(utra::power::POWER_DISCHARGE, 1);
+                hw.power_csr.wo(utra::power::POWER, power);
                 set_msleep_target_ticks(500); // extend next service so we can discharge
 
                 pd_loop_timer = get_time_ms();
             } else if rx == ComState::POWER_CHARGER_STATE.verb {
-                if charger.chg_is_charging(&mut i2c, false) {
+                if hw.charger.chg_is_charging(&mut i2c, false) {
                     com_tx(1);
                 } else {
                     com_tx(0);
@@ -439,22 +436,22 @@ fn main() -> ! {
                 }
                 pow.usb_cc_event = false; // clear the usb_cc_event pending flag as its been checked
                 for i in 0..3 {
-                    com_tx(usb_cc.status[i] as u16);
+                    com_tx(hw.usb_cc.status[i] as u16);
                 }
                 com_tx(tusb320_rev as u16);
             } else if rx == ComState::CHG_START.verb {
                 // charging mode
-                charger.chg_start(&mut i2c);
+                hw.charger.chg_start(&mut i2c);
             } else if rx == ComState::CHG_BOOST_ON.verb {
                 // boost on
-                charger.chg_boost(&mut i2c);
+                hw.charger.chg_boost(&mut i2c);
             } else if rx == ComState::CHG_BOOST_OFF.verb {
                 // boost off
-                charger.chg_boost_off(&mut i2c);
+                hw.charger.chg_boost_off(&mut i2c);
             } else if rx >= ComState::BL_START.verb && rx <= ComState::BL_END.verb {
                 let main_bl_level: u8 = (rx & 0x1F) as u8;
                 let sec_bl_level: u8 = ((rx >> 5) & 0x1F) as u8;
-                backlight.set_brightness(&mut i2c, main_bl_level, sec_bl_level);
+                hw.backlight.set_brightness(&mut i2c, main_bl_level, sec_bl_level);
             } else if rx == ComState::LINK_READ.verb {
                 // this a "read continuation" command, in other words, return read data
                 // based on the current ComState
