@@ -3,12 +3,14 @@
 
 // note: to get vscode to reload file, do shift-ctrl-p, 'reload window'. developer:Reload window
 
-use core::panic::PanicInfo;
-use riscv_rt::entry;
-
 extern crate betrusted_hal;
+extern crate com_rs;
 extern crate utralib;
 extern crate volatile;
+extern crate wfx_bindings;
+extern crate wfx_rs;
+extern crate wfx_sys;
+extern crate xous_nommu;
 
 use betrusted_hal::api_bq25618::BtCharger;
 use betrusted_hal::api_gasgauge::{
@@ -19,49 +21,38 @@ use betrusted_hal::api_lm3509::BtBacklight;
 use betrusted_hal::api_tusb320::BtUsbCc;
 use betrusted_hal::hal_hardi2c::Hardi2c;
 use betrusted_hal::hal_time::{delay_ms, get_time_ms, set_msleep_target_ticks, time_init};
-
-extern crate wfx_bindings;
-extern crate wfx_rs;
-extern crate wfx_sys;
-
-extern crate xous_nommu;
-use wfx_bindings::SL_STATUS_OK;
-use wfx_rs::hal_wf200::wf200_get_rx_stats_raw;
-use wfx_rs::hal_wf200::wf200_mutex_get;
-use wfx_rs::hal_wf200::wf200_send_pds;
-use wfx_rs::hal_wf200::wf200_ssid_get_list;
-use wfx_rs::hal_wf200::wf200_ssid_updated;
-use wfx_rs::hal_wf200::wfx_handle_event;
-use wfx_rs::hal_wf200::wfx_init;
-use wfx_rs::hal_wf200::wfx_scan_ongoing;
-use wfx_rs::hal_wf200::wfx_start_scan;
-use wfx_rs::hal_wf200::{wf200_fw_build, wf200_fw_major, wf200_fw_minor};
-
+use com_rs::ComState;
+use core::panic::PanicInfo;
 use gyro_rs::hal_gyro::BtGyro;
-
+use riscv_rt::entry;
 use utralib::generated::{
     utra, CSR, HW_COM_BASE, HW_CRG_BASE, HW_GIT_BASE, HW_POWER_BASE, HW_SPIFLASH_MEM,
     HW_TICKTIMER_BASE, HW_WIFI_BASE,
 };
 use volatile::Volatile;
+use wfx_bindings::SL_STATUS_OK;
+use wfx_rs::hal_wf200::{
+    wf200_fw_build, wf200_fw_major, wf200_fw_minor, wf200_get_rx_stats_raw, wf200_mutex_get,
+    wf200_send_pds, wf200_ssid_get_list, wf200_ssid_updated, wfx_handle_event, wfx_init,
+    wfx_scan_ongoing, wfx_start_scan,
+};
 
+// Modules from this crate
 #[macro_use]
 mod debug;
-
 mod power_mgmt;
-use power_mgmt::charger_handler;
-
 mod spi;
+
+use power_mgmt::charger_handler;
 use spi::{spi_erase_region, spi_program_page, spi_standby};
-extern crate com_rs;
-use com_rs::ComState;
 
+// Constants
 const CONFIG_CLOCK_FREQUENCY: u32 = 18_000_000;
-
 // allocate a global, unsafe static string for debug output
 #[used] // This is necessary to keep DBGSTR from being optimized out
 static mut DBGSTR: [u32; 4] = [0, 0, 0, 0];
 
+/// Infinite loop panic handler (TODO: fix this to use less power)
 #[panic_handler]
 fn panic(_panic: &PanicInfo<'_>) -> ! {
     loop {}
@@ -172,7 +163,7 @@ fn main() -> ! {
     /* loop {  // a tiny sanity check stub
         (debug::Uart {}).putc('a' as u8);
     } */
-    ll_debug("\r\n====UP5K==00");
+    ll_debug("\r\n====UP5K==01");
     let mut power_csr: CSR<u32> = CSR::new(HW_POWER_BASE as *mut u32);
     let mut com_csr = CSR::new(HW_COM_BASE as *mut u32);
     let mut crg_csr = CSR::new(HW_CRG_BASE as *mut u32);
