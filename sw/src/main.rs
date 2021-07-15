@@ -27,14 +27,12 @@ use gyro_rs::hal_gyro::BtGyro;
 use riscv_rt::entry;
 use utralib::generated::{
     utra, CSR, HW_COM_BASE, HW_CRG_BASE, HW_GIT_BASE, HW_POWER_BASE, HW_TICKTIMER_BASE,
-    HW_WIFI_BASE,
 };
 use volatile::Volatile;
-use wfx_bindings::SL_STATUS_OK;
 use wfx_rs::hal_wf200::{
     wf200_fw_build, wf200_fw_major, wf200_fw_minor, wf200_get_rx_stats_raw, wf200_mutex_get,
-    wf200_send_pds, wf200_ssid_get_list, wf200_ssid_updated, wfx_handle_event, wfx_init,
-    wfx_scan_ongoing, wfx_start_scan,
+    wf200_send_pds, wf200_ssid_get_list, wf200_ssid_updated, wfx_handle_event, wfx_scan_ongoing,
+    wfx_start_scan,
 };
 
 // Modules from this crate
@@ -43,6 +41,7 @@ mod com_bus;
 mod debug;
 mod power_mgmt;
 mod spi;
+mod wifi;
 
 use com_bus::{com_int_handler, com_rx, com_tx};
 use power_mgmt::charger_handler;
@@ -109,11 +108,10 @@ fn ll_debug(msg: &str) {
 
 #[entry]
 fn main() -> ! {
-    ll_debug("\r\n====UP5K==04");
+    ll_debug("\r\n====UP5K==06");
     let mut com_csr = CSR::new(HW_COM_BASE as *mut u32);
     let mut crg_csr = CSR::new(HW_CRG_BASE as *mut u32);
     let mut ticktimer_csr = CSR::new(HW_TICKTIMER_BASE as *mut u32);
-    let mut wifi_csr = CSR::new(HW_WIFI_BASE as *mut u32);
     let git_csr = CSR::new(HW_GIT_BASE as *mut u32);
 
     let com_rd_ptr: *mut u32 = utralib::HW_COM_MEM as *mut u32;
@@ -145,8 +143,8 @@ fn main() -> ! {
     let mut com_sentinel: u16 = 0; // for link debugging mostly
     let mut flash_update_lock = false;
 
-    let mut wifi_ready: bool = false;
     let mut use_wifi: bool = true;
+    let mut wifi_ready: bool;
     let mut do_scan = false;
 
     // Initialize the no-MMU version of Xous, which will give us
@@ -211,23 +209,27 @@ fn main() -> ! {
     xous_nommu::syscalls::sys_interrupt_claim(utra::com::COM_IRQ, com_int_handler).unwrap();
     com_csr.wfo(utra::com::EV_ENABLE_SPI_AVAIL, 1);
 
+    // Reset & Init WF200 before starting the main loop
+    if use_wifi {
+        sprintln!("wifi init...");
+        wifi_ready = wifi::wf200_init();
+        match wifi_ready {
+            true => sprintln!("Wifi ready"),
+            false => sprintln!("Wifi init fail"),
+        };
+        start_time = get_time_ms();
+    } else {
+        wifi_ready = false;
+        wifi::wf200_reset_hold();
+        sprintln!("Wifi off: holding reset");
+    }
+
+    //////////////////////// MAIN LOOP ------------------
     ll_debug("main loop");
     delay_ms(250);
     loop {
         if !flash_update_lock {
             //////////////////////// WIFI HANDLER BLOCK ---------
-            // slight delay to allow for wishbone-tool to connect for debuggening
-            if (get_time_ms() - start_time > 1000) && !wifi_ready && use_wifi {
-                sprintln!("initializing wifi!");
-                // init the wifi interface
-                if wfx_init() == SL_STATUS_OK {
-                    sprintln!("Wifi ready");
-                    wifi_ready = true;
-                } else {
-                    sprintln!("Wifi init failed");
-                }
-                start_time = get_time_ms();
-            }
             if do_scan {
                 if wifi_ready && use_wifi {
                     if get_time_ms() - start_time > 20_000 {
@@ -284,6 +286,7 @@ fn main() -> ! {
                 } else {
                     com_tx(0);
                 }
+                sprintln!("COM_SSID_CHECK");
             } else if rx == ComState::SSID_FETCH.verb {
                 let ssid_list = wf200_ssid_get_list();
 
@@ -293,6 +296,7 @@ fn main() -> ! {
                             | ((ssid_list[index / 16].ssid[(index % 16) * 2 + 1] as u16) << 8),
                     );
                 }
+                sprintln!("COM_SSID_FETCH");
             } else if rx == ComState::LOOP_TEST.verb {
                 com_tx((rx & 0xFF) | ((com_sentinel as u16 & 0xFF) << 8));
                 com_sentinel += 1;
@@ -400,9 +404,11 @@ fn main() -> ! {
             } else if rx == ComState::CHG_BOOST_ON.verb {
                 // boost on
                 hw.charger.chg_boost(&mut i2c);
+                sprintln!("COM_CHG_BOOST_ON");
             } else if rx == ComState::CHG_BOOST_OFF.verb {
                 // boost off
                 hw.charger.chg_boost_off(&mut i2c);
+                sprintln!("COM_CHG_BOOST_OFF");
             } else if rx >= ComState::BL_START.verb && rx <= ComState::BL_END.verb {
                 let main_bl_level: u8 = (rx & 0x1F) as u8;
                 let sec_bl_level: u8 = ((rx >> 5) & 0x1F) as u8;
@@ -470,10 +476,10 @@ fn main() -> ! {
                 }
             } else if rx == ComState::FLASH_LOCK.verb {
                 flash_update_lock = true;
-                wifi_csr.wfo(utra::wifi::EV_ENABLE_WIRQ, 0);
+                wifi::wf200_irq_disable();
             } else if rx == ComState::FLASH_UNLOCK.verb {
                 flash_update_lock = false;
-                wifi_csr.wfo(utra::wifi::EV_ENABLE_WIRQ, 1);
+                wifi::wf200_irq_enable();
             } else if rx == ComState::FLASH_WAITACK.verb {
                 com_tx(ComState::FLASH_ACK.verb);
             } else if rx == ComState::WFX_RXSTAT_GET.verb {
@@ -481,6 +487,7 @@ fn main() -> ! {
                 for i in 0..rx_stat_raw.len() / 2 {
                     com_tx(rx_stat_raw[i * 2] as u16 | ((rx_stat_raw[i * 2 + 1] as u16) << 8));
                 }
+                sprintln!("COM_WFX_RXSTAT_GET");
             } else if rx == ComState::WFX_PDS_LINE_SET.verb {
                 // set one line of the PDS record (up to 256 bytes length)
                 let mut error = false;
@@ -521,48 +528,54 @@ fn main() -> ! {
                 }
                 com_csr.wfo(utra::com::CONTROL_RESET, 1); // reset fifos
                 com_csr.wfo(utra::com::CONTROL_CLRERR, 1); // clear all error flags
+                sprintln!("COM_WFX_PDS_LINE_SET");
             } else if rx == ComState::WFX_FW_REV_GET.verb {
                 com_tx(wf200_fw_major() as u16);
                 com_tx(wf200_fw_minor() as u16);
                 com_tx(wf200_fw_build() as u16);
+                sprintln!("COM_WFX_FW_REV_GET");
             } else if rx == ComState::EC_GIT_REV.verb {
                 com_tx((git_csr.rf(utra::git::GITREV_GITREV) >> 16) as u16);
                 com_tx((git_csr.rf(utra::git::GITREV_GITREV) & 0xFFFF) as u16);
                 com_tx(git_csr.rf(utra::git::DIRTY_DIRTY) as u16);
+                sprintln!("COM_EC_GIT_REV");
             } else if rx == ComState::WF200_RESET.verb {
+                sprintln!("COM_WF200_RESET");
                 match com_rx(250) {
                     Ok(result) => {
                         if result == 0 {
-                            wifi_ready = false;
+                            sprintln!("WF200_RESET momentary");
                             use_wifi = true;
-                            wifi_csr.rmwf(utra::wifi::WIFI_RESET, 1);
-                            delay_ms(10);
-                            wifi_csr.rmwf(utra::wifi::WIFI_RESET, 0);
-                            delay_ms(10);
-                            start_time = get_time_ms();
+                            wifi::wf200_reset_momentary();
+                            wifi_ready = wifi::wf200_init();
+                            match wifi_ready {
+                                true => sprintln!("Wifi ready"),
+                                false => sprintln!("Wifi init fail"),
+                            };
                         } else {
+                            sprintln!("WF200_RESET hold");
                             wifi_ready = false;
                             use_wifi = false;
-                            wifi_csr.rmwf(utra::wifi::WIFI_RESET, 1);
+                            wifi::wf200_reset_hold();
                         }
                     }
                     _ => {
                         // default to a normal reset
                         wifi_ready = false;
                         use_wifi = true;
-                        wifi_csr.rmwf(utra::wifi::WIFI_RESET, 1);
-                        delay_ms(10);
-                        wifi_csr.rmwf(utra::wifi::WIFI_RESET, 0);
-                        delay_ms(10);
+                        wifi::wf200_reset_momentary();
                         start_time = get_time_ms();
                     }
                 }
             } else if rx == ComState::SSID_SCAN_ON.verb {
                 do_scan = true;
+                sprintln!("COM_SSID_SCAN_ON");
             } else if rx == ComState::SSID_SCAN_OFF.verb {
                 do_scan = false;
+                sprintln!("COM_SSID_SCAN_OFF");
             } else {
                 com_tx(ComState::ERROR.verb);
+                sprintln!("COM err verb:{:X}", rx);
             }
         }
         //////////////////////// ---------------------------
