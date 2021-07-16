@@ -914,7 +914,7 @@ fn sl_wfx_scan_result_callback(scan_result: *const sl_wfx_scan_result_ind_body_t
     let ssid = unsafe { str::from_utf8(slice::from_raw_parts(&(*scan_result).ssid_def.ssid as *const u8, 32)).expect("unable to parse ssid") };
     unsafe { // because raw pointer dereferences
         sprintln!("scan-- ch:{} str:-{} mac:{:02x}{:02x}{:02x}{:02x}{:02x}{:02x} ssid:{}",
-            (*scan_result).channel,
+            core::ptr::addr_of!((*scan_result).channel).read_unaligned(),
             32768 - (((*scan_result).rcpi - 220) / 2),
             (*scan_result).mac[0], (*scan_result).mac[1],
             (*scan_result).mac[2], (*scan_result).mac[3],
@@ -1040,7 +1040,12 @@ pub unsafe extern "C" fn sl_wfx_host_post_event(event_payload: *mut sl_wfx_gener
                     RX_STATS_RAW = (*generic_indication).body.indication_data;
                 }
             } else {
-                if DEBUGGING { sprintln!("SL_WFX_GENERIC_IND_ID type {}, attempting to dispach", (*generic_indication).body.indication_type); }
+                if DEBUGGING {
+                    sprintln!(
+                        "SL_WFX_GENERIC_IND_ID type {}, attempting to dispach",
+                        core::ptr::addr_of!((*generic_indication).body.indication_type).read_unaligned()
+                    );
+                }
                 if (*generic_indication).body.indication_type == sl_wfx_generic_indication_type_e_SL_WFX_GENERIC_INDICATION_TYPE_STRING {
                     let dbgstr = (*generic_indication).body.indication_data.raw_data;
                     if DEBUGGING {
@@ -1068,7 +1073,10 @@ pub unsafe extern "C" fn sl_wfx_host_post_event(event_payload: *mut sl_wfx_gener
         sl_wfx_general_indications_ids_e_SL_WFX_ERROR_IND_ID => {
             sprintln!("Firmware error");
             let firmware_error: *const sl_wfx_error_ind_t = event_payload as *const sl_wfx_error_ind_t;
-            sprintln!("Error type = {}", (*firmware_error).body.type_);
+            sprintln!(
+                "Error type = {}",
+                core::ptr::addr_of!((*firmware_error).body.type_).read_unaligned()
+            );
         },
         sl_wfx_general_indications_ids_e_SL_WFX_STARTUP_IND_ID => {
             sprintln!("wf200 started!");
