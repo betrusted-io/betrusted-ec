@@ -29,11 +29,6 @@ use utralib::generated::{
     utra, CSR, HW_COM_BASE, HW_CRG_BASE, HW_GIT_BASE, HW_POWER_BASE, HW_TICKTIMER_BASE,
 };
 use volatile::Volatile;
-use wfx_rs::hal_wf200::{
-    wf200_fw_build, wf200_fw_major, wf200_fw_minor, wf200_get_rx_stats_raw, wf200_mutex_get,
-    wf200_send_pds, wf200_ssid_get_list, wf200_ssid_updated, wfx_handle_event, wfx_scan_ongoing,
-    wfx_start_scan,
-};
 
 // Modules from this crate
 mod com_bus;
@@ -108,7 +103,7 @@ fn ll_debug(msg: &str) {
 
 #[entry]
 fn main() -> ! {
-    ll_debug("\r\n====UP5K==06");
+    ll_debug("\r\n====UP5K==07");
     let mut com_csr = CSR::new(HW_COM_BASE as *mut u32);
     let mut crg_csr = CSR::new(HW_CRG_BASE as *mut u32);
     let mut ticktimer_csr = CSR::new(HW_TICKTIMER_BASE as *mut u32);
@@ -139,13 +134,11 @@ fn main() -> ! {
     };
     let mut gyro: BtGyro = BtGyro::new();
     let mut last_run_time: u32;
-    let mut start_time: u32;
     let mut com_sentinel: u16 = 0; // for link debugging mostly
     let mut flash_update_lock = false;
 
     let mut use_wifi: bool = true;
     let mut wifi_ready: bool;
-    let mut do_scan = false;
 
     // Initialize the no-MMU version of Xous, which will give us
     // basic access to tasks and interrupts.
@@ -181,8 +174,6 @@ fn main() -> ! {
     hw.backlight.set_brightness(&mut i2c, 0, 0);
     ll_debug("backlight");
 
-    start_time = get_time_ms();
-
     hw.charger.update_regs(&mut i2c);
     ll_debug("charger.update_regs");
 
@@ -211,13 +202,15 @@ fn main() -> ! {
 
     // Reset & Init WF200 before starting the main loop
     if use_wifi {
+        sprintln!("wifi reset...");
+        wifi::wf200_reset_momentary();
         sprintln!("wifi init...");
         wifi_ready = wifi::wf200_init();
+        delay_ms(10);
         match wifi_ready {
             true => sprintln!("Wifi ready"),
             false => sprintln!("Wifi init fail"),
         };
-        start_time = get_time_ms();
     } else {
         wifi_ready = false;
         wifi::wf200_reset_hold();
@@ -226,33 +219,11 @@ fn main() -> ! {
 
     //////////////////////// MAIN LOOP ------------------
     ll_debug("main loop");
-    delay_ms(250);
     loop {
         if !flash_update_lock {
             //////////////////////// WIFI HANDLER BLOCK ---------
-            if do_scan {
-                if wifi_ready && use_wifi {
-                    if get_time_ms() - start_time > 20_000 {
-                        sprintln!("starting ssid scan");
-                        wfx_start_scan(); // turn this off for FCC testing
-                        start_time = get_time_ms();
-                    }
-                }
-                if wfx_rs::hal_wf200::wf200_event_get() && use_wifi {
-                    // first thing -- clear the event. So that if we get another event
-                    // while handling this packet, we have a chance of detecting that.
-                    // we lack mutexes, so we need to think about this behavior very carefully.
-
-                    if wf200_mutex_get() {
-                        // don't process events while the driver has locked us out
-                        wfx_rs::hal_wf200::wf200_event_clear();
-
-                        // handle the Rx packet
-                        if wfx_scan_ongoing() {
-                            wfx_handle_event();
-                        }
-                    }
-                }
+            if use_wifi && wifi_ready {
+                wifi::handle_event();
             }
             //////////////////////// ---------------------------
 
@@ -281,20 +252,35 @@ fn main() -> ! {
             }
 
             if rx == ComState::SSID_CHECK.verb {
-                if wf200_ssid_updated() {
-                    com_tx(1);
-                } else {
-                    com_tx(0);
-                }
+                // Sending replies here will cause problems with racing RX threads in xous ssid shellchat command
+                // if wifi::ssid_updated() {
+                //     com_tx(1);
+                // } else {
+                //     com_tx(0);
+                // }
                 sprintln!("COM_SSID_CHECK");
             } else if rx == ComState::SSID_FETCH.verb {
-                let ssid_list = wf200_ssid_get_list();
+                let mut ssid_list: [[u8; 32]; wifi::SSID_ARRAY_SIZE] = [[0; 32]; wifi::SSID_ARRAY_SIZE];
+                wifi::ssid_get_list(&mut ssid_list);
 
-                for index in 0..16 * 6 {
-                    com_tx(
-                        ssid_list[index / 16].ssid[(index % 16) * 2] as u16
-                            | ((ssid_list[index / 16].ssid[(index % 16) * 2 + 1] as u16) << 8),
-                    );
+                // This gets consumed by xous-core/services/com/main.rs::xmain() in the match branch for
+                // `Some(Opcode::SsidFetchAsString) => {...}` which is expecting to unpack an array of six
+                // SSIDs of 32 bytes each in the format of 6 * (16 * u16 COM bus words). That code divides
+                // its RX buffer into 6 * (32 byte) arrays. It expects unused characters to be nulls.
+                for i in 0..wifi::SSID_ARRAY_SIZE {
+                    for j in 0..16 {
+                        let n = j << 1;
+                        com_tx(ssid_list[i][n] as u16 | (ssid_list[i][n + 1] as u16) << 8);
+                    }
+                }
+                for i in 0..wifi::SSID_ARRAY_SIZE {
+                    for j in 0..32 {
+                        match ssid_list[i][j] as u8 {
+                            0 => sprint!("."),
+                            c => sprint!("{}", c as char),
+                        }
+                    }
+                    sprint!("\r\n");
                 }
                 sprintln!("COM_SSID_FETCH");
             } else if rx == ComState::LOOP_TEST.verb {
@@ -483,7 +469,7 @@ fn main() -> ! {
             } else if rx == ComState::FLASH_WAITACK.verb {
                 com_tx(ComState::FLASH_ACK.verb);
             } else if rx == ComState::WFX_RXSTAT_GET.verb {
-                let rx_stat_raw: [u8; 376] = wf200_get_rx_stats_raw();
+                let rx_stat_raw: [u8; 376] = wifi::get_rx_stats_raw();
                 for i in 0..rx_stat_raw.len() / 2 {
                     com_tx(rx_stat_raw[i * 2] as u16 | ((rx_stat_raw[i * 2 + 1] as u16) << 8));
                 }
@@ -524,15 +510,15 @@ fn main() -> ! {
                     delay_ms(50);
                 }
                 if !error {
-                    wf200_send_pds(pds_data, pds_length);
+                    wifi::send_pds(pds_data, pds_length);
                 }
                 com_csr.wfo(utra::com::CONTROL_RESET, 1); // reset fifos
                 com_csr.wfo(utra::com::CONTROL_CLRERR, 1); // clear all error flags
                 sprintln!("COM_WFX_PDS_LINE_SET");
             } else if rx == ComState::WFX_FW_REV_GET.verb {
-                com_tx(wf200_fw_major() as u16);
-                com_tx(wf200_fw_minor() as u16);
-                com_tx(wf200_fw_build() as u16);
+                com_tx(wifi::fw_major() as u16);
+                com_tx(wifi::fw_minor() as u16);
+                com_tx(wifi::fw_build() as u16);
                 sprintln!("COM_WFX_FW_REV_GET");
             } else if rx == ComState::EC_GIT_REV.verb {
                 com_tx((git_csr.rf(utra::git::GITREV_GITREV) >> 16) as u16);
@@ -561,17 +547,17 @@ fn main() -> ! {
                     }
                     _ => {
                         // default to a normal reset
+                        sprintln!("WF200_RESET default");
                         wifi_ready = false;
                         use_wifi = true;
                         wifi::wf200_reset_momentary();
-                        start_time = get_time_ms();
                     }
                 }
             } else if rx == ComState::SSID_SCAN_ON.verb {
-                do_scan = true;
                 sprintln!("COM_SSID_SCAN_ON");
+                wifi::start_scan(); // turn this off for FCC testing
             } else if rx == ComState::SSID_SCAN_OFF.verb {
-                do_scan = false;
+                // This is a NOP because the WF200 scan ends on its own
                 sprintln!("COM_SSID_SCAN_OFF");
             } else {
                 com_tx(ComState::ERROR.verb);
