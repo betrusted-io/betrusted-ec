@@ -2,9 +2,9 @@ use betrusted_hal::hal_time::delay_ms;
 use utralib::generated::{utra, CSR, HW_WIFI_BASE};
 use wfx_bindings::SL_STATUS_OK;
 use wfx_rs::hal_wf200::{
-    wf200_fw_build, wf200_fw_major, wf200_fw_minor, wf200_get_rx_stats_raw, wf200_send_pds,
-    wf200_ssid_get_list, wf200_ssid_updated, wfx_drain_event_queue, wfx_handle_event, wfx_init,
-    wfx_start_scan,
+    wf200_fw_build, wf200_fw_major, wf200_fw_minor, wf200_send_pds, wf200_ssid_get_list,
+    wfx_drain_event_queue, wfx_handle_event, wfx_init, wfx_start_scan,
+    wfx_ssid_scan_in_progress,
 };
 
 pub const SSID_ARRAY_SIZE: usize = wfx_rs::hal_wf200::SSID_ARRAY_SIZE;
@@ -62,14 +62,12 @@ pub fn start_scan() {
     //    point, the scan is done and you can start another one if you want.
     //
     let limit = 32;
-    sprintln!("draining WF200 event queue...");
     wfx_drain_event_queue(limit);
-    sprintln!("starting scan...");
     wfx_start_scan();
 }
 
-pub fn ssid_updated() -> bool {
-    wf200_ssid_updated()
+pub fn ssid_scan_in_progress() -> bool {
+    wfx_ssid_scan_in_progress()
 }
 
 pub fn ssid_get_list(mut ssid_list: &mut [[u8; 32]; SSID_ARRAY_SIZE]) {
@@ -86,10 +84,6 @@ pub fn fw_major() -> u8 {
 
 pub fn fw_minor() -> u8 {
     wf200_fw_minor()
-}
-
-pub fn get_rx_stats_raw() -> [u8; 376] {
-    wf200_get_rx_stats_raw()
 }
 
 pub fn send_pds(data: [u8; 256], length: u16) -> bool {

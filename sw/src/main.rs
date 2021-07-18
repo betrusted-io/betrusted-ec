@@ -39,14 +39,18 @@ mod spi;
 mod wifi;
 
 use com_bus::{com_int_handler, com_rx, com_tx};
+use debug::{set_log_level, LL};
 use power_mgmt::charger_handler;
 use spi::{spi_erase_region, spi_program_page, spi_standby};
 
+// ========================================
+// ===== Config for Initial Log Level =====
+// ========================================
+const LOG_LEVEL: LL = LL::Debug;
+// ========================================
+
 // Constants
 const CONFIG_CLOCK_FREQUENCY: u32 = 18_000_000;
-// allocate a global, unsafe static string for debug output
-#[used] // This is necessary to keep DBGSTR from being optimized out
-static mut DBGSTR: [u32; 4] = [0, 0, 0, 0];
 
 /// Infinite loop panic handler (TODO: fix this to use less power)
 #[panic_handler]
@@ -93,17 +97,10 @@ fn ticktimer_int_handler(_irq_no: usize) {
     ticktimer_csr.wfo(utra::ticktimer::EV_PENDING_ALARM, 1);
 }
 
-fn ll_debug(msg: &str) {
-    if cfg!(feature = "debug_uart") && true {
-        // extra boolean for finer-grained control of debug spew
-        sprintln!("{}", msg);
-        // delay_ms(50);
-    }
-}
-
 #[entry]
 fn main() -> ! {
-    ll_debug("\r\n====UP5K==07");
+    set_log_level(LOG_LEVEL);
+    logln!(LL::Info, "\r\n====UP5K==08");
     let mut com_csr = CSR::new(HW_COM_BASE as *mut u32);
     let mut crg_csr = CSR::new(HW_CRG_BASE as *mut u32);
     let mut ticktimer_csr = CSR::new(HW_TICKTIMER_BASE as *mut u32);
@@ -142,83 +139,66 @@ fn main() -> ! {
 
     // Initialize the no-MMU version of Xous, which will give us
     // basic access to tasks and interrupts.
-    ll_debug("pre-nommu");
+    logln!(LL::Trace, "pre-nommu");
     xous_nommu::init();
 
     time_init();
-    ll_debug("time");
+    logln!(LL::Debug, "time");
     last_run_time = get_time_ms();
 
+    logln!(LL::Debug, "i2c...");
     i2c.i2c_init(CONFIG_CLOCK_FREQUENCY);
-    ll_debug("i2c");
-
     // this needs to be one of the first things called after I2C comes up
     hw.charger.chg_set_safety(&mut i2c);
-    ll_debug("chgSafe");
-
     gg_start(&mut i2c);
-    ll_debug("ggStart");
-
     hw.charger.chg_set_autoparams(&mut i2c);
-    ll_debug("chgAutoparams");
     hw.charger.chg_start(&mut i2c);
-    ll_debug("chgStart");
-
     let tusb320_rev = hw.usb_cc.init(&mut i2c);
-    ll_debug("usb_cc");
-
     gyro.init();
-    ll_debug("gyro");
-
     // make sure the backlight is off on boot
     hw.backlight.set_brightness(&mut i2c, 0, 0);
-    ll_debug("backlight");
-
     hw.charger.update_regs(&mut i2c);
-    ll_debug("charger.update_regs");
+    logln!(LL::Debug, "...i2c OK");
 
     spi_standby(); // make sure the OE's are off, no spurious power consumption
-    ll_debug("spi_standby");
 
-    xous_nommu::syscalls::sys_interrupt_claim(
+    let _ = xous_nommu::syscalls::sys_interrupt_claim(
         utra::ticktimer::TICKTIMER_IRQ,
         ticktimer_int_handler,
-    )
-    .unwrap();
+    );
     set_msleep_target_ticks(50);
     ticktimer_csr.wfo(utra::ticktimer::EV_PENDING_ALARM, 1); // clear the pending signal just in case
     ticktimer_csr.wfo(utra::ticktimer::EV_ENABLE_ALARM, 1); // enable the interrupt
 
     /////// NOTE TO SELF: if using GDB, must disable the watchdog!!!
     if cfg!(feature = "debug_uart") {
-        ll_debug("debug_uart: watchdog OFF");
+        logln!(LL::Debug, "debug_uart: watchdog OFF");
     } else {
-        ll_debug("**WATCHDOG ON**: GDB will not work.");
+        logln!(LL::Warn, "**WATCHDOG ON**: GDB will not work.");
         crg_csr.wfo(utra::crg::WATCHDOG_ENABLE, 1); // 1 = enable the watchdog reset
     }
 
-    xous_nommu::syscalls::sys_interrupt_claim(utra::com::COM_IRQ, com_int_handler).unwrap();
+    let _ = xous_nommu::syscalls::sys_interrupt_claim(utra::com::COM_IRQ, com_int_handler);
     com_csr.wfo(utra::com::EV_ENABLE_SPI_AVAIL, 1);
 
     // Reset & Init WF200 before starting the main loop
     if use_wifi {
-        sprintln!("wifi reset...");
+        logln!(LL::Info, "wifi...");
         wifi::wf200_reset_momentary();
-        sprintln!("wifi init...");
         wifi_ready = wifi::wf200_init();
         delay_ms(10);
         match wifi_ready {
-            true => sprintln!("Wifi ready"),
-            false => sprintln!("Wifi init fail"),
+            true => logln!(LL::Info, "...wifi OK"),
+            false => logln!(LL::Error, "...wifi FAIL"),
         };
     } else {
         wifi_ready = false;
         wifi::wf200_reset_hold();
-        sprintln!("Wifi off: holding reset");
+        logln!(LL::Info, "wifi off: holding reset");
     }
 
     //////////////////////// MAIN LOOP ------------------
-    ll_debug("main loop");
+    logln!(LL::Info, "main loop");
     loop {
         if !flash_update_lock {
             //////////////////////// WIFI HANDLER BLOCK ---------
@@ -252,17 +232,17 @@ fn main() -> ! {
             }
 
             if rx == ComState::SSID_CHECK.verb {
-                // Sending replies here will cause problems with racing RX threads in xous ssid shellchat command
-                // if wifi::ssid_updated() {
-                //     com_tx(1);
-                // } else {
-                //     com_tx(0);
-                // }
-                sprintln!("COM_SSID_CHECK");
+                logln!(LL::Debug, "CSsidChk");
+                // TODO: Get rid of this when the ssid scan shellchat command is revised.
+                match wifi::ssid_scan_in_progress() {
+                    true => com_tx(0),
+                    false => com_tx(1),
+                }
             } else if rx == ComState::SSID_FETCH.verb {
-                let mut ssid_list: [[u8; 32]; wifi::SSID_ARRAY_SIZE] = [[0; 32]; wifi::SSID_ARRAY_SIZE];
+                logln!(LL::Debug, "CSsidFetch...");
+                let mut ssid_list: [[u8; 32]; wifi::SSID_ARRAY_SIZE] =
+                    [[0; 32]; wifi::SSID_ARRAY_SIZE];
                 wifi::ssid_get_list(&mut ssid_list);
-
                 // This gets consumed by xous-core/services/com/main.rs::xmain() in the match branch for
                 // `Some(Opcode::SsidFetchAsString) => {...}` which is expecting to unpack an array of six
                 // SSIDs of 32 bytes each in the format of 6 * (16 * u16 COM bus words). That code divides
@@ -270,28 +250,37 @@ fn main() -> ! {
                 for i in 0..wifi::SSID_ARRAY_SIZE {
                     for j in 0..16 {
                         let n = j << 1;
-                        com_tx(ssid_list[i][n] as u16 | (ssid_list[i][n + 1] as u16) << 8);
+                        let lsb = ssid_list[i][n] as u16;
+                        let msb = ssid_list[i][n + 1] as u16;
+                        com_tx(lsb | (msb << 8));
                     }
                 }
-                for i in 0..wifi::SSID_ARRAY_SIZE {
-                    for j in 0..32 {
-                        match ssid_list[i][j] as u8 {
-                            0 => sprint!("."),
-                            c => sprint!("{}", c as char),
+                #[cfg(feature = "debug_uart")]
+                {
+                    // Debug dump the list of SSIDs
+                    for i in 0..wifi::SSID_ARRAY_SIZE {
+                        for j in 0..32 {
+                            match ssid_list[i][j] as u8 {
+                                0 => log!(LL::Debug, "."),
+                                c => log!(LL::Debug, "{}", c as char),
+                            }
                         }
+                        log!(LL::Debug, "\r\n");
                     }
-                    sprint!("\r\n");
+                    logln!(LL::Debug, "...fetchDone");
                 }
-                sprintln!("COM_SSID_FETCH");
             } else if rx == ComState::LOOP_TEST.verb {
+                logln!(LL::Debug, "CLoop");
                 com_tx((rx & 0xFF) | ((com_sentinel as u16 & 0xFF) << 8));
                 com_sentinel += 1;
             } else if rx == ComState::GAS_GAUGE.verb {
+                logln!(LL::Trace, "CGg"); // This gets polled frequently
                 com_tx(pow.current as u16);
                 com_tx(pow.stby_current as u16);
                 com_tx(pow.voltage as u16);
                 com_tx(hw.power_csr.r(utra::power::POWER) as u16);
             } else if rx == ComState::GG_FACTORY_CAPACITY.verb {
+                logln!(LL::Debug, "CGgFacCap");
                 let mut error = false;
                 let mut capacity: u16 = 1100;
                 match com_rx(250) {
@@ -313,9 +302,20 @@ fn main() -> ! {
                     com_tx(ComState::ERROR.verb); // return an erroneous former capacity
                 }
             } else if rx == ComState::GG_GET_CAPACITY.verb {
+                logln!(LL::Debug, "CGgCap");
                 let old_capacity = gg_set_design_capacity(&mut i2c, None);
                 com_tx(old_capacity);
+            } else if rx == ComState::GG_SOC.verb {
+                logln!(LL::Trace, "CGgSoc"); // This gets polled frequently
+                com_tx(gg_state_of_charge(&mut i2c) as u16);
+            } else if rx == ComState::GG_REMAINING.verb {
+                logln!(LL::Trace, "CGgRem"); // This gets polled frequently
+                com_tx(gg_remaining_capacity(&mut i2c) as u16);
+            } else if rx == ComState::GG_FULL_CAPACITY.verb {
+                logln!(LL::Debug, "CGgFullCap");
+                com_tx(gg_full_capacity(&mut i2c) as u16);
             } else if rx == ComState::GG_DEBUG.verb {
+                logln!(LL::Debug, "CGgDebug");
                 if pow.voltage_glitch {
                     com_tx(1);
                 } else {
@@ -323,6 +323,7 @@ fn main() -> ! {
                 }
                 pow.voltage_glitch = false;
             } else if rx == ComState::STAT.verb {
+                logln!(LL::Debug, "CStat");
                 com_tx(0x8888); // first is just a response to the initial command
                 hw.charger.update_regs(&mut i2c);
                 for i in 0..0xC {
@@ -339,9 +340,7 @@ fn main() -> ! {
                     let power = hw.power_csr.ms(utra::power::POWER_SELF, 1)
                         | hw.power_csr.ms(utra::power::POWER_DISCHARGE, 1);
                     hw.power_csr.wo(utra::power::POWER, power);
-
                     set_msleep_target_ticks(500); // extend next service so we can discharge
-
                     pd_loop_timer = get_time_ms();
                 }
             } else if rx == ComState::POWER_SHIPMODE.verb {
@@ -355,25 +354,23 @@ fn main() -> ! {
 
                 pd_loop_timer = get_time_ms();
             } else if rx == ComState::POWER_CHARGER_STATE.verb {
+                logln!(LL::Debug, "CPowChgState");
                 if hw.charger.chg_is_charging(&mut i2c, false) {
                     com_tx(1);
                 } else {
                     com_tx(0);
                 }
-            } else if rx == ComState::GG_SOC.verb {
-                com_tx(gg_state_of_charge(&mut i2c) as u16);
-            } else if rx == ComState::GG_REMAINING.verb {
-                com_tx(gg_remaining_capacity(&mut i2c) as u16);
-            } else if rx == ComState::GG_FULL_CAPACITY.verb {
-                com_tx(gg_full_capacity(&mut i2c) as u16);
             } else if rx == ComState::GYRO_UPDATE.verb {
+                logln!(LL::Debug, "CGyroUp");
                 gyro.update_xyz();
             } else if rx == ComState::GYRO_READ.verb {
+                logln!(LL::Debug, "CGyroRd");
                 com_tx(gyro.x);
                 com_tx(gyro.y);
                 com_tx(gyro.z);
                 com_tx(gyro.id as u16);
             } else if rx == ComState::POLL_USB_CC.verb {
+                logln!(LL::Debug, "CPollUsbCC");
                 if pow.usb_cc_event {
                     com_tx(1)
                 } else {
@@ -385,17 +382,19 @@ fn main() -> ! {
                 }
                 com_tx(tusb320_rev as u16);
             } else if rx == ComState::CHG_START.verb {
+                logln!(LL::Debug, "CChgStart");
                 // charging mode
                 hw.charger.chg_start(&mut i2c);
             } else if rx == ComState::CHG_BOOST_ON.verb {
+                logln!(LL::Debug, "CBoost1");
                 // boost on
                 hw.charger.chg_boost(&mut i2c);
-                sprintln!("COM_CHG_BOOST_ON");
             } else if rx == ComState::CHG_BOOST_OFF.verb {
                 // boost off
                 hw.charger.chg_boost_off(&mut i2c);
-                sprintln!("COM_CHG_BOOST_OFF");
+                logln!(LL::Debug, "CBoost0");
             } else if rx >= ComState::BL_START.verb && rx <= ComState::BL_END.verb {
+                logln!(LL::Debug, "CBklt");
                 let main_bl_level: u8 = (rx & 0x1F) as u8;
                 let sec_bl_level: u8 = ((rx >> 5) & 0x1F) as u8;
                 hw.backlight
@@ -403,7 +402,9 @@ fn main() -> ! {
             } else if rx == ComState::LINK_READ.verb {
                 // this a "read continuation" command, in other words, return read data
                 // based on the current ComState
+                logln!(LL::Trace, "CRL");
             } else if rx == ComState::LINK_SYNC.verb {
+                logln!(LL::Debug, "CLSync");
                 // sync link command, when received, empty all the FIFOs, and prime Tx with dummy data
                 com_csr.wfo(utra::com::CONTROL_RESET, 1); // reset fifos
                 com_csr.wfo(utra::com::CONTROL_CLRERR, 1); // clear all error flags
@@ -430,7 +431,7 @@ fn main() -> ! {
                     _ => error = true,
                 }
                 if !error {
-                    sprintln!("Erasing {} bytes from 0x{:08x}", len, address);
+                    logln!(LL::Debug, "Erasing {} bytes from 0x{:08x}", len, address);
                     spi_erase_region(address, len);
                 }
             } else if rx == ComState::FLASH_PP.verb {
@@ -457,7 +458,7 @@ fn main() -> ! {
                     }
                 }
                 if !error {
-                    // sprintln!("Programming 256 bytes to 0x{:08x}", address);
+                    // logln!(LL::Debug, "Programming 256 bytes to 0x{:08x}", address);
                     spi_program_page(address, &mut page);
                 }
             } else if rx == ComState::FLASH_LOCK.verb {
@@ -469,12 +470,14 @@ fn main() -> ! {
             } else if rx == ComState::FLASH_WAITACK.verb {
                 com_tx(ComState::FLASH_ACK.verb);
             } else if rx == ComState::WFX_RXSTAT_GET.verb {
-                let rx_stat_raw: [u8; 376] = wifi::get_rx_stats_raw();
-                for i in 0..rx_stat_raw.len() / 2 {
-                    com_tx(rx_stat_raw[i * 2] as u16 | ((rx_stat_raw[i * 2 + 1] as u16) << 8));
+                logln!(LL::Debug, "CWfxRXStat!!!");
+                // TODO: determine if this verb can be removed. It appears unused by Xous.
+                // Send null response of the previously implemented 376 byte size
+                for _ in 0..(376 / 2) {
+                    com_tx(0 as u16);
                 }
-                sprintln!("COM_WFX_RXSTAT_GET");
             } else if rx == ComState::WFX_PDS_LINE_SET.verb {
+                logln!(LL::Debug, "CWfxPdsSet...");
                 // set one line of the PDS record (up to 256 bytes length)
                 let mut error = false;
                 let mut pds_data: [u8; 256] = [0; 256];
@@ -499,47 +502,37 @@ fn main() -> ! {
                         _ => error = true,
                     }
                 }
-                if false {
-                    // nuggets for debugging PDS issues
-                    ll_debug("got wfx_pds_line_set command");
-                    //let s = unsafe{ core::str::from_utf8_unchecked(&pds_data[0..(pds_length as usize)]) };
-                    //ll_debug(s);
-                    sprintln!("length {}", pds_length);
-                    sprintln!("{:?}", pds_data);
-                    sprintln!("error {:?}", error);
-                    delay_ms(50);
-                }
                 if !error {
                     wifi::send_pds(pds_data, pds_length);
                 }
                 com_csr.wfo(utra::com::CONTROL_RESET, 1); // reset fifos
                 com_csr.wfo(utra::com::CONTROL_CLRERR, 1); // clear all error flags
-                sprintln!("COM_WFX_PDS_LINE_SET");
+                logln!(LL::Debug, "...PdsDone");
             } else if rx == ComState::WFX_FW_REV_GET.verb {
+                logln!(LL::Debug, "CWfxFwRev");
                 com_tx(wifi::fw_major() as u16);
                 com_tx(wifi::fw_minor() as u16);
                 com_tx(wifi::fw_build() as u16);
-                sprintln!("COM_WFX_FW_REV_GET");
             } else if rx == ComState::EC_GIT_REV.verb {
+                logln!(LL::Debug, "CECGitRev");
                 com_tx((git_csr.rf(utra::git::GITREV_GITREV) >> 16) as u16);
                 com_tx((git_csr.rf(utra::git::GITREV_GITREV) & 0xFFFF) as u16);
                 com_tx(git_csr.rf(utra::git::DIRTY_DIRTY) as u16);
-                sprintln!("COM_EC_GIT_REV");
             } else if rx == ComState::WF200_RESET.verb {
-                sprintln!("COM_WF200_RESET");
+                log!(LL::Debug, "CWF200Reset ");
                 match com_rx(250) {
                     Ok(result) => {
                         if result == 0 {
-                            sprintln!("WF200_RESET momentary");
+                            logln!(LL::Debug, "momentary");
                             use_wifi = true;
                             wifi::wf200_reset_momentary();
                             wifi_ready = wifi::wf200_init();
                             match wifi_ready {
-                                true => sprintln!("Wifi ready"),
-                                false => sprintln!("Wifi init fail"),
+                                true => logln!(LL::Debug, "Wifi ready"),
+                                false => logln!(LL::Debug, "Wifi init fail"),
                             };
                         } else {
-                            sprintln!("WF200_RESET hold");
+                            logln!(LL::Debug, "hold");
                             wifi_ready = false;
                             use_wifi = false;
                             wifi::wf200_reset_hold();
@@ -547,21 +540,25 @@ fn main() -> ! {
                     }
                     _ => {
                         // default to a normal reset
-                        sprintln!("WF200_RESET default");
+                        logln!(LL::Debug, "default");
                         wifi_ready = false;
                         use_wifi = true;
                         wifi::wf200_reset_momentary();
                     }
                 }
             } else if rx == ComState::SSID_SCAN_ON.verb {
-                sprintln!("COM_SSID_SCAN_ON");
+                logln!(LL::Debug, "CSsidScan1");
                 wifi::start_scan(); // turn this off for FCC testing
+                                    // Do a LINK_SYNC
+                com_csr.wfo(utra::com::CONTROL_RESET, 1); // reset fifos
+                com_csr.wfo(utra::com::CONTROL_CLRERR, 1); // clear all error flags
             } else if rx == ComState::SSID_SCAN_OFF.verb {
+                logln!(LL::Debug, "CSssidScan0");
+                // TODO: Get rid of this when the ssid scan shellchat command is revised.
                 // This is a NOP because the WF200 scan ends on its own
-                sprintln!("COM_SSID_SCAN_OFF");
             } else {
+                logln!(LL::Debug, "ComError {:X}", rx);
                 com_tx(ComState::ERROR.verb);
-                sprintln!("COM err verb:{:X}", rx);
             }
         }
         //////////////////////// ---------------------------

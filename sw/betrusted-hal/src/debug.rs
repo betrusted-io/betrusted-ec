@@ -5,15 +5,38 @@
 //!  2. In ../Cargo.toml, enable the "debug_uart" feature for this crate
 //!
 
+// TODO: switch from println!(...) to logln!(...) and get rid of this allow
+#![allow(unused_macros,dead_code)]
+
 #[cfg(feature = "debug_uart")]
 use utralib::generated::*;
 
+#[cfg(feature = "debug_uart")]
 use crate::hal_time::delay_ms;
 
 /// The flow control timeout determines how long putc() waits to decide if the
 /// wishbone-bridge connection is down before dropping characters.
-///
+#[cfg(feature = "debug_uart")]
 const FLOW_CONTROL_TIMEOUT_MS: usize = 1000;
+
+#[derive(PartialOrd, PartialEq)]
+#[allow(dead_code)]
+pub enum LL {
+    Trace = 0,
+    Debug = 1,
+    Info = 2,
+    Warn = 3,
+    Error = 4,
+    Fatal = 5,
+}
+
+static mut LOG_LEVEL: LL = LL::Info;
+
+pub fn set_log_level(level: LL) {
+    unsafe {
+        LOG_LEVEL = level;
+    }
+}
 
 pub struct Uart {}
 
@@ -85,7 +108,6 @@ impl Write for Uart {
     }
 }
 
-#[macro_export]
 macro_rules! sprint
 {
 	($($args:tt)+) => ({
@@ -98,7 +120,6 @@ macro_rules! sprint
 // Wishbone-tool's serial bridge expects CRLF style line termination. If you do
 // LF only, it will print your text in diagonal cascades instead of columns.
 //
-#[macro_export]
 macro_rules! sprintln
 {
 	() => ({
@@ -110,4 +131,32 @@ macro_rules! sprintln
 	($fmt:expr, $($args:tt)+) => ({
 		sprint!(concat!($fmt, "\r\n"), $($args)+)
 	});
+}
+
+#[cfg(feature = "debug_uart")]
+macro_rules! log {
+    ($level:expr, $($e:expr),+) => {
+        if LOG_LEVEL <= $level {
+            sprint!($($e),+)
+        }
+    }
+}
+
+#[cfg(feature = "debug_uart")]
+macro_rules! logln {
+    ($level:expr, $($e:expr),*) => {
+        if LOG_LEVEL <= $level {
+            sprintln!($($e),*)
+        }
+    }
+}
+
+#[cfg(not(feature = "debug_uart"))]
+macro_rules! log {
+    ($_a:expr, $($_b:expr),+) => {()};
+}
+
+#[cfg(not(feature = "debug_uart"))]
+macro_rules! logln {
+    ($($_a:expr),+) => {()};
 }
