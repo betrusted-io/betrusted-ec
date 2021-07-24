@@ -20,7 +20,7 @@ use betrusted_hal::api_gasgauge::{
 use betrusted_hal::api_lm3509::BtBacklight;
 use betrusted_hal::api_tusb320::BtUsbCc;
 use betrusted_hal::hal_hardi2c::Hardi2c;
-use betrusted_hal::hal_time::{delay_ms, get_time_ms, set_msleep_target_ticks, time_init};
+use betrusted_hal::hal_time::{get_time_ms, set_msleep_target_ticks, time_init};
 use com_rs::ComState;
 use core::panic::PanicInfo;
 use gyro_rs::hal_gyro::BtGyro;
@@ -37,17 +37,17 @@ mod debug;
 mod power_mgmt;
 mod spi;
 mod wifi;
-
+mod wlan;
 use com_bus::{com_int_handler, com_rx, com_tx};
-use debug::{set_log_level, LL};
+use debug::LL;
 use power_mgmt::charger_handler;
 use spi::{spi_erase_region, spi_program_page, spi_standby};
 
-// ========================================
-// ===== Config for Initial Log Level =====
-// ========================================
+// ==========================================================
+// ===== Configure Log Level (used in macro expansions) =====
+// ==========================================================
 const LOG_LEVEL: LL = LL::Debug;
-// ========================================
+// ==========================================================
 
 // Constants
 const CONFIG_CLOCK_FREQUENCY: u32 = 18_000_000;
@@ -99,7 +99,6 @@ fn ticktimer_int_handler(_irq_no: usize) {
 
 #[entry]
 fn main() -> ! {
-    set_log_level(LOG_LEVEL);
     logln!(LL::Info, "\r\n====UP5K==08");
     let mut com_csr = CSR::new(HW_COM_BASE as *mut u32);
     let mut crg_csr = CSR::new(HW_CRG_BASE as *mut u32);
@@ -135,7 +134,7 @@ fn main() -> ! {
     let mut flash_update_lock = false;
 
     let mut use_wifi: bool = true;
-    let mut wifi_ready: bool;
+    let mut wifi_ready: bool = false;
 
     // Initialize the no-MMU version of Xous, which will give us
     // basic access to tasks and interrupts.
@@ -184,13 +183,7 @@ fn main() -> ! {
     // Reset & Init WF200 before starting the main loop
     if use_wifi {
         logln!(LL::Info, "wifi...");
-        wifi::wf200_reset_momentary();
-        wifi_ready = wifi::wf200_init();
-        delay_ms(10);
-        match wifi_ready {
-            true => logln!(LL::Info, "...wifi OK"),
-            false => logln!(LL::Error, "...wifi FAIL"),
-        };
+        wifi::wf200_reset_and_init(&mut use_wifi, &mut wifi_ready);
     } else {
         wifi_ready = false;
         wifi::wf200_reset_hold();
@@ -524,13 +517,7 @@ fn main() -> ! {
                     Ok(result) => {
                         if result == 0 {
                             logln!(LL::Debug, "momentary");
-                            use_wifi = true;
-                            wifi::wf200_reset_momentary();
-                            wifi_ready = wifi::wf200_init();
-                            match wifi_ready {
-                                true => logln!(LL::Debug, "Wifi ready"),
-                                false => logln!(LL::Debug, "Wifi init fail"),
-                            };
+                            wifi::wf200_reset_and_init(&mut use_wifi, &mut wifi_ready);
                         } else {
                             logln!(LL::Debug, "hold");
                             wifi_ready = false;
@@ -541,21 +528,48 @@ fn main() -> ! {
                     _ => {
                         // default to a normal reset
                         logln!(LL::Debug, "default");
-                        wifi_ready = false;
-                        use_wifi = true;
-                        wifi::wf200_reset_momentary();
+                        wifi::wf200_reset_and_init(&mut use_wifi, &mut wifi_ready);
                     }
                 }
             } else if rx == ComState::SSID_SCAN_ON.verb {
                 logln!(LL::Debug, "CSsidScan1");
                 wifi::start_scan(); // turn this off for FCC testing
-                                    // Do a LINK_SYNC
-                com_csr.wfo(utra::com::CONTROL_RESET, 1); // reset fifos
-                com_csr.wfo(utra::com::CONTROL_CLRERR, 1); // clear all error flags
             } else if rx == ComState::SSID_SCAN_OFF.verb {
                 logln!(LL::Debug, "CSssidScan0");
                 // TODO: Get rid of this when the ssid scan shellchat command is revised.
                 // This is a NOP because the WF200 scan ends on its own
+            } else if rx == ComState::WLAN_ON.verb {
+                logln!(LL::Debug, "CWlanOn");
+                if !wifi_ready {
+                    wifi::wf200_reset_and_init(&mut use_wifi, &mut wifi_ready);
+                }
+            } else if rx == ComState::WLAN_OFF.verb {
+                logln!(LL::Debug, "CWlanOff");
+                // TODO: Make graceful shutdown procedure instead of this immediate reset
+                wifi_ready = false;
+                wifi::wf200_reset_hold();
+                logln!(LL::Debug, "holding WF200 reset")
+            } else if rx == ComState::WLAN_SET_SSID.verb {
+                logln!(LL::Debug, "CWlanSetS");
+                let mut sbuf = wlan::new_blank_ssidbuf();
+                match wlan::set_ssid(&mut sbuf) {
+                    Ok(ssid) => logln!(LL::Debug, "ssid = {}", ssid),
+                    _ => logln!(LL::Debug, "set_ssid fail"),
+                };
+            } else if rx == ComState::WLAN_SET_PASS.verb {
+                logln!(LL::Debug, "CWlanSetP");
+                let mut pbuf = wlan::new_blank_passbuf();
+                match wlan::set_pass(&mut pbuf) {
+                    Ok(pass) => logln!(LL::Debug, "pass = {}", pass),
+                    _ => logln!(LL::Debug, "set_pass fail"),
+                };
+            } else if rx == ComState::WLAN_JOIN.verb {
+                logln!(LL::Debug, "CWlanJoin");
+            } else if rx == ComState::WLAN_LEAVE.verb {
+                logln!(LL::Debug, "CWlanLeave");
+            } else if rx == ComState::WLAN_STATUS.verb {
+                logln!(LL::Debug, "CWStatus");
+                // w:0 r:81
             } else {
                 logln!(LL::Debug, "ComError {:X}", rx);
                 com_tx(ComState::ERROR.verb);

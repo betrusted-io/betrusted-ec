@@ -3,9 +3,15 @@ use utralib::generated::{utra, CSR, HW_WIFI_BASE};
 use wfx_bindings::SL_STATUS_OK;
 use wfx_rs::hal_wf200::{
     wf200_fw_build, wf200_fw_major, wf200_fw_minor, wf200_send_pds, wf200_ssid_get_list,
-    wfx_drain_event_queue, wfx_handle_event, wfx_init, wfx_start_scan,
-    wfx_ssid_scan_in_progress,
+    wfx_drain_event_queue, wfx_handle_event, wfx_init, wfx_ssid_scan_in_progress, wfx_start_scan,
 };
+use crate::debug::LL;
+
+// ==========================================================
+// ===== Configure Log Level (used in macro expansions) =====
+// ==========================================================
+const LOG_LEVEL: LL = LL::Debug;
+// ==========================================================
 
 pub const SSID_ARRAY_SIZE: usize = wfx_rs::hal_wf200::SSID_ARRAY_SIZE;
 
@@ -28,6 +34,17 @@ pub fn wf200_init() -> bool {
         SL_STATUS_OK => true,
         _ => false,
     }
+}
+
+/// Shorthand function to encapsulate a sequence used multiple times in main.rs::main()
+pub fn wf200_reset_and_init(use_wifi: &mut bool, wifi_ready: &mut bool) {
+    *use_wifi = true;
+    wf200_reset_momentary();
+    *wifi_ready = wf200_init();
+    match *wifi_ready {
+        true => logln!(LL::Debug, "Wifi ready"),
+        false => logln!(LL::Debug, "Wifi init fail"),
+    };
 }
 
 pub fn wf200_irq_disable() {
