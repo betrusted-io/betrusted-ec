@@ -1,11 +1,15 @@
+use crate::debug::LL;
+use crate::wlan::WlanState;
 use betrusted_hal::hal_time::delay_ms;
 use utralib::generated::{utra, CSR, HW_WIFI_BASE};
-use wfx_bindings::SL_STATUS_OK;
+use wfx_bindings::{
+    sl_status_t, sl_wfx_security_mode_e_WFM_SECURITY_MODE_WPA2_PSK, sl_wfx_send_disconnect_command,
+    sl_wfx_send_join_command, SL_STATUS_OK,
+};
 use wfx_rs::hal_wf200::{
     wf200_fw_build, wf200_fw_major, wf200_fw_minor, wf200_send_pds, wf200_ssid_get_list,
     wfx_drain_event_queue, wfx_handle_event, wfx_init, wfx_ssid_scan_in_progress, wfx_start_scan,
 };
-use crate::debug::LL;
 
 // ==========================================================
 // ===== Configure Log Level (used in macro expansions) =====
@@ -14,6 +18,67 @@ const LOG_LEVEL: LL = LL::Debug;
 // ==========================================================
 
 pub const SSID_ARRAY_SIZE: usize = wfx_rs::hal_wf200::SSID_ARRAY_SIZE;
+
+/// Connect to an access point using WPA2 with SSID and password.
+/// References:
+/// - Silicon Laboratories API docs for sl_wfx_send_join_command():
+///   docs.silabs.com/wifi/wf200/rtos/latest/group-f-u-l-l-m-a-c-d-r-i-v-e-r-a-p-i#ga2fd76ed31e48be10ab6b7fb9d4bc454d
+/// - Rust FFI bindings for sl_wfx API: ../wfx_bindings/src/lib.rs
+/// - Protected management frame explanation: en.wikipedia.org/wiki/IEEE_802.11w-2009
+///
+pub fn ap_join_wpa2(ws: &WlanState) {
+    let prevent_roaming: u8 = 0;
+    let management_frame_protection: u16 = 1;
+    let ie_data: *const u8 = core::ptr::null();
+    let ie_data_length: u16 = 0;
+    let ssid = match ws.ssid() {
+        Ok(s) => s,
+        Err(e) => {
+            logln!(LL::Debug, "SsidErr {}", e as u8);
+            &""
+        }
+    };
+    let pass = match ws.pass() {
+        Ok(p) => p,
+        Err(e) => {
+            logln!(LL::Debug, "PassErr {}", e as u8);
+            &""
+        }
+    };
+    let result: sl_status_t = unsafe {
+        sl_wfx_send_join_command(
+            ssid.as_ptr(),
+            ssid.len() as u32,
+            core::ptr::null(),
+            0 as u16,
+            sl_wfx_security_mode_e_WFM_SECURITY_MODE_WPA2_PSK,
+            prevent_roaming,
+            management_frame_protection,
+            pass.as_ptr(),
+            pass.len() as u16,
+            ie_data,
+            ie_data_length,
+        )
+    };
+    match result {
+        SL_STATUS_OK => logln!(LL::Debug, "joinOk"),
+        _ => logln!(LL::Debug, "joinFail"),
+    }
+}
+
+/// Leave an access point.
+/// References:
+/// - Silicon Laboratories API docs for sl_wfx_send_disconnect_command():
+///   docs.silabs.com/wifi/wf200/rtos/latest/group-f-u-l-l-m-a-c-d-r-i-v-e-r-a-p-i#gae4ae713ea9406b5c18ec278886dcf654
+/// - Rust FFI bindings for sl_wfx API: ../wfx_bindings/src/lib.rs
+///
+pub fn ap_leave() {
+    let result: sl_status_t = unsafe { sl_wfx_send_disconnect_command() };
+    match result {
+        SL_STATUS_OK => logln!(LL::Debug, "leaveOk"),
+        _ => logln!(LL::Debug, "leaveFail"),
+    }
+}
 
 pub fn wf200_reset_momentary() {
     let mut wifi_csr = CSR::new(HW_WIFI_BASE as *mut u32);

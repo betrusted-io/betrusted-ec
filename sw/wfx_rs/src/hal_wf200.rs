@@ -9,13 +9,16 @@ use utralib::generated::{utra, CSR, HW_WIFI_BASE};
 
 #[macro_use]
 mod debug;
-
 mod bt_wf200_pds;
+
 use bt_wf200_pds::PDS_DATA;
+use debug::LL;
 
 // The mixed case constants here are the reason for the `allow(nonstandard_style)` above
 pub use wfx_bindings::{
-    sl_status_t, sl_wfx_buffer_type_t, sl_wfx_confirmations_ids_e_SL_WFX_START_SCAN_CNF_ID,
+    sl_status_t, sl_wfx_buffer_type_t, sl_wfx_confirmations_ids_e_SL_WFX_CONNECT_CNF_ID,
+    sl_wfx_confirmations_ids_e_SL_WFX_DISCONNECT_CNF_ID,
+    sl_wfx_confirmations_ids_e_SL_WFX_START_SCAN_CNF_ID,
     sl_wfx_confirmations_ids_e_SL_WFX_STOP_SCAN_CNF_ID, sl_wfx_connect_ind_t, sl_wfx_context_t,
     sl_wfx_data_write, sl_wfx_disable_device_power_save, sl_wfx_disconnect_ind_t,
     sl_wfx_enable_device_power_save, sl_wfx_error_ind_t, sl_wfx_exception_ind_t,
@@ -25,6 +28,7 @@ pub use wfx_bindings::{
     sl_wfx_fmac_status_e_WFM_STATUS_CONNECTION_TIMEOUT,
     sl_wfx_fmac_status_e_WFM_STATUS_NO_MATCHING_AP, sl_wfx_fmac_status_e_WFM_STATUS_SUCCESS,
     sl_wfx_general_confirmations_ids_e_SL_WFX_CONFIGURATION_CNF_ID,
+    sl_wfx_general_confirmations_ids_e_SL_WFX_PTA_SETTINGS_CNF_ID,
     sl_wfx_general_indications_ids_e_SL_WFX_ERROR_IND_ID,
     sl_wfx_general_indications_ids_e_SL_WFX_EXCEPTION_IND_ID,
     sl_wfx_general_indications_ids_e_SL_WFX_GENERIC_IND_ID,
@@ -47,6 +51,13 @@ pub use wfx_bindings::{
     SL_STATUS_IO_TIMEOUT, SL_STATUS_OK, SL_STATUS_WIFI_SLEEP_GRANTED, SL_WFX_CONT_NEXT_LEN_MASK,
     SL_WFX_EXCEPTION_DATA_SIZE,
 };
+
+// ==========================================================
+// ===== Configure Log Level (used in macro expansions) =====
+// ==========================================================
+const LOG_LEVEL: LL = LL::Debug;
+// ==========================================================
+
 // This is defined in wfx-fullMAC-driver/wfx_fmac_driver/firmware/sl_wfx_general_error_api.h in the enum
 // typedef for sl_wfx_error_t. For some reason that I don't care to hunt down at the moment, this is not
 // included in wfx_bindings. Whatever. Here it is:
@@ -667,33 +678,34 @@ pub unsafe extern "C" fn sl_wfx_host_get_pds_size(pds_size: *mut u16) -> sl_stat
 }
 
 fn sl_wfx_connect_callback(_mac: [u8; 6usize], status: u32) {
+    log!(LL::Debug, "ConnectCallback");
     match status {
         sl_wfx_fmac_status_e_WFM_STATUS_SUCCESS => {
-            sprintln!("WFM_STATUS_SUCCESS");
+            logln!(LL::Debug, "WFM_STATUS_SUCCESS");
             unsafe {
                 WIFI_CONTEXT.state |= sl_wfx_state_t_SL_WFX_STA_INTERFACE_CONNECTED;
                 // TODO: callback to lwip_set_sta_link_up -- setup the IP link
-                sl_wfx_set_power_mode(sl_wfx_pm_mode_e_WFM_PM_MODE_PS, 0);
-                sl_wfx_enable_device_power_save();
+                //sl_wfx_set_power_mode(sl_wfx_pm_mode_e_WFM_PM_MODE_PS, 0);
+                //sl_wfx_enable_device_power_save();
             }
         }
         sl_wfx_fmac_status_e_WFM_STATUS_NO_MATCHING_AP => {
-            sprintln!("STATUS_NO_MATCHING_AP")
+            logln!(LL::Debug, "NoMatchingAP");
         }
         sl_wfx_fmac_status_e_WFM_STATUS_CONNECTION_ABORTED => {
-            sprintln!("STATUS_CONNECTION_ABORTED")
+            logln!(LL::Debug, "ConnectAborted");
         }
         sl_wfx_fmac_status_e_WFM_STATUS_CONNECTION_TIMEOUT => {
-            sprintln!("STATUS_CONNECTION_TIMEOUT")
+            logln!(LL::Debug, "ConnectTimeout");
         }
         sl_wfx_fmac_status_e_WFM_STATUS_CONNECTION_REJECTED_BY_AP => {
-            sprintln!("WFM_STATUS_CONNECTION_REJECTED")
+            logln!(LL::Debug, "ConnectRejected");
         }
         sl_wfx_fmac_status_e_WFM_STATUS_CONNECTION_AUTH_FAILURE => {
-            sprintln!("WFM_STATUS_CONNECTION_AUTH_FAILURE")
+            logln!(LL::Debug, "AuthFailure");
         }
         _ => {
-            sprintln!("Connection attempt error.")
+            logln!(LL::Debug, "Error {:X}", status);
         }
     }
 }
@@ -885,6 +897,12 @@ pub unsafe extern "C" fn sl_wfx_host_post_event(
         }
         sl_wfx_confirmations_ids_e_SL_WFX_STOP_SCAN_CNF_ID => {
             sprintln!("WFX_STOP_SCAN");
+        }
+        sl_wfx_confirmations_ids_e_SL_WFX_CONNECT_CNF_ID => {
+            logln!(LL::Debug, "WFX_CONNECT_CNF");
+        }
+        sl_wfx_confirmations_ids_e_SL_WFX_DISCONNECT_CNF_ID => {
+            logln!(LL::Debug, "WFX_DISCONNECT_CNF");
         }
         0 => {
             // Whatever... I guess this is fine?

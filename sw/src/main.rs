@@ -42,6 +42,7 @@ use com_bus::{com_int_handler, com_rx, com_tx};
 use debug::LL;
 use power_mgmt::charger_handler;
 use spi::{spi_erase_region, spi_program_page, spi_standby};
+use wlan::WlanState;
 
 // ==========================================================
 // ===== Configure Log Level (used in macro expansions) =====
@@ -135,6 +136,9 @@ fn main() -> ! {
 
     let mut use_wifi: bool = true;
     let mut wifi_ready: bool = false;
+
+    // State vars for WPA2 auth credentials for Wifi AP
+    let mut wlan_state = WlanState::new();
 
     // Initialize the no-MMU version of Xous, which will give us
     // basic access to tasks and interrupts.
@@ -551,22 +555,23 @@ fn main() -> ! {
                 logln!(LL::Debug, "holding WF200 reset")
             } else if rx == ComState::WLAN_SET_SSID.verb {
                 logln!(LL::Debug, "CWlanSetS");
-                let mut sbuf = wlan::new_blank_ssidbuf();
-                match wlan::set_ssid(&mut sbuf) {
+                match wlan::set_ssid(&mut wlan_state) {
                     Ok(ssid) => logln!(LL::Debug, "ssid = {}", ssid),
                     _ => logln!(LL::Debug, "set_ssid fail"),
                 };
             } else if rx == ComState::WLAN_SET_PASS.verb {
                 logln!(LL::Debug, "CWlanSetP");
-                let mut pbuf = wlan::new_blank_passbuf();
-                match wlan::set_pass(&mut pbuf) {
+                // TODO: Re-visit whether it's appropriate to log the WPA2 password in plaintext here
+                match wlan::set_pass(&mut wlan_state) {
                     Ok(pass) => logln!(LL::Debug, "pass = {}", pass),
                     _ => logln!(LL::Debug, "set_pass fail"),
                 };
             } else if rx == ComState::WLAN_JOIN.verb {
                 logln!(LL::Debug, "CWlanJoin");
+                wifi::ap_join_wpa2(&wlan_state);
             } else if rx == ComState::WLAN_LEAVE.verb {
                 logln!(LL::Debug, "CWlanLeave");
+                wifi::ap_leave();
             } else if rx == ComState::WLAN_STATUS.verb {
                 logln!(LL::Debug, "CWStatus");
                 // w:0 r:81
