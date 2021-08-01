@@ -23,7 +23,7 @@ use betrusted_hal::hal_hardi2c::Hardi2c;
 use betrusted_hal::hal_time::{get_time_ms, set_msleep_target_ticks, time_init};
 use com_rs::ComState;
 use core::panic::PanicInfo;
-use gyro_rs::hal_gyro::BtGyro;
+//use gyro_rs::hal_gyro::BtGyro;
 use riscv_rt::entry;
 use utralib::generated::{
     utra, CSR, HW_COM_BASE, HW_CRG_BASE, HW_GIT_BASE, HW_POWER_BASE, HW_TICKTIMER_BASE,
@@ -129,7 +129,8 @@ fn main() -> ! {
         voltage_glitch: false,
         usb_cc_event: false,
     };
-    let mut gyro: BtGyro = BtGyro::new();
+    // TODO: Restore gyro code once code space situation is improved
+    // let mut gyro: BtGyro = BtGyro::new();
     let mut last_run_time: u32;
     let mut com_sentinel: u16 = 0; // for link debugging mostly
     let mut flash_update_lock = false;
@@ -157,7 +158,8 @@ fn main() -> ! {
     hw.charger.chg_set_autoparams(&mut i2c);
     hw.charger.chg_start(&mut i2c);
     let tusb320_rev = hw.usb_cc.init(&mut i2c);
-    gyro.init();
+    // TODO: Restore gyro code once code space situation is improved
+    // gyro.init();
     // make sure the backlight is off on boot
     hw.backlight.set_brightness(&mut i2c, 0, 0);
     hw.charger.update_regs(&mut i2c);
@@ -359,13 +361,19 @@ fn main() -> ! {
                 }
             } else if rx == ComState::GYRO_UPDATE.verb {
                 logln!(LL::Debug, "CGyroUp");
-                gyro.update_xyz();
+                // TODO: Restore gyro code once code space situation is improved
+                //gyro.update_xyz();
             } else if rx == ComState::GYRO_READ.verb {
                 logln!(LL::Debug, "CGyroRd");
-                com_tx(gyro.x);
-                com_tx(gyro.y);
-                com_tx(gyro.z);
-                com_tx(gyro.id as u16);
+                // TODO: Restore gyro code once code space situation is improved
+                com_tx(0);
+                com_tx(0);
+                com_tx(0);
+                com_tx(0);
+                //com_tx(gyro.x);
+                //com_tx(gyro.y);
+                //com_tx(gyro.z);
+                //com_tx(gyro.id as u16);
             } else if rx == ComState::POLL_USB_CC.verb {
                 logln!(LL::Debug, "CPollUsbCC");
                 if pow.usb_cc_event {
