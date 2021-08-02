@@ -1,6 +1,6 @@
-use crate::debug::LL;
 use crate::wlan::WlanState;
 use betrusted_hal::hal_time::delay_ms;
+use debug::{logln, sprint, sprintln, LL};
 use utralib::generated::{utra, CSR, HW_WIFI_BASE};
 use wfx_bindings::{
     sl_status_t, sl_wfx_security_mode_e_WFM_SECURITY_MODE_WPA2_PSK, sl_wfx_send_disconnect_command,

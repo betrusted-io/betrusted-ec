@@ -7,12 +7,11 @@ use core::slice;
 use core::str;
 use utralib::generated::{utra, CSR, HW_WIFI_BASE};
 
-#[macro_use]
-mod debug;
 mod bt_wf200_pds;
 
 use bt_wf200_pds::PDS_DATA;
-use debug::LL;
+use debug;
+use debug::{sprint, sprintln, log, logln, LL};
 
 // The mixed case constants here are the reason for the `allow(nonstandard_style)` above
 pub use wfx_bindings::{

@@ -23,6 +23,8 @@ use betrusted_hal::hal_hardi2c::Hardi2c;
 use betrusted_hal::hal_time::{get_time_ms, set_msleep_target_ticks, time_init};
 use com_rs::ComState;
 use core::panic::PanicInfo;
+use debug;
+use debug::{log, logln, sprint, sprintln, LL};
 //use gyro_rs::hal_gyro::BtGyro;
 use riscv_rt::entry;
 use utralib::generated::{
@@ -32,14 +34,11 @@ use volatile::Volatile;
 
 // Modules from this crate
 mod com_bus;
-#[macro_use]
-mod debug;
 mod power_mgmt;
 mod spi;
 mod wifi;
 mod wlan;
 use com_bus::{com_int_handler, com_rx, com_tx};
-use debug::LL;
 use power_mgmt::charger_handler;
 use spi::{spi_erase_region, spi_program_page, spi_standby};
 use wlan::WlanState;

@@ -1,3 +1,4 @@
+#![no_std]
 //! Serial debug for wishbone-bridge crossover UART.
 //!
 //! To enable serial debug printing:
@@ -5,11 +6,11 @@
 //!  2. In ../Cargo.toml, enable the "debug_uart" feature for this crate
 //!
 
-// TODO: switch from println!(...) to logln!(...) and get rid of this allow
-#![allow(unused_macros, dead_code)]
-
 #[cfg(feature = "debug_uart")]
 use utralib::generated::*;
+
+#[cfg(feature = "debug_uart")]
+extern crate betrusted_hal;
 
 #[cfg(feature = "debug_uart")]
 use crate::betrusted_hal::hal_time::delay_ms;
@@ -108,11 +109,12 @@ impl Write for Uart {
     }
 }
 
+#[macro_export]
 macro_rules! sprint
 {
 	($($args:tt)+) => ({
 			use core::fmt::Write;
-			let _ = write!(crate::hal_wf200::debug::Uart {}, $($args)+);
+			let _ = write!(crate::debug::Uart {}, $($args)+);
 	});
 }
 
@@ -120,6 +122,7 @@ macro_rules! sprint
 // Wishbone-tool's serial bridge expects CRLF style line termination. If you do
 // LF only, it will print your text in diagonal cascades instead of columns.
 //
+#[macro_export]
 macro_rules! sprintln
 {
 	() => ({
@@ -134,6 +137,7 @@ macro_rules! sprintln
 }
 
 #[cfg(feature = "debug_uart")]
+#[macro_export]
 macro_rules! log {
     ($level:expr, $($e:expr),+) => {
         if LOG_LEVEL <= $level {
@@ -143,6 +147,7 @@ macro_rules! log {
 }
 
 #[cfg(feature = "debug_uart")]
+#[macro_export]
 macro_rules! logln {
     ($level:expr, $($e:expr),*) => {
         if LOG_LEVEL <= $level {
@@ -152,15 +157,13 @@ macro_rules! logln {
 }
 
 #[cfg(not(feature = "debug_uart"))]
+#[macro_export]
 macro_rules! log {
-    ($_a:expr, $($_b:expr),+) => {
-        ()
-    };
+    ($_a:expr, $($_b:expr),+) => {()};
 }
 
 #[cfg(not(feature = "debug_uart"))]
+#[macro_export]
 macro_rules! logln {
-    ($($_a:expr),+) => {
-        ()
-    };
+    ($($_a:expr),+) => {()};
 }
