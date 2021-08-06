@@ -1,14 +1,14 @@
 use crate::wlan::WlanState;
-use betrusted_hal::hal_time::delay_ms;
 use debug::{logln, sprint, sprintln, LL};
-use utralib::generated::{utra, CSR, HW_WIFI_BASE};
 use wfx_bindings::{
-    sl_status_t, sl_wfx_security_mode_e_WFM_SECURITY_MODE_WPA2_PSK, sl_wfx_send_disconnect_command,
+    sl_status_t, sl_wfx_host_hold_in_reset, sl_wfx_host_reset_chip,
+    sl_wfx_security_mode_e_WFM_SECURITY_MODE_WPA2_PSK, sl_wfx_send_disconnect_command,
     sl_wfx_send_join_command, SL_STATUS_OK,
 };
 use wfx_rs::hal_wf200::{
-    wf200_fw_build, wf200_fw_major, wf200_fw_minor, wf200_send_pds, wf200_ssid_get_list,
-    wfx_drain_event_queue, wfx_handle_event, wfx_init, wfx_ssid_scan_in_progress, wfx_start_scan,
+    get_status, wf200_fw_build, wf200_fw_major, wf200_fw_minor, wf200_send_pds,
+    wf200_ssid_get_list, wfx_drain_event_queue, wfx_handle_event, wfx_init,
+    wfx_ssid_scan_in_progress, wfx_start_scan, State,
 };
 
 // ==========================================================
@@ -81,19 +81,17 @@ pub fn ap_leave() {
 }
 
 pub fn wf200_reset_momentary() {
-    let mut wifi_csr = CSR::new(HW_WIFI_BASE as *mut u32);
-    wifi_csr.rmwf(utra::wifi::WIFI_RESET, 1);
-    delay_ms(10);
-    wifi_csr.rmwf(utra::wifi::WIFI_RESET, 0);
-    delay_ms(10);
+    let _ = unsafe { sl_wfx_host_reset_chip() };
 }
 
+// TODO: Find a way to turn the WF200 off by using the API... maybe `sl_wfx_host_deinit()`?
+
+/// Turn WF200 off the lazy way by holding reset low (sub-optimal because of pullup current)
 pub fn wf200_reset_hold() {
-    let mut wifi_csr = CSR::new(HW_WIFI_BASE as *mut u32);
-    wifi_csr.rmwf(utra::wifi::WIFI_RESET, 1);
+    let _ = unsafe { sl_wfx_host_hold_in_reset() };
 }
 
-/// Initialize the WF200, returning of true means success
+/// Initialize the WF200, returning true means success
 pub fn wf200_init() -> bool {
     match wfx_init() {
         SL_STATUS_OK => true,
@@ -174,4 +172,29 @@ pub fn send_pds(data: [u8; 256], length: u16) -> bool {
 
 pub fn handle_event() -> u32 {
     wfx_handle_event()
+}
+
+/// Append string describing WF200 power and connection status to u8 buffer iterator
+pub fn append_status_str(buf: &mut core::slice::IterMut<u8>, ws: &WlanState) {
+    let s = match get_status() {
+        State::Unknown => "???",
+        State::ResetHold => "Off",
+        State::Uninitialized => "OnUnInit",
+        State::Initializing => "OnInit",
+        State::Disconnected => "OnDiscon",
+        State::Connecting => "Joining",
+        State::Connected => "Joined",
+        State::WFXError => "WFXErr",
+    };
+    let status_it = "status: ".bytes().chain(s.bytes());
+    let ssid = match ws.ssid() {
+        Ok(ssid) => ssid,
+        _ => "",
+    };
+    let ssid_it = "\nssid: ".bytes().chain(ssid.bytes());
+    for c in status_it.chain(ssid_it) {
+        if let Some(dest) = buf.next() {
+            *dest = c;
+        }
+    }
 }

@@ -83,6 +83,20 @@ static mut WFX_PTR_LIST: [usize; WFX_MAX_PTRS] = [0; WFX_MAX_PTRS];
 static mut SSID_SCAN_IN_PROGRESS: bool = false;
 
 #[derive(Copy, Clone)]
+pub enum State {
+    Unknown,
+    ResetHold,
+    Uninitialized,
+    Initializing,
+    Disconnected,
+    Connecting,
+    Connected,
+    WFXError,
+}
+
+static mut CURRENT_STATUS: State = State::Unknown;
+
+#[derive(Copy, Clone)]
 pub struct SsidResult {
     pub mac: [u8; 6],
     pub ssid: [u8; 32],
@@ -231,6 +245,7 @@ pub fn wf200_fw_major() -> u8 {
 }
 
 pub fn wfx_init() -> sl_status_t {
+    unsafe { CURRENT_STATUS = State::Initializing; }
     unsafe { sl_wfx_init(&mut WIFI_CONTEXT) } // use this to drive porting of the wfx library
 }
 
@@ -250,6 +265,7 @@ pub unsafe extern "C" fn sl_wfx_host_spi_cs_deassert() -> sl_status_t {
 
 #[export_name = "sl_wfx_host_deinit_bus"]
 pub unsafe extern "C" fn sl_wfx_host_deinit_bus() -> sl_status_t {
+    CURRENT_STATUS = State::Uninitialized;
     let mut wifi_csr = CSR::new(HW_WIFI_BASE as *mut u32);
     wifi_csr.wo(utra::wifi::CONTROL, 0);
     wifi_csr.wo(utra::wifi::WIFI, 0);
@@ -283,6 +299,7 @@ pub unsafe extern "C" fn sl_wfx_host_reset_chip() -> sl_status_t {
     delay_ms(10);
     wifi_csr.wfo(utra::wifi::WIFI_RESET, 0);
     delay_ms(10);
+    CURRENT_STATUS = State::Uninitialized;
     SSID_SCAN_IN_PROGRESS = false;
     SL_STATUS_OK
 }
@@ -293,6 +310,7 @@ pub unsafe extern "C" fn sl_wfx_host_hold_in_reset() -> sl_status_t {
     wifi_csr.wfo(utra::wifi::WIFI_RESET, 1);
     // Allow a little time for reset signal to take effect before returning
     delay_ms(1);
+    CURRENT_STATUS = State::ResetHold;
     SSID_SCAN_IN_PROGRESS = false;
     SL_STATUS_OK
 }
@@ -678,9 +696,11 @@ pub unsafe extern "C" fn sl_wfx_host_get_pds_size(pds_size: *mut u16) -> sl_stat
 
 fn sl_wfx_connect_callback(_mac: [u8; 6usize], status: u32) {
     log!(LL::Debug, "ConnectCallback");
+    let mut new_status = State::Disconnected;
     match status {
         sl_wfx_fmac_status_e_WFM_STATUS_SUCCESS => {
             logln!(LL::Debug, "WFM_STATUS_SUCCESS");
+            new_status = State::Connected;
             unsafe {
                 WIFI_CONTEXT.state |= sl_wfx_state_t_SL_WFX_STA_INTERFACE_CONNECTED;
                 // TODO: callback to lwip_set_sta_link_up -- setup the IP link
@@ -707,11 +727,13 @@ fn sl_wfx_connect_callback(_mac: [u8; 6usize], status: u32) {
             logln!(LL::Debug, "Error {:X}", status);
         }
     }
+    unsafe { CURRENT_STATUS = new_status; }
 }
 
 fn sl_wfx_disconnect_callback(_mac: [u8; 6usize], _reason: u16) {
     sprintln!("Disconnected");
     unsafe {
+        CURRENT_STATUS = State::Disconnected;
         WIFI_CONTEXT.state &= !sl_wfx_state_t_SL_WFX_STA_INTERFACE_CONNECTED;
     }
     // TODO: callback to lwip_set_sta_link_down -- teardown the IP link
@@ -875,6 +897,7 @@ pub unsafe extern "C" fn sl_wfx_host_post_event(
             let firmware_error: *const sl_wfx_error_ind_t =
                 event_payload as *const sl_wfx_error_ind_t;
             let error = core::ptr::addr_of!((*firmware_error).body.type_).read_unaligned();
+            CURRENT_STATUS = State::WFXError;
             // SL_WFX_HIF_BUS_ERROR means something got messed up on the SPI bus between the UP5K and the
             // WF200. The one instance I've seen of that happened because of using some weird pointer casting stuff on a
             // the control register argument to wf_receive_frame(). Using `let cr: u16 = 0; wfx_receive_frame(&mut cr);`
@@ -887,6 +910,7 @@ pub unsafe extern "C" fn sl_wfx_host_post_event(
         }
         sl_wfx_general_indications_ids_e_SL_WFX_STARTUP_IND_ID => {
             sprintln!("WFX_STARTUP");
+            CURRENT_STATUS = State::Disconnected;
         }
         sl_wfx_general_confirmations_ids_e_SL_WFX_CONFIGURATION_CNF_ID => {
             // this occurs during configuration, and is handled specially
@@ -923,4 +947,11 @@ pub unsafe extern "C" fn sl_wfx_host_post_event(
         }
     }
     SL_STATUS_OK
+}
+
+/// Return current WF200 power and connection status
+pub fn get_status() -> State {
+    unsafe {
+        CURRENT_STATUS
+    }
 }

@@ -21,6 +21,7 @@ use betrusted_hal::api_lm3509::BtBacklight;
 use betrusted_hal::api_tusb320::BtUsbCc;
 use betrusted_hal::hal_hardi2c::Hardi2c;
 use betrusted_hal::hal_time::{get_time_ms, set_msleep_target_ticks, time_init};
+use com_rs::serdes::{STR_64_U8_SIZE, STR_64_WORDS, StringSer};
 use com_rs::ComState;
 use core::panic::PanicInfo;
 use debug;
@@ -581,7 +582,29 @@ fn main() -> ! {
                 wifi::ap_leave();
             } else if rx == ComState::WLAN_STATUS.verb {
                 logln!(LL::Debug, "CWStatus");
-                // w:0 r:81
+                const SIZE: usize = STR_64_U8_SIZE;
+                let mut buf: [u8; SIZE] = [0; SIZE];
+                let mut buf_it = buf.iter_mut();
+                wifi::append_status_str(&mut buf_it, &wlan_state);
+                let end = SIZE - buf_it.count();
+                let mut error = true;
+                if let Ok(status) = core::str::from_utf8(&buf[..end]) {
+                    let mut str_ser = StringSer::<STR_64_WORDS>::new();
+                    if let Ok(tx) = str_ser.encode(&status) {
+                        for w in tx.iter() {
+                            com_tx(*w);
+                        }
+                        error = false;
+                    }
+                }
+                if error {
+                    // Even if something went wrong with the string encoding, still need to send the
+                    // proper number of response words over the COM bus to maintain protocol sync.
+                    logln!(LL::Debug, "CWStatusErr");
+                    for _ in 0..STR_64_WORDS {
+                        com_tx(0);
+                    }
+                }
             } else {
                 logln!(LL::Debug, "ComError {:X}", rx);
                 com_tx(ComState::ERROR.verb);
