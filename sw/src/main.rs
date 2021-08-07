@@ -25,6 +25,7 @@ use com_rs::serdes::{STR_64_U8_SIZE, STR_64_WORDS, StringSer};
 use com_rs::ComState;
 use core::panic::PanicInfo;
 use debug;
+#[allow(unused_imports)]
 use debug::{log, logln, sprint, sprintln, LL};
 //use gyro_rs::hal_gyro::BtGyro;
 use riscv_rt::entry;
@@ -47,6 +48,7 @@ use wlan::WlanState;
 // ==========================================================
 // ===== Configure Log Level (used in macro expansions) =====
 // ==========================================================
+#[allow(dead_code)]
 const LOG_LEVEL: LL = LL::Debug;
 // ==========================================================
 
@@ -565,15 +567,15 @@ fn main() -> ! {
             } else if rx == ComState::WLAN_SET_SSID.verb {
                 logln!(LL::Debug, "CWlanSetS");
                 match wlan::set_ssid(&mut wlan_state) {
+                    #[allow(unused_variables)]
                     Ok(ssid) => logln!(LL::Debug, "ssid = {}", ssid),
                     _ => logln!(LL::Debug, "set_ssid fail"),
                 };
             } else if rx == ComState::WLAN_SET_PASS.verb {
                 logln!(LL::Debug, "CWlanSetP");
-                // TODO: Re-visit whether it's appropriate to log the WPA2 password in plaintext here
                 match wlan::set_pass(&mut wlan_state) {
-                    Ok(pass) => logln!(LL::Debug, "pass = {}", pass),
-                    _ => logln!(LL::Debug, "set_pass fail"),
+                    Ok(_) => logln!(LL::Debug, "SetPassOk"),
+                    _ => logln!(LL::Debug, "SetPassFail"),
                 };
             } else if rx == ComState::WLAN_JOIN.verb {
                 logln!(LL::Debug, "CWlanJoin");

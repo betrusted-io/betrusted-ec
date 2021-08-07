@@ -1,4 +1,5 @@
 use crate::wlan::WlanState;
+#[allow(unused_imports)]
 use debug::{logln, sprint, sprintln, LL};
 use wfx_bindings::{
     sl_status_t, sl_wfx_host_hold_in_reset, sl_wfx_host_reset_chip,
@@ -14,6 +15,7 @@ use wfx_rs::hal_wf200::{
 // ==========================================================
 // ===== Configure Log Level (used in macro expansions) =====
 // ==========================================================
+#[allow(dead_code)]
 const LOG_LEVEL: LL = LL::Debug;
 // ==========================================================
 
@@ -33,6 +35,7 @@ pub fn ap_join_wpa2(ws: &WlanState) {
     let ie_data_length: u16 = 0;
     let ssid = match ws.ssid() {
         Ok(s) => s,
+        #[allow(unused_variables)]
         Err(e) => {
             logln!(LL::Debug, "SsidErr {}", e as u8);
             &""
@@ -40,6 +43,7 @@ pub fn ap_join_wpa2(ws: &WlanState) {
     };
     let pass = match ws.pass() {
         Ok(p) => p,
+        #[allow(unused_variables)]
         Err(e) => {
             logln!(LL::Debug, "PassErr {}", e as u8);
             &""
