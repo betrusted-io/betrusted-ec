@@ -158,6 +158,7 @@ fn main() -> ! {
     hw.charger.chg_set_autoparams(&mut i2c);
     hw.charger.chg_start(&mut i2c);
     let tusb320_rev = hw.usb_cc.init(&mut i2c);
+    logln!(LL::Debug, "tusb320_rev {:X}", tusb320_rev);
     // TODO: Restore gyro code once code space situation is improved
     // gyro.init();
     // make sure the backlight is off on boot
