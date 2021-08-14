@@ -7,15 +7,17 @@ use core::slice;
 use core::str;
 use utralib::generated::{utra, CSR, HW_WIFI_BASE};
 
-#[macro_use]
-mod debug;
-
 mod bt_wf200_pds;
+
 use bt_wf200_pds::PDS_DATA;
+use debug;
+use debug::{sprint, sprintln, log, logln, LL};
 
 // The mixed case constants here are the reason for the `allow(nonstandard_style)` above
 pub use wfx_bindings::{
-    sl_status_t, sl_wfx_buffer_type_t, sl_wfx_confirmations_ids_e_SL_WFX_START_SCAN_CNF_ID,
+    sl_status_t, sl_wfx_buffer_type_t, sl_wfx_confirmations_ids_e_SL_WFX_CONNECT_CNF_ID,
+    sl_wfx_confirmations_ids_e_SL_WFX_DISCONNECT_CNF_ID,
+    sl_wfx_confirmations_ids_e_SL_WFX_START_SCAN_CNF_ID,
     sl_wfx_confirmations_ids_e_SL_WFX_STOP_SCAN_CNF_ID, sl_wfx_connect_ind_t, sl_wfx_context_t,
     sl_wfx_data_write, sl_wfx_disable_device_power_save, sl_wfx_disconnect_ind_t,
     sl_wfx_enable_device_power_save, sl_wfx_error_ind_t, sl_wfx_exception_ind_t,
@@ -25,6 +27,7 @@ pub use wfx_bindings::{
     sl_wfx_fmac_status_e_WFM_STATUS_CONNECTION_TIMEOUT,
     sl_wfx_fmac_status_e_WFM_STATUS_NO_MATCHING_AP, sl_wfx_fmac_status_e_WFM_STATUS_SUCCESS,
     sl_wfx_general_confirmations_ids_e_SL_WFX_CONFIGURATION_CNF_ID,
+    sl_wfx_general_confirmations_ids_e_SL_WFX_PTA_SETTINGS_CNF_ID,
     sl_wfx_general_indications_ids_e_SL_WFX_ERROR_IND_ID,
     sl_wfx_general_indications_ids_e_SL_WFX_EXCEPTION_IND_ID,
     sl_wfx_general_indications_ids_e_SL_WFX_GENERIC_IND_ID,
@@ -47,6 +50,14 @@ pub use wfx_bindings::{
     SL_STATUS_IO_TIMEOUT, SL_STATUS_OK, SL_STATUS_WIFI_SLEEP_GRANTED, SL_WFX_CONT_NEXT_LEN_MASK,
     SL_WFX_EXCEPTION_DATA_SIZE,
 };
+
+// ==========================================================
+// ===== Configure Log Level (used in macro expansions) =====
+// ==========================================================
+#[allow(dead_code)]
+const LOG_LEVEL: LL = LL::Debug;
+// ==========================================================
+
 // This is defined in wfx-fullMAC-driver/wfx_fmac_driver/firmware/sl_wfx_general_error_api.h in the enum
 // typedef for sl_wfx_error_t. For some reason that I don't care to hunt down at the moment, this is not
 // included in wfx_bindings. Whatever. Here it is:
@@ -71,6 +82,20 @@ static mut WFX_PTR_COUNT: u8 = 0;
 static mut WFX_PTR_LIST: [usize; WFX_MAX_PTRS] = [0; WFX_MAX_PTRS];
 
 static mut SSID_SCAN_IN_PROGRESS: bool = false;
+
+#[derive(Copy, Clone)]
+pub enum State {
+    Unknown,
+    ResetHold,
+    Uninitialized,
+    Initializing,
+    Disconnected,
+    Connecting,
+    Connected,
+    WFXError,
+}
+
+static mut CURRENT_STATUS: State = State::Unknown;
 
 #[derive(Copy, Clone)]
 pub struct SsidResult {
@@ -221,6 +246,7 @@ pub fn wf200_fw_major() -> u8 {
 }
 
 pub fn wfx_init() -> sl_status_t {
+    unsafe { CURRENT_STATUS = State::Initializing; }
     unsafe { sl_wfx_init(&mut WIFI_CONTEXT) } // use this to drive porting of the wfx library
 }
 
@@ -240,6 +266,7 @@ pub unsafe extern "C" fn sl_wfx_host_spi_cs_deassert() -> sl_status_t {
 
 #[export_name = "sl_wfx_host_deinit_bus"]
 pub unsafe extern "C" fn sl_wfx_host_deinit_bus() -> sl_status_t {
+    CURRENT_STATUS = State::Uninitialized;
     let mut wifi_csr = CSR::new(HW_WIFI_BASE as *mut u32);
     wifi_csr.wo(utra::wifi::CONTROL, 0);
     wifi_csr.wo(utra::wifi::WIFI, 0);
@@ -273,6 +300,7 @@ pub unsafe extern "C" fn sl_wfx_host_reset_chip() -> sl_status_t {
     delay_ms(10);
     wifi_csr.wfo(utra::wifi::WIFI_RESET, 0);
     delay_ms(10);
+    CURRENT_STATUS = State::Uninitialized;
     SSID_SCAN_IN_PROGRESS = false;
     SL_STATUS_OK
 }
@@ -283,6 +311,7 @@ pub unsafe extern "C" fn sl_wfx_host_hold_in_reset() -> sl_status_t {
     wifi_csr.wfo(utra::wifi::WIFI_RESET, 1);
     // Allow a little time for reset signal to take effect before returning
     delay_ms(1);
+    CURRENT_STATUS = State::ResetHold;
     SSID_SCAN_IN_PROGRESS = false;
     SL_STATUS_OK
 }
@@ -667,40 +696,45 @@ pub unsafe extern "C" fn sl_wfx_host_get_pds_size(pds_size: *mut u16) -> sl_stat
 }
 
 fn sl_wfx_connect_callback(_mac: [u8; 6usize], status: u32) {
+    log!(LL::Debug, "ConnectCallback");
+    let mut new_status = State::Disconnected;
     match status {
         sl_wfx_fmac_status_e_WFM_STATUS_SUCCESS => {
-            sprintln!("WFM_STATUS_SUCCESS");
+            logln!(LL::Debug, "WFM_STATUS_SUCCESS");
+            new_status = State::Connected;
             unsafe {
                 WIFI_CONTEXT.state |= sl_wfx_state_t_SL_WFX_STA_INTERFACE_CONNECTED;
                 // TODO: callback to lwip_set_sta_link_up -- setup the IP link
-                sl_wfx_set_power_mode(sl_wfx_pm_mode_e_WFM_PM_MODE_PS, 0);
-                sl_wfx_enable_device_power_save();
+                //sl_wfx_set_power_mode(sl_wfx_pm_mode_e_WFM_PM_MODE_PS, 0);
+                //sl_wfx_enable_device_power_save();
             }
         }
         sl_wfx_fmac_status_e_WFM_STATUS_NO_MATCHING_AP => {
-            sprintln!("STATUS_NO_MATCHING_AP")
+            logln!(LL::Debug, "NoMatchingAP");
         }
         sl_wfx_fmac_status_e_WFM_STATUS_CONNECTION_ABORTED => {
-            sprintln!("STATUS_CONNECTION_ABORTED")
+            logln!(LL::Debug, "ConnectAborted");
         }
         sl_wfx_fmac_status_e_WFM_STATUS_CONNECTION_TIMEOUT => {
-            sprintln!("STATUS_CONNECTION_TIMEOUT")
+            logln!(LL::Debug, "ConnectTimeout");
         }
         sl_wfx_fmac_status_e_WFM_STATUS_CONNECTION_REJECTED_BY_AP => {
-            sprintln!("WFM_STATUS_CONNECTION_REJECTED")
+            logln!(LL::Debug, "ConnectRejected");
         }
         sl_wfx_fmac_status_e_WFM_STATUS_CONNECTION_AUTH_FAILURE => {
-            sprintln!("WFM_STATUS_CONNECTION_AUTH_FAILURE")
+            logln!(LL::Debug, "AuthFailure");
         }
         _ => {
-            sprintln!("Connection attempt error.")
+            logln!(LL::Debug, "Error {:X}", status);
         }
     }
+    unsafe { CURRENT_STATUS = new_status; }
 }
 
 fn sl_wfx_disconnect_callback(_mac: [u8; 6usize], _reason: u16) {
     sprintln!("Disconnected");
     unsafe {
+        CURRENT_STATUS = State::Disconnected;
         WIFI_CONTEXT.state &= !sl_wfx_state_t_SL_WFX_STA_INTERFACE_CONNECTED;
     }
     // TODO: callback to lwip_set_sta_link_down -- teardown the IP link
@@ -864,6 +898,7 @@ pub unsafe extern "C" fn sl_wfx_host_post_event(
             let firmware_error: *const sl_wfx_error_ind_t =
                 event_payload as *const sl_wfx_error_ind_t;
             let error = core::ptr::addr_of!((*firmware_error).body.type_).read_unaligned();
+            CURRENT_STATUS = State::WFXError;
             // SL_WFX_HIF_BUS_ERROR means something got messed up on the SPI bus between the UP5K and the
             // WF200. The one instance I've seen of that happened because of using some weird pointer casting stuff on a
             // the control register argument to wf_receive_frame(). Using `let cr: u16 = 0; wfx_receive_frame(&mut cr);`
@@ -876,6 +911,7 @@ pub unsafe extern "C" fn sl_wfx_host_post_event(
         }
         sl_wfx_general_indications_ids_e_SL_WFX_STARTUP_IND_ID => {
             sprintln!("WFX_STARTUP");
+            CURRENT_STATUS = State::Disconnected;
         }
         sl_wfx_general_confirmations_ids_e_SL_WFX_CONFIGURATION_CNF_ID => {
             // this occurs during configuration, and is handled specially
@@ -885,6 +921,12 @@ pub unsafe extern "C" fn sl_wfx_host_post_event(
         }
         sl_wfx_confirmations_ids_e_SL_WFX_STOP_SCAN_CNF_ID => {
             sprintln!("WFX_STOP_SCAN");
+        }
+        sl_wfx_confirmations_ids_e_SL_WFX_CONNECT_CNF_ID => {
+            logln!(LL::Debug, "WFX_CONNECT_CNF");
+        }
+        sl_wfx_confirmations_ids_e_SL_WFX_DISCONNECT_CNF_ID => {
+            logln!(LL::Debug, "WFX_DISCONNECT_CNF");
         }
         0 => {
             // Whatever... I guess this is fine?
@@ -906,4 +948,11 @@ pub unsafe extern "C" fn sl_wfx_host_post_event(
         }
     }
     SL_STATUS_OK
+}
+
+/// Return current WF200 power and connection status
+pub fn get_status() -> State {
+    unsafe {
+        CURRENT_STATUS
+    }
 }

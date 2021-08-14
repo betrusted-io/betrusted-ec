@@ -107,10 +107,6 @@ impl BtUsbCc {
         txbuf = [TUSB320LAI_A0_REV as u8];
         let mut rxrev: [u8; 1] = [0; 1];
         while i2c.i2c_controller(TUSB320LAI_ADDR, Some(&txbuf), Some(&mut rxrev), TUSB320_TIMEOUT_MS) != 0 {}
-        if cfg!(feature = "debug_uart") {
-            sprintln!("tusb320lai_rev: {:08x}", rxrev[0]);
-            crate::hal_time::delay_ms(50);
-        }
         let rev = rxrev[0];
         // assert!((rxrev[0] == TUSB320LAI_REVISION_EXPECTED) || (rxrev[0] == TUSB320LAI_REVISION_EXPECTED_ALT));
 

@@ -1,5 +1,6 @@
 #![allow(dead_code)] // so we don't get tons of warnings on unused but defined SPI commands
 
+use debug::{sprint,sprintln};
 use utralib::generated::*;
 
 pub struct SpiCmd {

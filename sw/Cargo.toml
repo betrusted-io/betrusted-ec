@@ -22,6 +22,7 @@ gyro_bindings = { path = "gyro_bindings" }
 xous-nommu = { path = "xous-nommu" }
 utralib = { path = "../utralib"}
 com_rs = { path = "com_rs" }
+debug = { path = "debug" }
 
 # this lets you use `cargo fix`!
 [[bin]]
@@ -30,7 +31,7 @@ test = false
 bench = false
 
 [features]
-debug_uart = [ "wfx_rs/debug_uart", "betrusted-hal/debug_uart" ]
+debug_uart = [ "wfx_rs/debug_uart", "debug/debug_uart" ]
 # default = ["debug_uart"]  # "debug_uart" to turn on uart debugging
 # note to self: when debugging, watchdog timer is automatically disabled
 default = []

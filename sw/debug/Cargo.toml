@@ -1,0 +1,13 @@
+[package]
+name = "debug"
+version = "0.1.0"
+authors = []
+edition = "2018"
+
+[dependencies]
+betrusted-hal = { path = "../betrusted-hal" }
+utralib = { path = "../../utralib" }
+
+[features]
+debug_uart = []
+#default = ["debug_uart"]

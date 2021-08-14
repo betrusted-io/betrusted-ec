@@ -3,6 +3,7 @@
 extern crate utralib;
 extern crate wfx_sys;
 extern crate c_types;
+extern crate debug;
 extern crate betrusted_hal;
 pub extern crate wfx_bindings;
 
