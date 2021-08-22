@@ -246,7 +246,7 @@ fn create_image(
     let loader_bin_path = &format!("target/{}/release/loader.bin", TARGET);
     let kernel_bin_path = &format!("target/{}/release/kernel.bin", TARGET);
     // kernel region limit primarily set by the loader copy bytes. Can be grown, at expense of heap.
-    const KERNEL_REGION: usize = 56 * 1024;
+    const KERNEL_REGION: usize = 76 * 1024;
     // this is defined by size of UP5k bitstream plus rounding to sector erase size of 4k; reset vector points just beyond this
     const GATEWARE_REGION: usize = 104 * 1024;
 
