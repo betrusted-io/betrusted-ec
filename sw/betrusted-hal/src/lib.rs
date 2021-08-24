@@ -10,6 +10,7 @@ pub mod hal_time;
 pub mod api_gasgauge;
 pub mod api_charger;
 pub mod api_lm3509;
+pub mod api_lsm6ds3;
 pub mod api_bq25618;
 pub mod api_tusb320;
 
