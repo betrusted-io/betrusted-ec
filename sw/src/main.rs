@@ -18,16 +18,18 @@ use betrusted_hal::api_gasgauge::{
     gg_state_of_charge,
 };
 use betrusted_hal::api_lm3509::BtBacklight;
+use betrusted_hal::api_lsm6ds3::Imu;
 use betrusted_hal::api_tusb320::BtUsbCc;
 use betrusted_hal::hal_hardi2c::Hardi2c;
 use betrusted_hal::hal_time::{get_time_ms, set_msleep_target_ticks, time_init};
-use com_rs::serdes::{STR_64_U8_SIZE, STR_64_WORDS, StringSer};
+use com_rs::serdes::{StringSer, STR_64_U8_SIZE, STR_64_WORDS};
 use com_rs::ComState;
 use core::panic::PanicInfo;
 use debug;
 #[allow(unused_imports)]
 use debug::{log, logln, sprint, sprintln, LL};
-use gyro_rs::hal_gyro::BtGyro;
+// TODO: clean this up
+//use gyro_rs::hal_gyro::BtGyro;
 use riscv_rt::entry;
 use utralib::generated::{
     utra, CSR, HW_COM_BASE, HW_CRG_BASE, HW_GIT_BASE, HW_POWER_BASE, HW_TICKTIMER_BASE,
@@ -131,7 +133,8 @@ fn main() -> ! {
         voltage_glitch: false,
         usb_cc_event: false,
     };
-    let mut gyro: BtGyro = BtGyro::new();
+    // TODO: clean this up
+    // let mut gyro: BtGyro = BtGyro::new();
     let mut last_run_time: u32;
     let mut com_sentinel: u16 = 0; // for link debugging mostly
     let mut flash_update_lock = false;
@@ -160,7 +163,14 @@ fn main() -> ! {
     hw.charger.chg_start(&mut i2c);
     let tusb320_rev = hw.usb_cc.init(&mut i2c);
     logln!(LL::Debug, "tusb320_rev {:X}", tusb320_rev);
-    gyro.init();
+    // TODO: clean out gyro (fully replace with api_lsm6ds3::Imu::*)
+    // gyro.init();
+    let mut tap_check_phase: u32 = 0;
+    match Imu::init(&mut i2c) {
+        // WHO_AM_I register value should be 0x6A
+        Ok(who_am_i_reg) => logln!(LL::Debug, "ImuInitOk {:X}", who_am_i_reg),
+        Err(n) => logln!(LL::Debug, "ImuInitErr {:X}", n),
+    };
     // make sure the backlight is off on boot
     hw.backlight.set_brightness(&mut i2c, 0, 0);
     hw.charger.update_regs(&mut i2c);
@@ -218,6 +228,22 @@ fn main() -> ! {
             );
             //////////////////////// ---------------------------
         }
+
+        //////////////////////// IMU TAP HANDLER BLOCK --------
+        if tap_check_phase == 1 {
+            // Clear any pending out of phase latched tap interrupt
+            // TODO: Tune the tap timing parameters or otherwise find a better way to debounce this
+            let _ = Imu::get_single_tap(&mut i2c);
+        }
+        if tap_check_phase == 0 {
+            if Ok(true) == Imu::get_single_tap(&mut i2c) {
+                logln!(LL::Debug, "SingleTap");
+                tap_check_phase = 1000;
+            }
+        } else {
+            tap_check_phase = tap_check_phase.saturating_sub(1);
+        }
+        //////////////////////// ------------------------------
 
         //////////////////////// COM HANDLER BLOCK ---------
         while com_csr.rf(utra::com::STATUS_RX_AVAIL) == 1 {
@@ -362,13 +388,22 @@ fn main() -> ! {
                 }
             } else if rx == ComState::GYRO_UPDATE.verb {
                 logln!(LL::Debug, "CGyroUp");
-                gyro.update_xyz();
+                //gyro.update_xyz();
             } else if rx == ComState::GYRO_READ.verb {
                 logln!(LL::Debug, "CGyroRd");
-                com_tx(gyro.x);
-                com_tx(gyro.y);
-                com_tx(gyro.z);
-                com_tx(gyro.id as u16);
+                let x = Imu::get_accel_x(&mut i2c);
+                let y = Imu::get_accel_y(&mut i2c);
+                let z = Imu::get_accel_z(&mut i2c);
+                let id = Imu::get_who_am_i(&mut i2c);
+                com_tx(x.unwrap_or(0));
+                com_tx(y.unwrap_or(0));
+                com_tx(z.unwrap_or(0));
+                com_tx(id.unwrap_or(0) as u16);
+                // TODO: clean this up
+                // com_tx(gyro.x);
+                // com_tx(gyro.y);
+                // com_tx(gyro.z);
+                // com_tx(gyro.id as u16);
             } else if rx == ComState::POLL_USB_CC.verb {
                 logln!(LL::Debug, "CPollUsbCC");
                 if pow.usb_cc_event {
