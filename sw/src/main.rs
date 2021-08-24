@@ -28,8 +28,6 @@ use core::panic::PanicInfo;
 use debug;
 #[allow(unused_imports)]
 use debug::{log, logln, sprint, sprintln, LL};
-// TODO: clean this up
-//use gyro_rs::hal_gyro::BtGyro;
 use riscv_rt::entry;
 use utralib::generated::{
     utra, CSR, HW_COM_BASE, HW_CRG_BASE, HW_GIT_BASE, HW_POWER_BASE, HW_TICKTIMER_BASE,
@@ -133,8 +131,6 @@ fn main() -> ! {
         voltage_glitch: false,
         usb_cc_event: false,
     };
-    // TODO: clean this up
-    // let mut gyro: BtGyro = BtGyro::new();
     let mut last_run_time: u32;
     let mut com_sentinel: u16 = 0; // for link debugging mostly
     let mut flash_update_lock = false;
@@ -163,13 +159,19 @@ fn main() -> ! {
     hw.charger.chg_start(&mut i2c);
     let tusb320_rev = hw.usb_cc.init(&mut i2c);
     logln!(LL::Debug, "tusb320_rev {:X}", tusb320_rev);
-    // TODO: clean out gyro (fully replace with api_lsm6ds3::Imu::*)
-    // gyro.init();
+    // Initialize the IMU, note special handling for debug logging of init result
     let mut tap_check_phase: u32 = 0;
+    let imu_result = Imu::init(&mut i2c);
+    #[cfg(feature = "debug_uart")]
     match Imu::init(&mut i2c) {
-        // WHO_AM_I register value should be 0x6A
-        Ok(who_am_i_reg) => logln!(LL::Debug, "ImuInitOk {:X}", who_am_i_reg),
+        Ok(who_am_i_reg) => logln!(LL::Debug, "ImuInitOk {:X}", who_am_i_reg), // Should be 0x6A
+        #[cfg(feature = "debug_uart")]
         Err(n) => logln!(LL::Debug, "ImuInitErr {:X}", n),
+    }
+    #[cfg(not(feature = "debug_uart"))]
+    match imu_result {
+        Ok(_) => (),
+        Err(_) => (), // TODO: find a way to report this error over COM
     };
     // make sure the backlight is off on boot
     hw.backlight.set_brightness(&mut i2c, 0, 0);
@@ -387,9 +389,10 @@ fn main() -> ! {
                     com_tx(0);
                 }
             } else if rx == ComState::GYRO_UPDATE.verb {
+                // TODO: deprecate this because a) it's a NOP, and b) "gyro" is inaccurate
                 logln!(LL::Debug, "CGyroUp");
-                //gyro.update_xyz();
             } else if rx == ComState::GYRO_READ.verb {
+                // TODO: Deprecate this verb and replace with something related to accelerometer
                 logln!(LL::Debug, "CGyroRd");
                 let x = Imu::get_accel_x(&mut i2c);
                 let y = Imu::get_accel_y(&mut i2c);
@@ -399,11 +402,6 @@ fn main() -> ! {
                 com_tx(y.unwrap_or(0));
                 com_tx(z.unwrap_or(0));
                 com_tx(id.unwrap_or(0) as u16);
-                // TODO: clean this up
-                // com_tx(gyro.x);
-                // com_tx(gyro.y);
-                // com_tx(gyro.z);
-                // com_tx(gyro.id as u16);
             } else if rx == ComState::POLL_USB_CC.verb {
                 logln!(LL::Debug, "CPollUsbCC");
                 if pow.usb_cc_event {
