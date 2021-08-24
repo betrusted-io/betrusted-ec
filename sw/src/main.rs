@@ -163,9 +163,8 @@ fn main() -> ! {
     let mut tap_check_phase: u32 = 0;
     let imu_result = Imu::init(&mut i2c);
     #[cfg(feature = "debug_uart")]
-    match Imu::init(&mut i2c) {
+    match imu_result {
         Ok(who_am_i_reg) => logln!(LL::Debug, "ImuInitOk {:X}", who_am_i_reg), // Should be 0x6A
-        #[cfg(feature = "debug_uart")]
         Err(n) => logln!(LL::Debug, "ImuInitErr {:X}", n),
     }
     #[cfg(not(feature = "debug_uart"))]
