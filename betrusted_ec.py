@@ -256,17 +256,15 @@ class BetrustedPlatform(LatticePlatform):
                 i_RESETB = 1,
             )
             # global buffer for input SPI clock
-            self.clock_domains.cd_spi_peripheral = ClockDomain()
-            clk_spi_peripheral = Signal()
-            self.comb += self.cd_spi_peripheral.clk.eq(clk_spi_peripheral)
-            clk_spi_peripheral_pin = platform.request("com_sclk")
+            self.clock_domains.cd_sclk = ClockDomain()
+            clk_sclk = Signal()
+            self.comb += self.cd_sclk.clk.eq(clk_sclk)
 
             self.specials += Instance(
                 "SB_GB",
-                i_USER_SIGNAL_TO_GLOBAL_BUFFER=clk_spi_peripheral_pin,
-                o_GLOBAL_BUFFER_OUTPUT=clk_spi_peripheral,
+                i_USER_SIGNAL_TO_GLOBAL_BUFFER=platform.request("com_sclk"),
+                o_GLOBAL_BUFFER_OUTPUT=clk_sclk,
             )
-            platform.add_period_constraint(clk_spi_peripheral_pin, 1e9/20e6)  # 20 MHz according to Artix betrusted-soc config
 
             # Add a period constraint for each clock wire.
             # NextPNR picks the clock domain's name randomly from one of the wires
@@ -274,7 +272,7 @@ class BetrustedPlatform(LatticePlatform):
             # to NextPNR in a file called `top_pre_pack.py`.  In order to ensure
             # it chooses the timing for this net, annotate period constraints for
             # all wires.
-            platform.add_period_constraint(clk_spi_peripheral, 1e9/20e6)
+            platform.add_period_constraint(clk_sclk, 1e9/20e6)
             platform.add_period_constraint(clk_sys, 1e9/sysclkfreq)
             platform.add_period_constraint(self.cd_por.clk, 1e9/sysclkfreq)
 
@@ -633,7 +631,7 @@ class BaseSoC(SoCCore):
         self.add_wb_slave(self.mem_map["com"], self.com.bus, 4)
         self.add_memory_region("com", self.mem_map["com"], 4, type='io')
         self.add_csr("com")
-        self.add_interrupt("com")
+        #self.add_interrupt("com")
         self.comb += self.com.oe.eq(self.power.stats.fields.state)  # only drive to FPGA when it's powered up
 
         # SPI port to wifi (controller) ------------------------------------------------------------------

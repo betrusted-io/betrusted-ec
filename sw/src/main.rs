@@ -40,7 +40,7 @@ mod power_mgmt;
 mod spi;
 mod wifi;
 mod wlan;
-use com_bus::{com_int_handler, com_rx, com_tx};
+use com_bus::{com_rx, com_tx};
 use power_mgmt::charger_handler;
 use spi::{spi_erase_region, spi_program_page, spi_standby};
 use wlan::WlanState;
@@ -195,8 +195,8 @@ fn main() -> ! {
         crg_csr.wfo(utra::crg::WATCHDOG_ENABLE, 1); // 1 = enable the watchdog reset
     }
 
-    let _ = xous_nommu::syscalls::sys_interrupt_claim(utra::com::COM_IRQ, com_int_handler);
-    com_csr.wfo(utra::com::EV_ENABLE_SPI_AVAIL, 1);
+    //let _ = xous_nommu::syscalls::sys_interrupt_claim(utra::com::COM_IRQ, com_int_handler);
+    //com_csr.wfo(utra::com::EV_ENABLE_SPI_AVAIL, 1);
 
     // Reset & Init WF200 before starting the main loop
     if use_wifi {
@@ -209,8 +209,13 @@ fn main() -> ! {
     }
 
     //////////////////////// MAIN LOOP ------------------
+    let mut loopcnt = 0;
     logln!(LL::Info, "main loop");
     loop {
+        if loopcnt % 1000 == 0 {
+            logln!(LL::Info, "l{}", loopcnt);
+        }
+        loopcnt += 1;
         if !flash_update_lock {
             //////////////////////// WIFI HANDLER BLOCK ---------
             if use_wifi && wifi_ready {

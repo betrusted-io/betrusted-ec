@@ -2,11 +2,11 @@ use betrusted_hal::hal_time::get_time_ms;
 use utralib::generated::{utra, CSR, HW_COM_BASE};
 use volatile::Volatile;
 
-pub fn com_int_handler(_irq_no: usize) {
+/*pub fn com_int_handler(_irq_no: usize) {
     let mut com_csr = CSR::new(HW_COM_BASE as *mut u32);
     // nop handler, here just to wake up the CPU in case of an incoming SPI packet and run the normal loop
     com_csr.wfo(utra::com::EV_PENDING_SPI_AVAIL, 1);
-}
+}*/
 
 pub fn com_tx(tx: u16) {
     let com_ptr: *mut u32 = utralib::HW_COM_MEM as *mut u32;
