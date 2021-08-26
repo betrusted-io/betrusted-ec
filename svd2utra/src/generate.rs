@@ -1,7 +1,7 @@
+use convert_case::{Case, Casing};
 use quick_xml::events::Event;
 use quick_xml::Reader;
 use std::io::{BufRead, BufReader, Read, Write};
-
 #[derive(Debug)]
 pub enum ParseError {
     UnexpectedTag,
@@ -49,9 +49,16 @@ pub struct MemoryRegion {
 }
 
 #[derive(Default, Debug)]
+pub struct Constant {
+    pub name: String,
+    pub value: String,
+}
+
+#[derive(Default, Debug)]
 pub struct Description {
     pub peripherals: Vec<Peripheral>,
     pub memory_regions: Vec<MemoryRegion>,
+    pub constants: Vec<Constant>,
 }
 
 impl core::fmt::Display for ParseError {
@@ -218,9 +225,7 @@ fn generate_interrupts<T: BufRead>(
                     .map_err(|_| ParseError::NonUTF8)?;
                 match tag_name.as_str() {
                     "name" => name = Some(extract_contents(reader)?),
-                    "value" => {
-                        value = Some(parse_usize(extract_contents(reader)?.as_bytes())?)
-                    }
+                    "value" => value = Some(parse_usize(extract_contents(reader)?.as_bytes())?),
                     _ => (),
                 }
             }
@@ -234,11 +239,10 @@ fn generate_interrupts<T: BufRead>(
         }
     }
 
-    interrupts.push(
-        Interrupt {
-            name: name.ok_or(ParseError::MissingValue)?,
-            value: value.ok_or(ParseError::MissingValue)?,
-        });
+    interrupts.push(Interrupt {
+        name: name.ok_or(ParseError::MissingValue)?,
+        value: value.ok_or(ParseError::MissingValue)?,
+    });
 
     Ok(())
 }
@@ -396,6 +400,56 @@ fn parse_memory_regions<T: BufRead>(
     Ok(())
 }
 
+fn generate_constants<T: BufRead>(
+    reader: &mut Reader<T>,
+    description: &mut Description,
+) -> Result<(), ParseError> {
+    let mut buf = Vec::new();
+    loop {
+        match reader.read_event(&mut buf) {
+            Ok(Event::Empty(ref e)) => match e.name() {
+                b"constant" => {
+                    let mut constant_descriptor = Constant::default();
+                    for maybe_att in e.attributes() {
+                        match maybe_att {
+                            Ok(att) => {
+                                let att_name = String::from_utf8(att.key.to_vec())
+                                    .expect("constant: error parsing attribute name");
+                                let att_value = String::from_utf8(att.value.to_vec())
+                                    .expect("constant: error parsing attribute value");
+                                match att_name {
+                                    _ if att_name == "name" => constant_descriptor.name = att_value,
+                                    _ if att_name == "value" => {
+                                        constant_descriptor.value = att_value
+                                    }
+                                    _ => panic!("unexpected attribute name"),
+                                }
+                            }
+                            _ => panic!("unexpected value in constant: {:?}", maybe_att),
+                        }
+                    }
+                    description.constants.push(constant_descriptor)
+                }
+                _ => panic!("unexpected tag in <constants>: {:?}", e),
+            },
+            // note to future self: if Litex goe away from attributes to nested elements, you would want
+            // Ok(Event::Start(ref e) => match e.name() ... to descend into the next tag level, and then
+            // use the tag_name match and extract_contents methods from other functions to generate
+            // the structure.
+            // note that the two formats could be mutually exclusively compatible within the same code base:
+            // if there are no attributes, the attribute iterator would do nothing; and if there are no
+            // child elements, the recursive descent would also do nothing.
+            Ok(Event::End(ref e)) => match e.name() {
+                b"constants" => break,
+                e => panic!("unhandled value: {:?}", e),
+            },
+            Ok(Event::Text(_)) => (),
+            e => panic!("unhandled value: {:?}", e),
+        }
+    }
+    Ok(())
+}
+
 fn parse_vendor_extensions<T: BufRead>(
     reader: &mut Reader<T>,
     description: &mut Description,
@@ -405,6 +459,7 @@ fn parse_vendor_extensions<T: BufRead>(
         match reader.read_event(&mut buf) {
             Ok(Event::Start(ref e)) => match e.name() {
                 b"memoryRegions" => parse_memory_regions(reader, description)?,
+                b"constants" => generate_constants(reader, description)?,
                 _ => panic!("unexpected tag in <vendorExtensions>: {:?}", e),
             },
             Ok(Event::End(ref e)) => match e.name() {
@@ -422,16 +477,22 @@ fn parse_vendor_extensions<T: BufRead>(
 
 fn print_header<U: Write>(out: &mut U) -> std::io::Result<()> {
     let s = r####"
+#![allow(dead_code)]
 use core::convert::TryInto;
+
+#[derive(Debug, Copy, Clone)]
 pub struct Register {
     /// Offset of this register within this CSR
     offset: usize,
+    /// Mask of SVD-specified bits for the register
+    mask: usize,
 }
 impl Register {
-    pub const fn new(offset: usize) -> Register {
-        Register { offset }
+    pub const fn new(offset: usize, mask: usize) -> Register {
+        Register { offset, mask }
     }
 }
+#[derive(Debug, Copy, Clone)]
 pub struct Field {
     /// A bitmask we use to AND to the value, unshifted.
     /// E.g. for a width of `3` bits, this mask would be 0b111.
@@ -494,8 +555,9 @@ impl Field {
         }
     }
 }
+#[derive(Debug, Copy, Clone)]
 pub struct CSR<T> {
-    base: *mut T,
+    pub base: *mut T,
 }
 impl<T> CSR<T>
 where
@@ -506,6 +568,9 @@ where
     }
     /// Read the contents of this register
     pub fn r(&self, reg: Register) -> T {
+        // prevent re-ordering
+        core::sync::atomic::compiler_fence(core::sync::atomic::Ordering::Acquire);
+
         let usize_base: *mut usize = unsafe { core::mem::transmute(self.base) };
         unsafe { usize_base.add(reg.offset).read_volatile() }
             .try_into()
@@ -513,6 +578,9 @@ where
     }
     /// Read a field from this CSR
     pub fn rf(&self, field: Field) -> T {
+        // prevent re-ordering
+        core::sync::atomic::compiler_fence(core::sync::atomic::Ordering::Acquire);
+
         let usize_base: *mut usize = unsafe { core::mem::transmute(self.base) };
         ((unsafe { usize_base.add(field.register.offset).read_volatile() } >> field.offset)
             & field.mask)
@@ -530,6 +598,8 @@ where
                 .add(field.register.offset)
                 .write_volatile(previous | value_as_usize)
         };
+        // prevent re-ordering
+        core::sync::atomic::compiler_fence(core::sync::atomic::Ordering::Acquire);
     }
     /// Write a given field without reading it first
     pub fn wfo(&mut self, field: Field, value: T) {
@@ -540,22 +610,30 @@ where
                 .add(field.register.offset)
                 .write_volatile(value_as_usize)
         };
+        // Ensure the compiler doesn't re-order the write.
+        // We use `SeqCst`, because `Acquire` only prevents later accesses from being reordered before
+        // *reads*, but this method only *writes* to the locations.
+        core::sync::atomic::compiler_fence(core::sync::atomic::Ordering::SeqCst);
     }
     /// Write the entire contents of a register without reading it first
     pub fn wo(&mut self, reg: Register, value: T) {
         let usize_base: *mut usize = unsafe { core::mem::transmute(self.base) };
         let value_as_usize: usize = value.try_into().unwrap_or_default();
         unsafe { usize_base.add(reg.offset).write_volatile(value_as_usize) };
+        // Ensure the compiler doesn't re-order the write.
+        // We use `SeqCst`, because `Acquire` only prevents later accesses from being reordered before
+        // *reads*, but this method only *writes* to the locations.
+        core::sync::atomic::compiler_fence(core::sync::atomic::Ordering::SeqCst);
     }
     /// Zero a field from a provided value
-    pub fn zf(&mut self, field: Field, value: T) -> T {
+    pub fn zf(&self, field: Field, value: T) -> T {
         let value_as_usize: usize = value.try_into().unwrap_or_default();
         (value_as_usize & !(field.mask << field.offset))
             .try_into()
             .unwrap_or_default()
     }
     /// Shift & mask a value to its final field position
-    pub fn ms(&mut self, field: Field, value: T) -> T {
+    pub fn ms(&self, field: Field, value: T) -> T {
         let value_as_usize: usize = value.try_into().unwrap_or_default();
         ((value_as_usize & field.mask) << field.offset)
             .try_into()
@@ -584,30 +662,91 @@ fn print_memory_regions<U: Write>(regions: &[MemoryRegion], out: &mut U) -> std:
     Ok(())
 }
 
+fn print_constants<U: Write>(constants: &[Constant], out: &mut U) -> std::io::Result<()> {
+    writeln!(out, "\n// Litex auto-generated constants")?;
+    for constant in constants {
+        let maybe_intval = constant.value.parse::<u32>();
+        match maybe_intval {
+            Ok(intval) => {
+                writeln!(
+                    out,
+                    "pub const LITEX_{}: usize = {};",
+                    constant.name, intval
+                )?;
+            }
+            Err(_) => {
+                writeln!(
+                    out,
+                    "pub const LITEX_{}: &str = \"{}\";",
+                    constant.name, constant.value
+                )?;
+            }
+        }
+    }
+    writeln!(out)?;
+    Ok(())
+}
+
 fn print_peripherals<U: Write>(peripherals: &[Peripheral], out: &mut U) -> std::io::Result<()> {
     writeln!(out, "// Physical base addresses of registers")?;
     for peripheral in peripherals {
         writeln!(
             out,
             "pub const HW_{}_BASE :   usize = 0x{:08x};",
-            peripheral.name.to_uppercase(), peripheral.base
+            peripheral.name.to_uppercase(),
+            peripheral.base
         )?;
     }
     writeln!(out)?;
 
-    writeln!(out, "pub mod utra {{")?;
+    let s = r####"
+pub mod utra {
+"####;
+    out.write_all(s.as_bytes())?;
+
     for peripheral in peripherals {
         writeln!(out)?;
         writeln!(out, "    pub mod {} {{", peripheral.name.to_lowercase())?;
+        writeln!(
+            out,
+            "        // this enum is vestigal, and currently not used by anything"
+        )?;
+        writeln!(out, "        #[derive(Debug, Copy, Clone)]")?;
+        writeln!(
+            out,
+            "        pub enum {}Offset {{",
+            peripheral.name.to_case(Case::UpperCamel)
+        )?;
+        for register in &peripheral.registers {
+            writeln!(
+                out,
+                "            {} = {},",
+                register.name.to_case(Case::UpperCamel),
+                register.offset / 4
+            )?;
+        }
+        writeln!(out, "        }}")?;
+        writeln!(
+            out,
+            "        pub const {}_NUMREGS: usize = {};",
+            peripheral.name.to_uppercase(),
+            peripheral.registers.len()
+        )?;
         for register in &peripheral.registers {
             writeln!(out)?;
             if let Some(description) = &register.description {
                 writeln!(out, "        /// {}", description)?;
             }
+            let mut mask: usize = 0;
+            for field in &register.fields {
+                mask |= ((1 << (field.msb + 1 - field.lsb)) - 1) << field.lsb;
+            }
             writeln!(
                 out,
-                "        pub const {}: crate::Register = crate::Register::new({});",
-                register.name.to_uppercase(), register.offset / 4
+                "        pub const {}: crate::Register = crate::Register::new({}, 0x{:x});",
+                register.name.to_uppercase(),
+                register.offset / 4,
+                mask,
             )?;
             for field in &register.fields {
                 writeln!(
@@ -630,7 +769,12 @@ fn print_peripherals<U: Write>(peripherals: &[Peripheral], out: &mut U) -> std::
                 interrupt.value
             )?;
         }
-        writeln!(out, "        pub const HW_{}_BASE: usize = 0x{:08x};", peripheral.name.to_uppercase(), peripheral.base)?;
+        writeln!(
+            out,
+            "        pub const HW_{}_BASE: usize = 0x{:08x};",
+            peripheral.name.to_uppercase(),
+            peripheral.base
+        )?;
         writeln!(out, "    }}")?;
     }
     writeln!(out, "}}")?;
@@ -645,24 +789,58 @@ mod tests {
     #[ignore]
     fn compile_check() {
         use super::*;
-"####.as_bytes();
+"####
+        .as_bytes();
     out.write_all(test_header)?;
     for peripheral in peripherals {
         let mod_name = peripheral.name.to_lowercase();
         let per_name = peripheral.name.to_lowercase() + "_csr";
-        writeln!(out, "        let mut {} = CSR::new(HW_{}_BASE as *mut u32);", per_name, peripheral.name.to_uppercase())?;
+        writeln!(
+            out,
+            "        let mut {} = CSR::new(HW_{}_BASE as *mut u32);",
+            per_name,
+            peripheral.name.to_uppercase()
+        )?;
         for register in &peripheral.registers {
             writeln!(out)?;
             let reg_name = register.name.to_uppercase();
-            writeln!(out, "        let foo = {}.r(utra::{}::{});", per_name, mod_name, reg_name)?;
-            writeln!(out, "        {}.wo(utra::{}::{}, foo);", per_name, mod_name, reg_name)?;
+            writeln!(
+                out,
+                "        let foo = {}.r(utra::{}::{});",
+                per_name, mod_name, reg_name
+            )?;
+            writeln!(
+                out,
+                "        {}.wo(utra::{}::{}, foo);",
+                per_name, mod_name, reg_name
+            )?;
             for field in &register.fields {
                 let field_name = format!("{}_{}", reg_name, field.name.to_uppercase());
-                writeln!(out, "        let bar = {}.rf(utra::{}::{});", per_name, mod_name, field_name)?;
-                writeln!(out, "        {}.rmwf(utra::{}::{}, bar);", per_name, mod_name, field_name)?;
-                writeln!(out, "        let mut baz = {}.zf(utra::{}::{}, bar);", per_name, mod_name, field_name)?;
-                writeln!(out, "        baz |= {}.ms(utra::{}::{}, 1);", per_name, mod_name, field_name)?;
-                writeln!(out, "        {}.wfo(utra::{}::{}, baz);", per_name, mod_name, field_name)?;
+                writeln!(
+                    out,
+                    "        let bar = {}.rf(utra::{}::{});",
+                    per_name, mod_name, field_name
+                )?;
+                writeln!(
+                    out,
+                    "        {}.rmwf(utra::{}::{}, bar);",
+                    per_name, mod_name, field_name
+                )?;
+                writeln!(
+                    out,
+                    "        let mut baz = {}.zf(utra::{}::{}, bar);",
+                    per_name, mod_name, field_name
+                )?;
+                writeln!(
+                    out,
+                    "        baz |= {}.ms(utra::{}::{}, 1);",
+                    per_name, mod_name, field_name
+                )?;
+                writeln!(
+                    out,
+                    "        {}.wfo(utra::{}::{}, baz);",
+                    per_name, mod_name, field_name
+                )?;
             }
         }
     }
@@ -702,6 +880,7 @@ pub fn generate<T: Read, U: Write>(src: T, dest: &mut U) -> Result<(), ParseErro
     print_header(dest).or(Err(ParseError::WriteError))?;
     print_memory_regions(&description.memory_regions, dest).or(Err(ParseError::WriteError))?;
     print_peripherals(&description.peripherals, dest).or(Err(ParseError::WriteError))?;
+    print_constants(&description.constants, dest).or(Err(ParseError::WriteError))?;
     print_tests(&description.peripherals, dest).or(Err(ParseError::WriteError))?;
 
     Ok(())

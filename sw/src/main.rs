@@ -195,9 +195,6 @@ fn main() -> ! {
         crg_csr.wfo(utra::crg::WATCHDOG_ENABLE, 1); // 1 = enable the watchdog reset
     }
 
-    //let _ = xous_nommu::syscalls::sys_interrupt_claim(utra::com::COM_IRQ, com_int_handler);
-    //com_csr.wfo(utra::com::EV_ENABLE_SPI_AVAIL, 1);
-
     // Reset & Init WF200 before starting the main loop
     if use_wifi {
         logln!(LL::Info, "wifi...");
@@ -249,7 +246,7 @@ fn main() -> ! {
         //////////////////////// COM HANDLER BLOCK ---------
         while com_csr.rf(utra::com::STATUS_RX_AVAIL) == 1 {
             // De-activate it, so that the SOC is entirely in control of its own power state.
-            //hw.power_csr.rmwf(utra::power::POWER_SOC_ON, 0);
+            hw.power_csr.rmwf(utra::power::POWER_SOC_ON, 0);
             // note: this line is occasionally re-asserted whenever the charger is detected as present
 
             let rx: u16;

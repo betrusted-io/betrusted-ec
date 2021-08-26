@@ -420,7 +420,7 @@ class BtPower(Module, AutoCSR, AutoDoc):
             pads.sys_on.eq(self.power.fields.self),
             pads.u_to_t_on.eq(self.power.fields.soc_on),
             pads.fpga_dis.eq(self.power.fields.discharge),
-            self.stats.fields.state.eq(pads.s0),  # S1 is disregarded now
+            self.stats.fields.state.eq(pads.s0),
             self.stats.fields.monkey.eq(Cat(self.mon0, self.mon1)),
 
             self.soc_on.eq(self.power.fields.soc_on),
@@ -586,8 +586,15 @@ class BaseSoC(SoCCore):
 
             # serialpad TX is what we use to test for keyboard hit to power on the SOC
             # only allow test keyboard hit patterns when the SOC is powered off
-            self.comb += serialpads.tx.eq( (~self.power.soc_on & self.power.power.fields.kbddrive) | (self.power.soc_on & dbgpads.tx) )
-            self.comb += keycol0_ts.oe.eq(  ~self.power.soc_on & self.power.power.fields.kbddrive ) # force signal on the rx pin when in power off & scan
+            self.comb += [
+                If(self.power.stats.fields.state,
+                    serialpads.tx.eq(dbgpads.tx),
+                    keycol0_ts.oe.eq(0)
+                ).Else(
+                    serialpads.tx.eq(self.power.power.fields.kbddrive),
+                    keycol0_ts.oe.eq(1)
+                )
+            ]
             self.comb += keycol0_ts.o.eq(1) # drive a '1' for scan
 
             # Uart block ------------------------------------------------------------------------------------
