@@ -117,7 +117,7 @@ io_pvt = [
     # ("lpclk", 0, Pins("37"), IOStandard("LVCMOS18")),  # conflicts with SB_PLL40_2_PAD...what weirdness
 ]
 
-sysclkfreq=18e6
+sysclkfreq=21e6
 
 class BetrustedPlatform(LatticePlatform):
     def __init__(self, io, toolchain="icestorm", revision="pvt"):
@@ -238,7 +238,7 @@ class BetrustedPlatform(LatticePlatform):
                 "SB_PLL40_PAD",
                 # Parameters
                 p_DIVR = 0,
-                p_DIVF = 47, # 18 MHz
+                p_DIVF = 55, # 55->21MHz  47->18 MHz
                 p_DIVQ = 5,
                 p_FILTER_RANGE = 1,
                 p_FEEDBACK_PATH = "SIMPLE",
