@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::hal_hardi2c::Hardi2c;
+use crate::hal_i2c::Hardi2c;
 
 
 const BQ24157_ADDR: u8 = 0x6a; 

@@ -1,6 +1,6 @@
 use bitflags::*;
 
-use crate::hal_hardi2c::Hardi2c;
+use crate::hal_i2c::Hardi2c;
 
 const BQ25618_ADDR: u8 = 0x6A;
 

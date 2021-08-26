@@ -7,7 +7,7 @@ use betrusted_hal::api_gasgauge::{
 };
 use betrusted_hal::api_lm3509::BtBacklight;
 use betrusted_hal::api_tusb320::BtUsbCc;
-use betrusted_hal::hal_hardi2c::Hardi2c;
+use betrusted_hal::hal_i2c::Hardi2c;
 use betrusted_hal::hal_time::{delay_ms, get_time_ms, get_time_ticks, set_msleep_target_ticks};
 use utralib::generated::{utra, CSR};
 

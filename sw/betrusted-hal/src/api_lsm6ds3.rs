@@ -5,7 +5,7 @@
 //! system -- we don't need all that. This driver only supports basic
 //! accelerometer functionality and the tap detection interrupt feature.
 //!
-use crate::hal_hardi2c::Hardi2c;
+use crate::hal_i2c::Hardi2c;
 use crate::hal_time::delay_ms;
 
 /*

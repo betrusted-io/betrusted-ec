@@ -1,6 +1,6 @@
 use bitflags::*;
 
-use crate::hal_hardi2c::Hardi2c;
+use crate::hal_i2c::Hardi2c;
 use utralib::generated::*;
 
 const TUSB320LAI_ADDR: u8 = 0x47;

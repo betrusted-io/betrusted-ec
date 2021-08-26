@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::hal_hardi2c::Hardi2c;
+use crate::hal_i2c::Hardi2c;
 use crate::hal_time::delay_ms;
 
 const BQ27421_ADDR : u8 = 0x55;

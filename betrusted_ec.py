@@ -30,7 +30,7 @@ from litex.soc.cores.uart import UARTWishboneBridge
 from litex.soc.cores import uart
 
 from gateware.ice40_hard_i2c import HardI2C
-from gateware.ticktimer import TickTimer
+from rtl.rtl_i2c import RtlI2C
 from gateware.spi_ice40 import *
 
 import litex.soc.doc as lxsocdoc
@@ -117,7 +117,12 @@ io_pvt = [
     # ("lpclk", 0, Pins("37"), IOStandard("LVCMOS18")),  # conflicts with SB_PLL40_2_PAD...what weirdness
 ]
 
-sysclkfreq=21e6
+clk_options = {
+    "stable" : 18e6,
+    "faster" : 19.5e6,
+    "overclock" : 21e6,
+}
+clk_freq=clk_options["stable"]
 
 class BetrustedPlatform(LatticePlatform):
     def __init__(self, io, toolchain="icestorm", revision="pvt"):
@@ -233,12 +238,21 @@ class BetrustedPlatform(LatticePlatform):
                 )
             )
 
+            if clk_freq == 21e6:
+                divf=55
+            elif clk_freq == 19.5e6:
+                divf=51
+            elif clk_freq == 18e6:
+                divf=47
+            else:
+                print("no sysclk frequency->PLL mapping, aborting")
+                exit(0)
 
             self.specials += Instance(
                 "SB_PLL40_PAD",
                 # Parameters
                 p_DIVR = 0,
-                p_DIVF = 55, # 55->21MHz  47->18 MHz
+                p_DIVF = divf,
                 p_DIVQ = 5,
                 p_FILTER_RANGE = 1,
                 p_FEEDBACK_PATH = "SIMPLE",
@@ -273,8 +287,8 @@ class BetrustedPlatform(LatticePlatform):
             # it chooses the timing for this net, annotate period constraints for
             # all wires.
             platform.add_period_constraint(clk_sclk, 1e9/20e6)
-            platform.add_period_constraint(clk_sys, 1e9/sysclkfreq)
-            platform.add_period_constraint(self.cd_por.clk, 1e9/sysclkfreq)
+            platform.add_period_constraint(clk_sys, 1e9/clk_freq)
+            platform.add_period_constraint(self.cd_por.clk, 1e9/clk_freq)
 
 
 class PicoRVSpi(Module, AutoCSR, AutoDoc):
@@ -426,6 +440,72 @@ class BtPower(Module, AutoCSR, AutoDoc):
             self.soc_on.eq(self.power.fields.soc_on),
         ]
 
+# fork the ticktimer, as we don't need the power management extensions from Xous
+class TickTimer(Module, AutoCSR, AutoDoc):
+    """Millisecond timer"""
+
+    def __init__(self, clkspertick, clkfreq, bits=64):
+        self.clkspertick = int(clkfreq / clkspertick)
+
+        self.intro = ModuleDoc("""TickTimer: A practical systick timer.
+
+        TIMER0 in the system gives a high-resolution, sysclk-speed timer which overflows
+        very quickly and requires OS overhead to convert it into a practically usable time source
+        which counts off in systicks, instead of sysclks.
+
+        The hardware parameter to the block is the divisor of sysclk, and sysclk. So if
+        the divisor is 1000, then the increment for a tick is 1ms. If the divisor is 2000,
+        the increment for a tick is 0.5ms. 
+        """)
+
+        resolution_in_ms = 1000 * (self.clkspertick / clkfreq)
+        self.note = ModuleDoc(title="Configuration",
+            body="This timer was configured with {} bits, which rolls over in {:.2f} years, with each bit giving {}ms resolution".format(
+                bits, (2 ** bits / (60 * 60 * 24 * 365)) * (self.clkspertick / clkfreq), resolution_in_ms))
+
+        prescaler = Signal(max=self.clkspertick, reset=self.clkspertick)
+        timer = Signal(bits)
+
+        self.control = CSRStorage(2, fields=[
+            CSRField("reset", description="Write a `1` to this bit to reset the count to 0", pulse=True),
+            CSRField("pause", description="Write a `1` to this field to pause counting, 0 for free-run")
+        ])
+        self.time = CSRStatus(bits, name="time", description="""Elapsed time in systicks""")
+
+        self.sync += [
+            If(self.control.fields.reset,
+                timer.eq(0),
+                prescaler.eq(self.clkspertick),
+            ).Else(
+                If(prescaler == 0,
+                    prescaler.eq(self.clkspertick),
+                    If(self.control.fields.pause == 0,
+                        timer.eq(timer + 1),
+                       )
+                   ).Else(
+                    prescaler.eq(prescaler - 1),
+                )
+            )
+        ]
+
+        self.comb += self.time.status.eq(timer)
+
+        self.msleep = ModuleDoc("""msleep extension
+
+        The msleep extension is a Xous-specific add-on to aid the implementation of the msleep server.
+
+        msleep fires an interrupt when the requested time is less than or equal to the current elapsed time in
+        systicks. The interrupt remains active until a new target is set, or masked. 
+        """)
+        self.msleep_target = CSRStorage(size=bits, description="Target time in {}ms ticks".format(resolution_in_ms))
+        self.submodules.ev = EventManager()
+        alarm = Signal()
+        self.ev.alarm = EventSourceLevel()
+        self.comb += self.ev.alarm.trigger.eq(alarm)
+
+        self.comb += alarm.eq(self.msleep_target.storage <= timer)
+
+
 # a pared-down version of GitInfo to use less gates
 class GitInfo(Module, AutoCSR, AutoDoc):
     def __init__(self):
@@ -512,6 +592,7 @@ class GitInfo(Module, AutoCSR, AutoDoc):
         ]
 
 class BaseSoC(SoCCore):
+    global clk_freq
     SoCCore.mem_map = {
         "rom":      0x00000000,  # (default shadow @0x80000000)
         "sram":     0x10000000,  # (default shadow @0xa0000000)
@@ -523,12 +604,10 @@ class BaseSoC(SoCCore):
 
     def __init__(self, platform,
                  use_dsp=False, placer="heap", output_dir="build",
-                 pnr_seed=0, sim=False,
+                 pnr_seed=0, sim=False, hard_i2c=False,
                  **kwargs):
 
         self.output_dir = output_dir
-
-        clk_freq = int(sysclkfreq)
 
         # Core -------------------------------------------------------------------------------------------
         SoCCore.__init__(self, platform, clk_freq,
@@ -622,11 +701,16 @@ class BaseSoC(SoCCore):
         self.add_csr("picorvspi")
 
         # I2C --------------------------------------------------------------------------------------------
-        self.submodules.i2c = HardI2C(platform, platform.request("i2c", 0))
-        self.add_wb_slave(self.mem_map["i2c"], self.i2c.bus, 16*4)
-        self.add_memory_region("i2c", self.mem_map["i2c"], 16*4, type='io')
-        self.add_csr("i2c")
-        self.add_interrupt("i2c")
+        if hard_i2c:
+            self.submodules.i2c = HardI2C(platform, platform.request("i2c", 0))
+            self.add_wb_slave(self.mem_map["i2c"], self.i2c.bus, 16*4)
+            self.add_memory_region("i2c", self.mem_map["i2c"], 16*4, type='io')
+            self.add_csr("i2c")
+            self.add_interrupt("i2c")
+        else:
+            self.submodules.i2c = RtlI2C(platform, platform.request("i2c", 0))
+            self.add_csr("i2c")
+            self.add_interrupt("i2c")
 
         # High-resolution tick timer ---------------------------------------------------------------------
         self.submodules.ticktimer = TickTimer(1000, clk_freq, bits=40)

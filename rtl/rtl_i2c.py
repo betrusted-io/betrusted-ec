@@ -57,14 +57,37 @@ class RtlI2C(Module, AutoCSR, AutoDoc):
             CSRField("Busy", description="I2C block is busy processing the latest command"),
             CSRField("RxACK", description="Received acknowledge from slave. 1 = no ack received, 0 = ack received"),
         ])
+        self.bitbang_mode = CSRStorage(1, description="When set, I2C is driven by bitbang GPIO operations")
+        self.bb = CSRStorage(fields=[
+            CSRField("scl", description="Directly controls the SCL pin", reset=1),
+            CSRField("sda_val", description="Applies its value to SDA when `sda_dir` is 1", reset=1),
+            CSRField("sda_dir", description="When `1`, drives SDA; `0` tristates", reset=0),
+        ])
+        self.bb_r = CSRStatus(1, description="The value currently sensed on the SDA pin")
 
         self.submodules.ev = EventManager()
-        self.ev.i2c_int = EventSourcePulse(description="I2C cycle completed")  # rising edge triggered
-        self.ev.gg_int = EventSourceProcess(description="Gas gauge interrupt") # falling edge
-        self.ev.gyro_int = EventSourceProcess(description="Gyro interrupt") # falling edge
+        self.ev.i2c_int = EventSourcePulse(description="I2C cycle completed")
+        self.ev.gg_int = EventSourcePulse(description="Gas gauge interrupt")
+        self.ev.gyro_int = EventSourcePulse(description="Gyro interrupt")
+        self.ev.usbcc_int = EventSourcePulse(description="USB CC register changed")
         self.ev.finalize()
-        self.specials += MultiReg(pads.gg_int_n, self.ev.gg_int.trigger)
-        self.specials += MultiReg(pads.gyro_int_n, self.ev.gyro_int.trigger)
+        usb_cc_int = Signal()
+        usb_cc_int_r = Signal()
+        gg_int = Signal()
+        gg_int_r = Signal()
+        gyro_int = Signal()
+        gyro_int_r = Signal()
+        self.specials += MultiReg(~pads.gg_int_n, gg_int)
+        self.specials += MultiReg(~pads.gyro_int_n, gyro_int)
+        self.specials += MultiReg(~pads.usbcc_int_n, usb_cc_int)
+        self.sync += [
+            usb_cc_int_r.eq(usb_cc_int),
+            self.ev.usbcc_int.trigger.eq(usb_cc_int & ~usb_cc_int_r),
+            gg_int_r.eq(gg_int),
+            self.ev.gg_int.trigger.eq(gg_int & ~gg_int_r),
+            gyro_int_r.eq(gyro_int),
+            self.ev.gyro_int.trigger.eq(gyro_int & ~gyro_int_r),
+        ]
 
         # control register
         ena = Signal()
@@ -140,12 +163,21 @@ class RtlI2C(Module, AutoCSR, AutoDoc):
                      )
         ]
         self.comb += [
+            If(self.bitbang_mode.storage,
+                self.sda.o.eq(self.bb.fields.sda_val),
+                self.sda.oe.eq(self.bb.fields.sda_dir),
+                self.scl.o.eq(self.bb.fields.scl),
+                self.scl.oe.eq(1),
+            ).Else(
+                self.sda.o.eq(sda_o),
+                self.sda.oe.eq(~sda_oen),
+                self.scl.o.eq(scl_o),
+                self.scl.oe.eq(~scl_oen),
+            ),
             sda_i.eq(self.sda.i),
-            self.sda.o.eq(sda_o),
-            self.sda.oe.eq(~sda_oen),
             scl_i.eq(self.scl.i),
-            self.scl.o.eq(scl_o),
-            self.scl.oe.eq(~scl_oen),
+
+            self.bb_r.status.eq(self.sda.i),
         ]
 
         self.comb += [
