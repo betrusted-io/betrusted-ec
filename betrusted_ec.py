@@ -419,7 +419,7 @@ class BtPower(Module, AutoCSR, AutoDoc):
         self.comb += [
             pads.sys_on.eq(self.power.fields.self),
             pads.u_to_t_on.eq(self.power.fields.soc_on),
-            pads.fpga_dis.eq(self.power.fields.discharge),
+            pads.fpga_dis.eq(self.power.fields.discharge & ~pads.s0),
             self.stats.fields.state.eq(pads.s0),
             self.stats.fields.monkey.eq(Cat(self.mon0, self.mon1)),
 
