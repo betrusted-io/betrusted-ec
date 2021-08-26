@@ -37,7 +37,7 @@ const OE_MASK_4BIT: u32 = 0xF;
 
 fn spi_1bit_write(byte: u8) {
     let mut spicsr = CSR::new(HW_PICORVSPI_BASE as *mut u32);
-    let mut spi_ms = CSR::new(HW_PICORVSPI_BASE as *mut u32);
+    let spi_ms = CSR::new(HW_PICORVSPI_BASE as *mut u32);
     let mut sr = byte;
     for _ in 0..8 {
         if sr & 0x80 != 0 {
@@ -58,7 +58,7 @@ fn spi_1bit_write(byte: u8) {
 #[inline]
 fn spi_quad_write(byte: u8) {
     let mut spicsr = CSR::new(HW_PICORVSPI_BASE as *mut u32);
-    let mut spi_ms = CSR::new(HW_PICORVSPI_BASE as *mut u32);
+    let spi_ms = CSR::new(HW_PICORVSPI_BASE as *mut u32);
     spicsr.wo(utra::picorvspi::WDATA,
         spi_ms.ms(utra::picorvspi::WDATA_OE, OE_MASK_4BIT)
             | spi_ms.ms(utra::picorvspi::WDATA_DATA, (byte as u32 >> 4) & 0xF)
@@ -102,7 +102,7 @@ pub fn spi_standby() {
 /// called before any exit, successful or failed
 fn exit_bb() {
     let mut spicsr = CSR::new(HW_PICORVSPI_BASE as *mut u32);
-    let mut spi_ms = CSR::new(HW_PICORVSPI_BASE as *mut u32);
+    let spi_ms = CSR::new(HW_PICORVSPI_BASE as *mut u32);
     // raise CS
     spicsr.wo(utra::picorvspi::MODE,
         spi_ms.ms(utra::picorvspi::MODE_BITBANG, 1)
@@ -120,7 +120,7 @@ fn exit_bb() {
 
 pub fn spi_cmd(cmd: SpiCmd, address: Option<u32>, data: Option<&mut [u8]>) -> bool {
     let mut spicsr = CSR::new(HW_PICORVSPI_BASE as *mut u32);
-    let mut spi_ms = CSR::new(HW_PICORVSPI_BASE as *mut u32);
+    let spi_ms = CSR::new(HW_PICORVSPI_BASE as *mut u32);
 
     // turn on bitbang mode, pre-set CS so it doesn't glitch going into bitbang mode
     spicsr.wo(utra::picorvspi::MODE,
