@@ -631,7 +631,6 @@ class BaseSoC(SoCCore):
         self.add_wb_slave(self.mem_map["com"], self.com.bus, 4)
         self.add_memory_region("com", self.mem_map["com"], 4, type='io')
         self.add_csr("com")
-        #self.add_interrupt("com")
         self.comb += self.com.oe.eq(self.power.stats.fields.state)  # only drive to FPGA when it's powered up
 
         # SPI port to wifi (controller) ------------------------------------------------------------------

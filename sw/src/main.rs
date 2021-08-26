@@ -209,13 +209,8 @@ fn main() -> ! {
     }
 
     //////////////////////// MAIN LOOP ------------------
-    let mut loopcnt = 0;
     logln!(LL::Info, "main loop");
     loop {
-        if loopcnt % 1000 == 0 {
-            logln!(LL::Info, "l{}", loopcnt);
-        }
-        loopcnt += 1;
         if !flash_update_lock {
             //////////////////////// WIFI HANDLER BLOCK ---------
             if use_wifi && wifi_ready {
@@ -253,15 +248,15 @@ fn main() -> ! {
 
         //////////////////////// COM HANDLER BLOCK ---------
         while com_csr.rf(utra::com::STATUS_RX_AVAIL) == 1 {
-            // if we've received data from the SOC, we don't have to assert its power-on line any more to boot it up.
             // De-activate it, so that the SOC is entirely in control of its own power state.
-            hw.power_csr.rmwf(utra::power::POWER_SOC_ON, 0);
+            //hw.power_csr.rmwf(utra::power::POWER_SOC_ON, 0);
             // note: this line is occasionally re-asserted whenever the charger is detected as present
 
             let rx: u16;
             unsafe {
                 rx = (*com_rd).read() as u16;
             }
+            logln!(LL::Debug, "rx: {:x}", rx);
 
             if rx == ComState::SSID_CHECK.verb {
                 logln!(LL::Debug, "CSsidChk");
