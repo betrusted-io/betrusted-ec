@@ -634,7 +634,7 @@ class BaseSoC(SoCCore):
         self.add_interrupt("ticktimer")
 
         # COM port (spi peripheral to Artix) ------------------------------------------------------------------
-        self.submodules.com = SpiFifoPeripheral(platform.request("com"))
+        self.submodules.com = SpiFifoPeripheral(platform.request("com"), pipeline_cipo=True)
         self.add_wb_slave(self.mem_map["com"], self.com.bus, 4)
         self.add_memory_region("com", self.mem_map["com"], 4, type='io')
         self.add_csr("com")
