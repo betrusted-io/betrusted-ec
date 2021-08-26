@@ -27,6 +27,7 @@ from litex.soc.integration.builder import Builder
 from litex.soc.interconnect import wishbone
 from litex.soc.interconnect.csr import *
 from litex.soc.cores.uart import UARTWishboneBridge
+from litex.soc.cores import uart
 
 from gateware.ice40_hard_i2c import HardI2C
 from gateware.ticktimer import TickTimer
@@ -129,10 +130,10 @@ class BetrustedPlatform(LatticePlatform):
     class CRG(Module, AutoCSR, AutoDoc):
         def __init__(self, platform):
             clk12_raw = platform.request("clk12")
-            clk18 = Signal()
+            clk_sys = Signal()
 
             self.clock_domains.cd_sys = ClockDomain()
-            self.comb += self.cd_sys.clk.eq(clk18)
+            self.comb += self.cd_sys.clk.eq(clk_sys)
 
             platform.add_period_constraint(clk12_raw, 1e9/12e6)  # this is fixed and comes from external crystal
 
@@ -233,12 +234,11 @@ class BetrustedPlatform(LatticePlatform):
             )
 
 
-            # make an 18 MHz clock for the SPI bus controller
             self.specials += Instance(
                 "SB_PLL40_PAD",
                 # Parameters
                 p_DIVR = 0,
-                p_DIVF = 47,
+                p_DIVF = 47, # 18 MHz
                 p_DIVQ = 5,
                 p_FILTER_RANGE = 1,
                 p_FEEDBACK_PATH = "SIMPLE",
@@ -251,7 +251,7 @@ class BetrustedPlatform(LatticePlatform):
                 p_ENABLE_ICEGATE = 0,
                 # IO
                 i_PACKAGEPIN = clk12_raw,
-                o_PLLOUTGLOBAL = clk18,   # from PLL
+                o_PLLOUTGLOBAL = clk_sys,   # from PLL
                 i_BYPASS = 0,
                 i_RESETB = 1,
             )
@@ -275,7 +275,7 @@ class BetrustedPlatform(LatticePlatform):
             # it chooses the timing for this net, annotate period constraints for
             # all wires.
             platform.add_period_constraint(clk_spi_peripheral, 1e9/20e6)
-            platform.add_period_constraint(clk18, 1e9/sysclkfreq)
+            platform.add_period_constraint(clk_sys, 1e9/sysclkfreq)
             platform.add_period_constraint(self.cd_por.clk, 1e9/sysclkfreq)
 
 
@@ -535,9 +535,9 @@ class BaseSoC(SoCCore):
         # Core -------------------------------------------------------------------------------------------
         SoCCore.__init__(self, platform, clk_freq,
             integrated_sram_size=0,
-            uart_name="crossover",
+            with_uart=False,
             cpu_reset_address=self.mem_map["spiflash"]+GATEWARE_SIZE,
-            csr_data_width=32, **kwargs) # with_uart=False
+            csr_data_width=32, **kwargs)
 
         self.submodules.crg = platform.CRG(platform)
         self.add_csr("crg")
@@ -558,11 +558,16 @@ class BaseSoC(SoCCore):
         debugonly = False
 
         if debugonly:
-            self.submodules.uart_bridge = UARTWishboneBridge(platform.request("serial"), clk_freq, baudrate=115200)
-            self.add_wb_master(self.uart_bridge.wishbone)
-            if hasattr(self, "cpu"):
-                os.path.join(output_dir, "gateware")
-                self.register_mem("vexriscv_debug", 0xf00f0000, self.cpu.debug_bus, 0x100)
+            self.submodules.uart_phy = uart.UARTPHY(
+                pads=platform.request("serial"),
+                clk_freq=clk_freq,
+                baudrate=115200)
+            self.submodules.uart = ResetInserter()(uart.UART(self.uart_phy,
+            tx_fifo_depth=16,
+            rx_fifo_depth=16))
+            self.add_csr("uart_phy")
+            self.add_csr("uart")
+            self.add_interrupt("uart")
         else:
             serialpads = platform.request("serial")
             dbguart_tx = Signal()
@@ -587,12 +592,17 @@ class BaseSoC(SoCCore):
             self.comb += keycol0_ts.oe.eq(  ~self.power.soc_on & self.power.power.fields.kbddrive ) # force signal on the rx pin when in power off & scan
             self.comb += keycol0_ts.o.eq(1) # drive a '1' for scan
 
-            # Debug block ------------------------------------------------------------------------------------
-            self.submodules.uart_bridge = UARTWishboneBridge(dbgpads, clk_freq, baudrate=115200)
-            self.add_wb_master(self.uart_bridge.wishbone)
-            if hasattr(self, "cpu"):
-                os.path.join(output_dir, "gateware")
-                self.register_mem("vexriscv_debug", 0xf00f0000, self.cpu.debug_bus, 0x100)
+            # Uart block ------------------------------------------------------------------------------------
+            self.submodules.uart_phy = uart.UARTPHY(
+                pads=dbgpads,
+                clk_freq=clk_freq,
+                baudrate=115200)
+            self.submodules.uart = ResetInserter()(uart.UART(self.uart_phy,
+                tx_fifo_depth=16,
+                rx_fifo_depth=16))
+            self.add_csr("uart_phy")
+            self.add_csr("uart")
+            self.add_interrupt("uart")
 
         # RAM/ROM/reset cluster --------------------------------------------------------------------------
         spram_size = 128*1024
@@ -619,7 +629,6 @@ class BaseSoC(SoCCore):
         self.add_interrupt("ticktimer")
 
         # COM port (spi peripheral to Artix) ------------------------------------------------------------------
-        # FIXME: we should have these RTL blocks come from a deps/gateware submodule, not rtl. This way sims are consistent with implementation
         self.submodules.com = SpiFifoPeripheral(platform.request("com"))
         self.add_wb_slave(self.mem_map["com"], self.com.bus, 4)
         self.add_memory_region("com", self.mem_map["com"], 4, type='io')
@@ -793,7 +802,7 @@ def main():
 
     cpu_type = "vexriscv"
     cpu_variant = "minimal"
-    cpu_variant = cpu_variant + "+debug"
+    #cpu_variant = cpu_variant + "+debug"
 
     if args.no_cpu:
         cpu_type = None
