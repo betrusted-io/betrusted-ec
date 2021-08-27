@@ -9,5 +9,4 @@ betrusted-hal = { path = "../betrusted-hal" }
 utralib = { path = "../../utralib" }
 
 [features]
-debug_uart = []
-#default = ["debug_uart"]
+default = []
