@@ -245,7 +245,16 @@ fn main() -> ! {
         //////////////////////// ------------------------------
 
         //////////////////////// COM HANDLER BLOCK ---------
+        if hw.power_csr.rf(utra::power::STATS_STATE) == 0 {
+            com_csr.wfo(utra::com::CONTROL_RESET, 1); // reset fifos
+            com_csr.wfo(utra::com::CONTROL_CLRERR, 1); // clear all error flags
+            continue;
+        }
         while com_csr.rf(utra::com::STATUS_RX_AVAIL) == 1 {
+            // We know the SoC is alive, so let it control its own power state
+            hw.power_csr.rmwf(utra::power::POWER_SOC_ON, 0);
+            // note: this line is occasionally re-asserted whenever the charger is detected as present
+
             let rx: u16;
             unsafe {
                 rx = (*com_rd).read() as u16;
@@ -328,10 +337,6 @@ fn main() -> ! {
                 com_tx(old_capacity);
             } else if rx == ComState::GG_SOC.verb {
                 logln!(LL::Trace, "CGgSoc"); // This gets polled frequently
-                // We know the SoC is alive, so let it control its own power state
-                // bury it here, so it's definitely alive before we release this line
-                hw.power_csr.rmwf(utra::power::POWER_SOC_ON, 0);
-                // note: this line is occasionally re-asserted whenever the charger is detected as present
                 com_tx(gg_state_of_charge(&mut i2c) as u16);
             } else if rx == ComState::GG_REMAINING.verb {
                 logln!(LL::Trace, "CGgRem"); // This gets polled frequently
