@@ -27,7 +27,6 @@ use com_rs::serdes::{StringSer, STR_64_U8_SIZE, STR_64_WORDS};
 use com_rs::ComState;
 use core::panic::PanicInfo;
 use debug;
-#[allow(unused_imports)]
 use debug::{log, logln, sprint, sprintln, LL};
 use riscv_rt::entry;
 use utralib::generated::{
@@ -49,7 +48,6 @@ use wlan::WlanState;
 // ==========================================================
 // ===== Configure Log Level (used in macro expansions) =====
 // ==========================================================
-#[allow(dead_code)]
 const LOG_LEVEL: LL = LL::Debug;
 // ==========================================================
 
@@ -103,7 +101,7 @@ fn ticktimer_int_handler(_irq_no: usize) {
 
 #[entry]
 fn main() -> ! {
-    logln!(LL::Info, "\r\n====UP5K==08");
+    logln!(LL::Info, "\r\n====UP5K==09");
     let mut com_csr = CSR::new(HW_COM_BASE as *mut u32);
     let mut crg_csr = CSR::new(HW_CRG_BASE as *mut u32);
     let mut ticktimer_csr = CSR::new(HW_TICKTIMER_BASE as *mut u32);
@@ -162,17 +160,10 @@ fn main() -> ! {
     logln!(LL::Debug, "tusb320_rev {:X}", tusb320_rev);
     // Initialize the IMU, note special handling for debug logging of init result
     let mut tap_check_phase: u32 = 0;
-    let imu_result = Imu::init(&mut i2c);
-    #[cfg(feature = "debug_uart")]
-    match imu_result {
+    match Imu::init(&mut i2c) {
         Ok(who_am_i_reg) => logln!(LL::Debug, "ImuInitOk {:X}", who_am_i_reg), // Should be 0x6A
         Err(n) => logln!(LL::Debug, "ImuInitErr {:X}", n),
     }
-    #[cfg(not(feature = "debug_uart"))]
-    match imu_result {
-        Ok(_) => (),
-        Err(_) => (), // TODO: find a way to report this error over COM
-    };
     // make sure the backlight is off on boot
     hw.backlight.set_brightness(&mut i2c, 0, 0);
     hw.charger.update_regs(&mut i2c);
@@ -188,13 +179,8 @@ fn main() -> ! {
     ticktimer_csr.wfo(utra::ticktimer::EV_PENDING_ALARM, 1); // clear the pending signal just in case
     ticktimer_csr.wfo(utra::ticktimer::EV_ENABLE_ALARM, 1); // enable the interrupt
 
-    /////// NOTE TO SELF: if using GDB, must disable the watchdog!!!
-    if cfg!(feature = "debug_uart") {
-        logln!(LL::Debug, "debug_uart: watchdog OFF");
-    } else {
-        logln!(LL::Warn, "**WATCHDOG ON**: GDB will not work.");
-        crg_csr.wfo(utra::crg::WATCHDOG_ENABLE, 1); // 1 = enable the watchdog reset
-    }
+    logln!(LL::Warn, "**WATCHDOG ON**");
+    crg_csr.wfo(utra::crg::WATCHDOG_ENABLE, 1); // 1 = enable the watchdog reset
 
     // Reset & Init WF200 before starting the main loop
     if use_wifi {
@@ -285,7 +271,6 @@ fn main() -> ! {
                         com_tx(lsb | (msb << 8));
                     }
                 }
-                #[cfg(feature = "debug_uart")]
                 {
                     // Debug dump the list of SSIDs
                     for i in 0..wifi::SSID_ARRAY_SIZE {

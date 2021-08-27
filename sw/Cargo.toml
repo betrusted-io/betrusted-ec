@@ -28,7 +28,4 @@ test = false
 bench = false
 
 [features]
-debug_uart = [ "wfx_rs/debug_uart", "debug/debug_uart" ]
-# default = ["debug_uart"]  # "debug_uart" to turn on uart debugging
-# note to self: when debugging, watchdog timer is automatically disabled
-default = ["debug_uart"]
+default = []
