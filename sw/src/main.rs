@@ -75,7 +75,7 @@ fn ticktimer_int_handler(_irq_no: usize) {
     {
         // drive sense for keyboard
         let power = power_csr.ms(utra::power::POWER_SELF, 1)
-            | power_csr.ms(utra::power::POWER_DISCHARGE, 1)
+            //| power_csr.ms(utra::power::POWER_DISCHARGE, 1)
             | power_csr.ms(utra::power::POWER_KBDDRIVE, 1);
         power_csr.wo(utra::power::POWER, power);
 
@@ -88,8 +88,8 @@ fn ticktimer_int_handler(_irq_no: usize) {
         } else {
             // re-engage discharge fets, disable keyboard drive
             let power = power_csr.ms(utra::power::POWER_SELF, 1)
-                | power_csr.ms(utra::power::POWER_KBDDRIVE, 0)
-                | power_csr.ms(utra::power::POWER_DISCHARGE, 1);
+                //| power_csr.ms(utra::power::POWER_DISCHARGE, 1)
+                | power_csr.ms(utra::power::POWER_KBDDRIVE, 0);
             power_csr.wo(utra::power::POWER, power);
         }
     }
@@ -352,8 +352,8 @@ fn main() -> ! {
                 // ignore rapid, successive power down requests
                 hw.backlight.set_brightness(&mut i2c, 0, 0); // make sure the backlight is off
                 if get_time_ms() - pd_loop_timer > 1500 {
-                    let power = hw.power_csr.ms(utra::power::POWER_SELF, 1)
-                        | hw.power_csr.ms(utra::power::POWER_DISCHARGE, 1);
+                    let power = hw.power_csr.ms(utra::power::POWER_SELF, 1);
+                    //| hw.power_csr.ms(utra::power::POWER_DISCHARGE, 1);
                     hw.power_csr.wo(utra::power::POWER, power);
                     set_msleep_target_ticks(500); // extend next service so we can discharge
                     pd_loop_timer = get_time_ms();
@@ -362,8 +362,8 @@ fn main() -> ! {
                 hw.backlight.set_brightness(&mut i2c, 0, 0); // make sure the backlight is off
                 hw.charger.set_shipmode(&mut i2c);
                 gg_set_hibernate(&mut i2c);
-                let power = hw.power_csr.ms(utra::power::POWER_SELF, 1)
-                    | hw.power_csr.ms(utra::power::POWER_DISCHARGE, 1);
+                let power = hw.power_csr.ms(utra::power::POWER_SELF, 1);
+                //hw.power_csr.ms(utra::power::POWER_DISCHARGE, 1);
                 hw.power_csr.wo(utra::power::POWER, power);
                 set_msleep_target_ticks(500); // extend next service so we can discharge
 

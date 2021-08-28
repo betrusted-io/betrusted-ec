@@ -94,8 +94,8 @@ pub fn charger_handler(
         if hw.charger.chg_is_charging(&mut i2c, false) {
             // sprintln!("charger insert or soc on event!");
             let power = hw.power_csr.ms(utra::power::POWER_SELF, 1)
-                | hw.power_csr.ms(utra::power::POWER_SOC_ON, 1)
-                | hw.power_csr.ms(utra::power::POWER_DISCHARGE, 0);
+                | hw.power_csr.ms(utra::power::POWER_SOC_ON, 1);
+                //| hw.power_csr.ms(utra::power::POWER_DISCHARGE, 0);
             hw.power_csr.wo(utra::power::POWER, power); // turn off discharge if the soc is up
         }
     }
@@ -147,8 +147,8 @@ pub fn handle_low_voltage_panic_event(
 
             hw.charger.set_shipmode(&mut i2c);
             gg_set_hibernate(&mut i2c);
-            let power = hw.power_csr.ms(utra::power::POWER_SELF, 1)
-                | hw.power_csr.ms(utra::power::POWER_DISCHARGE, 1);
+            let power = hw.power_csr.ms(utra::power::POWER_SELF, 1);
+               // | hw.power_csr.ms(utra::power::POWER_DISCHARGE, 1);
             hw.power_csr.wo(utra::power::POWER, power);
             set_msleep_target_ticks(500);
             delay_ms(16_000); // 15s max time for ship mode to kick in, add 1s just to be safe

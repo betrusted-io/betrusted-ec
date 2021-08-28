@@ -419,7 +419,7 @@ class BtPower(Module, AutoCSR, AutoDoc):
         self.power = CSRStorage(8, fields =[
             CSRField("self", description="Writing `1` to this keeps the EC powered on", reset=1),
             CSRField("soc_on", description="Writing `1` to this powers on the SoC", reset=1),
-            CSRField("discharge", description="Writing `1` to this connects a low-value resistor across FPGA domain supplies to force a full discharge"),
+            #CSRField("discharge", description="Writing `1` to this connects a low-value resistor across FPGA domain supplies to force a full discharge"),
             CSRField("kbddrive", description="Writing `1` to this drives the scan column to 1. Do this prior to reading to mitigate noise")
         ])
 
@@ -433,7 +433,7 @@ class BtPower(Module, AutoCSR, AutoDoc):
         self.comb += [
             pads.sys_on.eq(self.power.fields.self),
             pads.u_to_t_on.eq(self.power.fields.soc_on),
-            pads.fpga_dis.eq(self.power.fields.discharge & ~pads.s0),
+            pads.fpga_dis.eq(~pads.s0), # make this automatic: if the FPGA is reporting itself as off, discharge the rails
             self.stats.fields.state.eq(pads.s0),
             self.stats.fields.monkey.eq(Cat(self.mon0, self.mon1)),
 
