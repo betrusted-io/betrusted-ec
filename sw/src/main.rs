@@ -75,7 +75,6 @@ fn ticktimer_int_handler(_irq_no: usize) {
     {
         // drive sense for keyboard
         let power = power_csr.ms(utra::power::POWER_SELF, 1)
-            //| power_csr.ms(utra::power::POWER_DISCHARGE, 1)
             | power_csr.ms(utra::power::POWER_KBDDRIVE, 1);
         power_csr.wo(utra::power::POWER, power);
 
@@ -86,9 +85,7 @@ fn ticktimer_int_handler(_irq_no: usize) {
                 | power_csr.ms(utra::power::POWER_SOC_ON, 1);
             power_csr.wo(utra::power::POWER, power);
         } else {
-            // re-engage discharge fets, disable keyboard drive
             let power = power_csr.ms(utra::power::POWER_SELF, 1)
-                //| power_csr.ms(utra::power::POWER_DISCHARGE, 1)
                 | power_csr.ms(utra::power::POWER_KBDDRIVE, 0);
             power_csr.wo(utra::power::POWER, power);
         }
@@ -112,6 +109,7 @@ fn main() -> ! {
 
     let mut loopcounter: u32 = 0; // in seconds, so this will last ~125 years
     let mut pd_loop_timer: u32 = 0;
+    let mut soc_off_delay_timer: u32 = 0;
 
     let mut i2c = Hardi2c::new();
     let mut hw = power_mgmt::PowerHardware {
@@ -234,7 +232,15 @@ fn main() -> ! {
         if hw.power_csr.rf(utra::power::STATS_STATE) == 0 {
             com_csr.wfo(utra::com::CONTROL_RESET, 1); // reset fifos
             com_csr.wfo(utra::com::CONTROL_CLRERR, 1); // clear all error flags
+            soc_off_delay_timer = get_time_ms();
             continue;
+        } else {
+            if get_time_ms() < soc_off_delay_timer + 100 {
+                // assert reset slightly after the SoC comes up, to throw away any power-on transition noise
+                com_csr.wfo(utra::com::CONTROL_RESET, 1);
+                com_csr.wfo(utra::com::CONTROL_CLRERR, 1);
+                continue;
+            }
         }
         while com_csr.rf(utra::com::STATUS_RX_AVAIL) == 1 {
             // We know the SoC is alive, so let it control its own power state
@@ -352,21 +358,14 @@ fn main() -> ! {
                 // ignore rapid, successive power down requests
                 hw.backlight.set_brightness(&mut i2c, 0, 0); // make sure the backlight is off
                 if get_time_ms() - pd_loop_timer > 1500 {
-                    let power = hw.power_csr.ms(utra::power::POWER_SELF, 1);
-                    //| hw.power_csr.ms(utra::power::POWER_DISCHARGE, 1);
-                    hw.power_csr.wo(utra::power::POWER, power);
-                    set_msleep_target_ticks(500); // extend next service so we can discharge
+                    hw.power_csr.wfo(utra::power::POWER_SELF, 1); // only leave myself on, turn off everything else
                     pd_loop_timer = get_time_ms();
                 }
             } else if rx == ComState::POWER_SHIPMODE.verb {
                 hw.backlight.set_brightness(&mut i2c, 0, 0); // make sure the backlight is off
                 hw.charger.set_shipmode(&mut i2c);
                 gg_set_hibernate(&mut i2c);
-                let power = hw.power_csr.ms(utra::power::POWER_SELF, 1);
-                //hw.power_csr.ms(utra::power::POWER_DISCHARGE, 1);
-                hw.power_csr.wo(utra::power::POWER, power);
-                set_msleep_target_ticks(500); // extend next service so we can discharge
-
+                hw.power_csr.wfo(utra::power::POWER_SELF, 1); // only leave myself on, turn off everything else
                 pd_loop_timer = get_time_ms();
             } else if rx == ComState::POWER_CHARGER_STATE.verb {
                 logln!(LL::Debug, "CPowChgState");
