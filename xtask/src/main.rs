@@ -100,6 +100,8 @@ fn push_to_pi(target: Option<String>, id: Option<String>) -> Result<(), DynError
     let dest_str = DESTDIR.to_string() + DEST_FILE;
     let dest = Path::new(&dest_str);
     scp(&target_str.clone(), "pi", id.clone(), Path::new(&IMAGE_PATH), &dest);
+    scp(&target_str.clone(), "pi", id.clone(), Path::new(&UPDATE_EC), Path::new(&(DESTDIR.to_string() + "ec_fw.bin")));
+    scp(&target_str.clone(), "pi", id.clone(), Path::new(&UPDATE_WF), Path::new(&(DESTDIR.to_string() + "wf200_fw.bin")));
 
     let dest_str = DESTDIR.to_string() + "ec-csr.csv";
     let dest = Path::new(&dest_str);
