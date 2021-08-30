@@ -439,8 +439,8 @@ pub const SIG_ATOMIC_MAX: u32 = 2147483647;
 pub const SIZE_MAX: u32 = 4294967295;
 pub const WINT_MIN: u32 = 0;
 pub const WINT_MAX: u32 = 4294967295;
-pub const SL_WFX_API_VERSION_MINOR: u32 = 3;
-pub const SL_WFX_API_VERSION_MAJOR: u32 = 2;
+pub const SL_WFX_API_VERSION_MINOR: u32 = 7;
+pub const SL_WFX_API_VERSION_MAJOR: u32 = 3;
 pub const SL_WFX_SSID_SIZE: u32 = 32;
 pub const SL_WFX_MAC_ADDR_SIZE: u32 = 6;
 pub const SL_WFX_BSSID_SIZE: u32 = 6;
@@ -455,7 +455,7 @@ pub const SL_WFX_OPN_SIZE: u32 = 14;
 pub const SL_WFX_UID_SIZE: u32 = 8;
 pub const SL_WFX_DISABLED_CHANNEL_LIST_SIZE: u32 = 2;
 pub const SL_WFX_FIRMWARE_LABEL_SIZE: u32 = 128;
-pub const SL_WFX_EXCEPTION_DATA_SIZE: u32 = 124;
+pub const SL_WFX_EXCEPTION_DATA_SIZE_MAX: u32 = 1600;
 pub const SL_WFX_KEY_VALUE_SIZE: u32 = 32;
 pub const SL_WFX_HOST_PUB_KEY_SIZE: u32 = 32;
 pub const SL_WFX_HOST_PUB_KEY_MAC_SIZE: u32 = 64;
@@ -472,16 +472,20 @@ pub const SL_WFX_FMAC_SSID_SIZE: u32 = 32;
 pub const SL_WFX_ARP_IP_ADDR_SIZE: u32 = 2;
 pub const SL_WFX_NS_IP_ADDR_SIZE: u32 = 2;
 pub const SL_WFX_IPV6_ADDR_SIZE: u32 = 16;
-pub const FIRMWARE_VERSION: &'static [u8; 6usize] = b"3.3.1\0";
-pub const FMAC_DRIVER_VERSION_MAJOR: u32 = 2;
+pub const FIRMWARE_VERSION: &'static [u8; 7usize] = b"3.12.2\0";
+pub const FMAC_DRIVER_VERSION_MAJOR: u32 = 3;
 pub const FMAC_DRIVER_VERSION_MINOR: u32 = 3;
 pub const FMAC_DRIVER_VERSION_REVISION: u32 = 2;
 pub const FMAC_DRIVER_VERSION_RC: u32 = 255;
 pub const FMAC_DRIVER_RC_RELEASE: u32 = 255;
 pub const FMAC_DRIVER_RC_DEVELOPMENT: u32 = 0;
 pub const FMAC_DRIVER_VERSION_STRING_SUFFIX: &'static [u8; 1usize] = b"\0";
-pub const FMAC_DRIVER_VERSION: u32 = 33751807;
+pub const FMAC_DRIVER_VERSION: u32 = 50529023;
+pub const SL_WFX_DEFAULT_REQUEST_TIMEOUT_MS: u32 = 5000;
+pub const SL_WFX_SLK_CURVE25519: u32 = 0;
+pub const SL_WFX_SDIO_BLOCK_SIZE: u32 = 64;
 pub const SL_WAIT_FOREVER: u32 = 4294967295;
+pub const SL_WFX_ROUND_UP_VALUE: u32 = 64;
 pub const SL_WFX_DEBUG_MASK: u32 = 0;
 pub const SL_WFX_DEBUG_ERROR: u32 = 1;
 pub const SL_WFX_DEBUG_INIT: u32 = 2;
@@ -494,34 +498,17 @@ pub const SL_WFX_DEBUG_TX: u32 = 128;
 pub const SL_WFX_DEBUG_TX_RAW: u32 = 256;
 pub const SL_WFX_DEBUG_TX_REG: u32 = 512;
 pub const SL_WFX_DEBUG_FW_LOAD: u32 = 1024;
-pub const IE_RSNE_ID: u32 = 48;
-pub const IE_RSNE_CIPHER_SUITE_TKIP: u32 = 44830464;
-pub const IE_RSNE_CIPHER_SUITE_CCMP: u32 = 78384896;
-pub const IE_VENDOR_SPECIFIC_ID: u32 = 221;
-pub const IE_WPA_OUI: u32 = 20722;
-pub const PDS_HF_CLK_KEY: u8 = 101u8;
-pub const PDS_POWER_CONFIG_KEY: u8 = 104u8;
-pub const PDS_ANTENNA_SEL_KEY: u8 = 106u8;
-pub const PDS_KEY_A: u8 = 97u8;
-pub const PDS_KEY_B: u8 = 98u8;
-pub const PDS_KEY_C: u8 = 99u8;
-pub const PDS_KEY_D: u8 = 100u8;
-pub const PDS_KEY_E: u8 = 101u8;
-pub const PDS_KEY_F: u8 = 102u8;
-pub const WFX_PTE_INFO: u32 = 151044288;
-pub const PTE_INFO_KEYSET_IDX: u32 = 13;
-pub const PTE_INFO_SIZE: u32 = 16;
+pub const SL_WFX_PDS_KEY_A: u8 = 97u8;
+pub const SL_WFX_PDS_KEY_B: u8 = 98u8;
+pub const SL_WFX_PDS_KEY_C: u8 = 99u8;
+pub const SL_WFX_PDS_KEY_D: u8 = 100u8;
+pub const SL_WFX_PDS_KEY_E: u8 = 101u8;
+pub const SL_WFX_PDS_KEY_F: u8 = 102u8;
+pub const SL_WFX_PDS_ANTENNA_SEL_KEY: u8 = 106u8;
+pub const SL_WFX_PTE_INFO: u32 = 151044288;
 pub const SL_WFX_MSG_ID_GENERAL_API_MASK: u32 = 32;
 pub const SL_WFX_MSG_INFO_INTERFACE_OFFSET: u32 = 1;
 pub const SL_WFX_MSG_INFO_INTERFACE_MASK: u32 = 6;
-pub const SL_WFX_CONT_FRAME_TYPE_OFFSET: u32 = 14;
-pub const SL_WFX_CONFIG_REVISION_OFFSET: u32 = 24;
-pub const SL_WFX_CONFIG_REVISION_MASK: u32 = 7;
-pub const SL_WFX_CONFIG_TYPE_OFFSET: u32 = 31;
-pub const SL_WFX_CONFIG_TYPE_MASK: u32 = 1;
-pub const SL_WFX_CTRL_REGISTER_SIZE: u32 = 2;
-pub const SL_WFX_ROUND_UP_VALUE: u32 = 1;
-pub const SL_WFX_DEFAULT_REQUEST_TIMEOUT_MS: u32 = 5000;
 pub const SYS_BASE_ADDR_SILICON: u32 = 0;
 pub const PAC_BASE_ADDRESS_SILICON: u32 = 150994944;
 pub const PAC_SHARED_MEMORY_SILICON: u32 = 150994944;
@@ -563,7 +550,14 @@ pub const NCP_STATE_PUB_KEY_RDY: u32 = 2058624281;
 pub const ADDR_DOWNLOAD_FIFO_BASE: u32 = 151011328;
 pub const ADDR_DOWNLOAD_FIFO_END: u32 = 151044096;
 pub const ADDR_SHARED_RAM_DEBUG_AREA: u32 = 151003136;
+pub const SL_WFX_CONT_REGISTER_SIZE: u32 = 2;
 pub const SL_WFX_CONT_NEXT_LEN_MASK: u32 = 4095;
+pub const SL_WFX_CONT_FRAME_TYPE_OFFSET: u32 = 14;
+pub const SL_WFX_CONFIG_ERROR_MASK: u32 = 15;
+pub const SL_WFX_CONFIG_REVISION_OFFSET: u32 = 24;
+pub const SL_WFX_CONFIG_REVISION_MASK: u32 = 7;
+pub const SL_WFX_CONFIG_TYPE_OFFSET: u32 = 31;
+pub const SL_WFX_CONFIG_TYPE_MASK: u32 = 1;
 pub const SL_WFX_SDIO_CCCR_IO_QUEUE_ENABLE: u32 = 2;
 pub const SL_WFX_SDIO_CCCR_IRQ_ENABLE: u32 = 4;
 pub const SL_WFX_SDIO_CCCR_BUS_INTERFACE_CONTROL: u32 = 7;
@@ -727,6 +721,46 @@ pub type intmax_t = c_types::c_longlong;
 pub type uintmax_t = c_types::c_ulonglong;
 #[doc = "   DATA TYPES   *******************************"]
 pub type sl_status_t = u32;
+#[doc = "<Firmware rollback error, no data returned"]
+pub const sl_wfx_error_e_SL_WFX_ERROR_FIRMWARE_ROLLBACK: sl_wfx_error_e = 0;
+#[doc = "<Not used anymore"]
+pub const sl_wfx_error_e_SL_WFX_ERROR_DEPRECATED_0: sl_wfx_error_e = 1;
+#[doc = "<Not used anymore"]
+pub const sl_wfx_error_e_SL_WFX_ERROR_DEPRECATED_1: sl_wfx_error_e = 2;
+#[doc = "<Secure Link Session key is invalid (probably not initialized)"]
+pub const sl_wfx_error_e_SL_WFX_ERROR_INVALID_SESSION_KEY: sl_wfx_error_e = 3;
+#[doc = "<Out-of-range power supply voltage detected, the last voltage value is returned. Param: measured voltage (mV)"]
+pub const sl_wfx_error_e_SL_WFX_ERROR_OOR_VOLTAGE: sl_wfx_error_e = 4;
+#[doc = "<Wrong PDS version detected, no data returned"]
+pub const sl_wfx_error_e_SL_WFX_ERROR_PDS_VERSION: sl_wfx_error_e = 5;
+#[doc = "<Out-of-range temperature, no data returned"]
+pub const sl_wfx_error_e_SL_WFX_ERROR_OOR_TEMPERATURE: sl_wfx_error_e = 6;
+#[doc = "<Requests from Host are forbidden until the end of key exchange (Host should wait for the associated indication)"]
+pub const sl_wfx_error_e_SL_WFX_ERROR_REQ_DURING_KEY_EXCHANGE: sl_wfx_error_e = 7;
+#[doc = "<Not used anymore"]
+pub const sl_wfx_error_e_SL_WFX_ERROR_DEPRECATED_2: sl_wfx_error_e = 8;
+#[doc = "<Not used anymore"]
+pub const sl_wfx_error_e_SL_WFX_ERROR_DEPRECATED_3: sl_wfx_error_e = 9;
+#[doc = "<An error occured during message decryption (can be a counter mismatch or wrong CCM tag)"]
+pub const sl_wfx_error_e_SL_WFX_ERROR_SECURELINK_DECRYPTION: sl_wfx_error_e = 10;
+#[doc = "< Encryption state of the received message doesn't match the SecureLink bitmap. Param: was encrypted"]
+pub const sl_wfx_error_e_SL_WFX_ERROR_SECURELINK_WRONG_ENCRYPTION_STATE: sl_wfx_error_e = 11;
+#[doc = "<SPI or SDIO bus clock is too slow (<1kHz)"]
+pub const sl_wfx_error_e_SL_WFX_SPI_OR_SDIO_FREQ_TOO_LOW: sl_wfx_error_e = 12;
+#[doc = "<Not used anymore"]
+pub const sl_wfx_error_e_SL_WFX_ERROR_DEPRECATED_4: sl_wfx_error_e = 13;
+#[doc = "<Not used anymore"]
+pub const sl_wfx_error_e_SL_WFX_ERROR_DEPRECATED_5: sl_wfx_error_e = 14;
+#[doc = "<HIF HW has reported an error. Param: HIF status register"]
+pub const sl_wfx_error_e_SL_WFX_HIF_BUS_ERROR: sl_wfx_error_e = 15;
+#[doc = "<Unknown TestFeatureMode during test feature init"]
+pub const sl_wfx_error_e_SL_WFX_PDS_TESTFEATURE_MODE_ERROR: sl_wfx_error_e = 16;
+#[doc = "<The SecureLink bitmap must be configured right after key exchange"]
+pub const sl_wfx_error_e_SL_WFX_ERROR_SECURELINK_EXPECTED_BITMAP: sl_wfx_error_e = 17;
+#[doc = " @brief specifies the type of error reported by the indication message sl_wfx_error_ind_body_t"]
+#[doc = ""]
+pub type sl_wfx_error_e = u32;
+pub use self::sl_wfx_error_e as sl_wfx_error_t;
 #[doc = "< Data rate 802.11b 1Mbps"]
 pub const sl_wfx_rate_index_e_SL_WFX_RATE_INDEX_B_1MBPS: sl_wfx_rate_index_e = 0;
 #[doc = "< Data rate 802.11b 2Mbps"]
@@ -875,7 +909,7 @@ pub type sl_wfx_generic_message_t = sl_wfx_generic_message_s;
 pub struct sl_wfx_generic_confirmation_s {
     #[doc = "<4 bytes header"]
     pub header: sl_wfx_header_t,
-    #[doc = "<See enum sl_wfx_status_t and (wsm_status or wfm_status)"]
+    #[doc = "<See enum sl_wfx_status_t"]
     pub status: u32,
 }
 #[test]
@@ -922,13 +956,13 @@ pub const sl_wfx_generic_requests_ids_e_SL_WFX_CONFIGURATION_REQ_ID: sl_wfx_gene
 #[doc = "< \\b CONTROL_GPIO request Id use body sl_wfx_control_gpio_req_body_t and returns sl_wfx_control_gpio_cnf_body_t"]
 pub const sl_wfx_generic_requests_ids_e_SL_WFX_CONTROL_GPIO_REQ_ID: sl_wfx_generic_requests_ids_e =
     38;
-#[doc = "< \\b SET_SL_MAC_KEY request Id use body sl_wfx_set_sl_mac_key_req_body_t and returns sl_wfx_set_sl_mac_key_cnf_body_t"]
-pub const sl_wfx_generic_requests_ids_e_SL_WFX_SET_SL_MAC_KEY_REQ_ID:
+#[doc = "< \\b SET_SECURELINK_MAC_KEY request Id use body sl_wfx_set_securelink_mac_key_req_body_t and returns sl_wfx_set_securelink_mac_key_cnf_body_t"]
+pub const sl_wfx_generic_requests_ids_e_SL_WFX_SET_SECURELINK_MAC_KEY_REQ_ID:
     sl_wfx_generic_requests_ids_e = 39;
-#[doc = "< \\b SL_EXCHANGE_PUB_KEYS request Id use body sl_wfx_securelink_exchange_pub_keys_req_body_t and returns sl_wfx_securelink_exchange_pub_keys_cnf_body_t"]
+#[doc = "< \\b SECURELINK_EXCHANGE_PUB_KEYS request Id use body sl_wfx_securelink_exchange_pub_keys_req_body_t and returns sl_wfx_securelink_exchange_pub_keys_cnf_body_t"]
 pub const sl_wfx_generic_requests_ids_e_SL_WFX_SECURELINK_EXCHANGE_PUB_KEYS_REQ_ID:
     sl_wfx_generic_requests_ids_e = 40;
-#[doc = "< \\b SL_CONFIGURE request Id use body sl_wfx_securelink_configure_req_body_t and returns sl_wfx_securelink_exchange_pub_keys_cnf_body_t"]
+#[doc = "< \\b SECURELINK_CONFIGURE request Id use body sl_wfx_securelink_configure_req_body_t and returns sl_wfx_securelink_exchange_pub_keys_cnf_body_t"]
 pub const sl_wfx_generic_requests_ids_e_SL_WFX_SECURELINK_CONFIGURE_REQ_ID:
     sl_wfx_generic_requests_ids_e = 41;
 #[doc = "< \\b PREVENT_ROLLBACK request Id use body sl_wfx_prevent_rollback_req_body_t and returns sl_wfx_prevent_rollback_cnf_body_t"]
@@ -942,6 +976,9 @@ pub const sl_wfx_generic_requests_ids_e_SL_WFX_PTA_PRIORITY_REQ_ID: sl_wfx_gener
     44;
 #[doc = "< \\b PTA_STATE request Id use body sl_wfx_pta_state_req_body_t and returns sl_wfx_pta_state_cnf_body_t"]
 pub const sl_wfx_generic_requests_ids_e_SL_WFX_PTA_STATE_REQ_ID: sl_wfx_generic_requests_ids_e = 45;
+#[doc = "< \\b SET_CCA_CONFIG request Id uses body sl_wfx_set_cca_config_req_body_t and returns sl_wfx_set_cca_config_cnf_body_t"]
+pub const sl_wfx_generic_requests_ids_e_SL_WFX_SET_CCA_CONFIG_REQ_ID:
+    sl_wfx_generic_requests_ids_e = 46;
 #[doc = "< \\b SHUT_DOWN request Id use body sl_wfx_shut_down_req_t and never returns"]
 pub const sl_wfx_generic_requests_ids_e_SL_WFX_SHUT_DOWN_REQ_ID: sl_wfx_generic_requests_ids_e = 50;
 #[doc = " @brief General request message IDs"]
@@ -956,13 +993,13 @@ pub const sl_wfx_general_confirmations_ids_e_SL_WFX_CONFIGURATION_CNF_ID:
 #[doc = "< \\b CONTROL_GPIO confirmation Id returns body sl_wfx_control_gpio_cnf_body_t"]
 pub const sl_wfx_general_confirmations_ids_e_SL_WFX_CONTROL_GPIO_CNF_ID:
     sl_wfx_general_confirmations_ids_e = 38;
-#[doc = "< \\b SET_SL_MAC_KEY confirmation Id returns body sl_wfx_set_sl_mac_key_cnf_body_t"]
-pub const sl_wfx_general_confirmations_ids_e_SL_WFX_SET_SL_MAC_KEY_CNF_ID:
+#[doc = "< \\b SET_SECURELINK_MAC_KEY confirmation Id returns body sl_wfx_set_securelink_mac_key_cnf_body_t"]
+pub const sl_wfx_general_confirmations_ids_e_SL_WFX_SET_SECURELINK_MAC_KEY_CNF_ID:
     sl_wfx_general_confirmations_ids_e = 39;
-#[doc = "< \\b SL_EXCHANGE_PUB_KEYS confirmation Id returns body sl_wfx_securelink_exchange_pub_keys_cnf_body_t"]
+#[doc = "< \\b SECURELINK_EXCHANGE_PUB_KEYS confirmation Id returns body sl_wfx_securelink_exchange_pub_keys_cnf_body_t"]
 pub const sl_wfx_general_confirmations_ids_e_SL_WFX_SECURELINK_EXCHANGE_PUB_KEYS_CNF_ID:
     sl_wfx_general_confirmations_ids_e = 40;
-#[doc = "< \\b SL_CONFIGURE confirmation Id returns body sl_wfx_securelink_configure_cnf_body_t"]
+#[doc = "< \\b SECURELINK_CONFIGURE confirmation Id returns body sl_wfx_securelink_configure_cnf_body_t"]
 pub const sl_wfx_general_confirmations_ids_e_SL_WFX_SECURELINK_CONFIGURE_CNF_ID:
     sl_wfx_general_confirmations_ids_e = 41;
 #[doc = "< \\b PREVENT_ROLLBACK confirmation Id use body sl_wfx_prevent_rollback_cnf_body_t"]
@@ -977,6 +1014,9 @@ pub const sl_wfx_general_confirmations_ids_e_SL_WFX_PTA_PRIORITY_CNF_ID:
 #[doc = "< \\b PTA_STATE confirmation Id returns sl_wfx_pta_state_cnf_body_t"]
 pub const sl_wfx_general_confirmations_ids_e_SL_WFX_PTA_STATE_CNF_ID:
     sl_wfx_general_confirmations_ids_e = 45;
+#[doc = "< \\b SET_CCA_CONFIG confirmation Id returns body sl_wfx_set_cca_config_cnf_body_t"]
+pub const sl_wfx_general_confirmations_ids_e_SL_WFX_SET_CCA_CONFIG_CNF_ID:
+    sl_wfx_general_confirmations_ids_e = 46;
 #[doc = " @brief General confirmation message IDs"]
 #[doc = ""]
 #[doc = " API general confirmation message IDs returned by requests described in sl_wfx_general_requests_ids."]
@@ -1100,7 +1140,7 @@ pub const sl_wfx_status_e_SL_WFX_PREVENT_ROLLBACK_CNF_SUCCESS: sl_wfx_status_e =
 #[doc = "<Wrong magic word detected"]
 pub const sl_wfx_status_e_SL_WFX_PREVENT_ROLLBACK_CNF_WRONG_MAGIC_WORD: sl_wfx_status_e = 4694;
 #[doc = " @brief General confirmation possible values for returned 'status' field"]
-#[doc = "WLAN"]
+#[doc = " WLAN"]
 #[doc = " All general confirmation messages have a field 'status' just after the message header.@n"]
 #[doc = " A value of zero indicates the request is completed successfully."]
 #[doc = ""]
@@ -2070,6 +2110,9 @@ pub const sl_wfx_generic_indication_type_e_SL_WFX_GENERIC_INDICATION_TYPE_STRING
 #[doc = "<Rx statistics structure"]
 pub const sl_wfx_generic_indication_type_e_SL_WFX_GENERIC_INDICATION_TYPE_RX_STATS:
     sl_wfx_generic_indication_type_e = 2;
+#[doc = "<Tx power loop info structure"]
+pub const sl_wfx_generic_indication_type_e_SL_WFX_GENERIC_INDICATION_TYPE_TX_PWR_LOOP_INFO:
+    sl_wfx_generic_indication_type_e = 3;
 #[doc = " @brief specifies the type of data reported by the indication message sl_wfx_generic_ind_body_t"]
 #[doc = ""]
 pub type sl_wfx_generic_indication_type_e = u32;
@@ -2102,12 +2145,14 @@ pub struct sl_wfx_rx_stats_s {
     pub pwr_clk_freq: u32,
     #[doc = "<Indicate if the low power clock is external"]
     pub is_ext_pwr_clk: u8,
+    #[doc = "<Current die temperature in Celsius"]
+    pub current_temp: i8,
 }
 #[test]
 fn bindgen_test_layout_sl_wfx_rx_stats_s() {
     assert_eq!(
         ::core::mem::size_of::<sl_wfx_rx_stats_s>(),
-        289usize,
+        290usize,
         concat!("Size of: ", stringify!(sl_wfx_rx_stats_s))
     );
     assert_eq!(
@@ -2239,12 +2284,140 @@ fn bindgen_test_layout_sl_wfx_rx_stats_s() {
             stringify!(is_ext_pwr_clk)
         )
     );
+    assert_eq!(
+        unsafe { &(*(::core::ptr::null::<sl_wfx_rx_stats_s>())).current_temp as *const _ as usize },
+        289usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(sl_wfx_rx_stats_s),
+            "::",
+            stringify!(current_temp)
+        )
+    );
 }
 pub type sl_wfx_rx_stats_t = sl_wfx_rx_stats_s;
+#[doc = " @brief TX power loop info from the GENERIC indication message sl_wfx_generic_ind_body_t"]
+#[repr(C, packed)]
+#[derive(Copy, Clone)]
+pub struct sl_wfx_tx_pwr_loop_info_s {
+    #[doc = "<Used Tx digital gain"]
+    pub dig_gain: u16,
+    #[doc = "<Used Tx PA gain"]
+    pub ppa_gain: u16,
+    #[doc = "<Power target in qdBm"]
+    pub target_pout: i16,
+    #[doc = "<FEM output power in qdBm"]
+    pub pestimation: i16,
+    #[doc = "<Measured Vpdet in mV"]
+    pub vpdet: u16,
+    #[doc = "<Vpdet measurement index"]
+    pub meas_index: u8,
+    #[doc = "<Reserved"]
+    pub reserved: u8,
+}
+#[test]
+fn bindgen_test_layout_sl_wfx_tx_pwr_loop_info_s() {
+    assert_eq!(
+        ::core::mem::size_of::<sl_wfx_tx_pwr_loop_info_s>(),
+        12usize,
+        concat!("Size of: ", stringify!(sl_wfx_tx_pwr_loop_info_s))
+    );
+    assert_eq!(
+        ::core::mem::align_of::<sl_wfx_tx_pwr_loop_info_s>(),
+        1usize,
+        concat!("Alignment of ", stringify!(sl_wfx_tx_pwr_loop_info_s))
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<sl_wfx_tx_pwr_loop_info_s>())).dig_gain as *const _ as usize
+        },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(sl_wfx_tx_pwr_loop_info_s),
+            "::",
+            stringify!(dig_gain)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<sl_wfx_tx_pwr_loop_info_s>())).ppa_gain as *const _ as usize
+        },
+        2usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(sl_wfx_tx_pwr_loop_info_s),
+            "::",
+            stringify!(ppa_gain)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<sl_wfx_tx_pwr_loop_info_s>())).target_pout as *const _ as usize
+        },
+        4usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(sl_wfx_tx_pwr_loop_info_s),
+            "::",
+            stringify!(target_pout)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<sl_wfx_tx_pwr_loop_info_s>())).pestimation as *const _ as usize
+        },
+        6usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(sl_wfx_tx_pwr_loop_info_s),
+            "::",
+            stringify!(pestimation)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<sl_wfx_tx_pwr_loop_info_s>())).vpdet as *const _ as usize
+        },
+        8usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(sl_wfx_tx_pwr_loop_info_s),
+            "::",
+            stringify!(vpdet)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<sl_wfx_tx_pwr_loop_info_s>())).meas_index as *const _ as usize
+        },
+        10usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(sl_wfx_tx_pwr_loop_info_s),
+            "::",
+            stringify!(meas_index)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<sl_wfx_tx_pwr_loop_info_s>())).reserved as *const _ as usize
+        },
+        11usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(sl_wfx_tx_pwr_loop_info_s),
+            "::",
+            stringify!(reserved)
+        )
+    );
+}
+pub type sl_wfx_tx_pwr_loop_info_t = sl_wfx_tx_pwr_loop_info_s;
 #[repr(C, packed)]
 #[derive(Copy, Clone)]
 pub union sl_wfx_indication_data_u {
     pub rx_stats: sl_wfx_rx_stats_t,
+    pub tx_pwr_loop_info: sl_wfx_tx_pwr_loop_info_t,
     pub raw_data: [u8; 376usize],
     _bindgen_union_align: [u8; 376usize],
 }
@@ -2270,6 +2443,19 @@ fn bindgen_test_layout_sl_wfx_indication_data_u() {
             stringify!(sl_wfx_indication_data_u),
             "::",
             stringify!(rx_stats)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<sl_wfx_indication_data_u>())).tx_pwr_loop_info as *const _
+                as usize
+        },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(sl_wfx_indication_data_u),
+            "::",
+            stringify!(tx_pwr_loop_info)
         )
     );
     assert_eq!(
@@ -2381,16 +2567,17 @@ pub type sl_wfx_generic_ind_t = sl_wfx_generic_ind_s;
 #[doc = ""]
 #[doc = " It reports unexpected errors. A reboot is needed after this message."]
 #[repr(C, packed)]
-#[derive(Copy, Clone)]
 pub struct sl_wfx_exception_ind_body_s {
+    #[doc = "<Reason of the exception"]
+    pub reason: u32,
     #[doc = "<Raw data array"]
-    pub data: [u8; 124usize],
+    pub data: __IncompleteArrayField<u8>,
 }
 #[test]
 fn bindgen_test_layout_sl_wfx_exception_ind_body_s() {
     assert_eq!(
         ::core::mem::size_of::<sl_wfx_exception_ind_body_s>(),
-        124usize,
+        4usize,
         concat!("Size of: ", stringify!(sl_wfx_exception_ind_body_s))
     );
     assert_eq!(
@@ -2398,22 +2585,9 @@ fn bindgen_test_layout_sl_wfx_exception_ind_body_s() {
         1usize,
         concat!("Alignment of ", stringify!(sl_wfx_exception_ind_body_s))
     );
-    assert_eq!(
-        unsafe {
-            &(*(::core::ptr::null::<sl_wfx_exception_ind_body_s>())).data as *const _ as usize
-        },
-        0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(sl_wfx_exception_ind_body_s),
-            "::",
-            stringify!(data)
-        )
-    );
 }
 pub type sl_wfx_exception_ind_body_t = sl_wfx_exception_ind_body_s;
 #[repr(C, packed)]
-#[derive(Copy, Clone)]
 pub struct sl_wfx_exception_ind_s {
     pub header: sl_wfx_header_t,
     pub body: sl_wfx_exception_ind_body_t,
@@ -2422,7 +2596,7 @@ pub struct sl_wfx_exception_ind_s {
 fn bindgen_test_layout_sl_wfx_exception_ind_s() {
     assert_eq!(
         ::core::mem::size_of::<sl_wfx_exception_ind_s>(),
-        128usize,
+        8usize,
         concat!("Size of: ", stringify!(sl_wfx_exception_ind_s))
     );
     assert_eq!(
@@ -2430,54 +2604,8 @@ fn bindgen_test_layout_sl_wfx_exception_ind_s() {
         1usize,
         concat!("Alignment of ", stringify!(sl_wfx_exception_ind_s))
     );
-    assert_eq!(
-        unsafe { &(*(::core::ptr::null::<sl_wfx_exception_ind_s>())).header as *const _ as usize },
-        0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(sl_wfx_exception_ind_s),
-            "::",
-            stringify!(header)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::core::ptr::null::<sl_wfx_exception_ind_s>())).body as *const _ as usize },
-        4usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(sl_wfx_exception_ind_s),
-            "::",
-            stringify!(body)
-        )
-    );
 }
 pub type sl_wfx_exception_ind_t = sl_wfx_exception_ind_s;
-#[doc = "<Firmware rollback error, no data returned"]
-pub const sl_wfx_error_e_WSM_SL_WFX_ERROR_FIRMWARE_ROLLBACK: sl_wfx_error_e = 0;
-#[doc = "<Firmware debug feature enabled, no data returned"]
-pub const sl_wfx_error_e_WSM_SL_WFX_ERROR_FIRMWARE_DEBUG_ENABLED: sl_wfx_error_e = 1;
-#[doc = "<SecureLink Session key is outdated, 4 bytes returned (nonce counter)"]
-pub const sl_wfx_error_e_WSM_SL_WFX_ERROR_OUTDATED_SESSION_KEY: sl_wfx_error_e = 2;
-#[doc = "<SecureLink Session key is invalid, 0 or 4 bytes returned"]
-pub const sl_wfx_error_e_WSM_SL_WFX_ERROR_INVALID_SESSION_KEY: sl_wfx_error_e = 3;
-#[doc = "<Out-of-range power supply voltage detected, no data returned"]
-pub const sl_wfx_error_e_WSM_SL_WFX_ERROR_OOR_VOLTAGE: sl_wfx_error_e = 4;
-#[doc = "<Wrong PDS version detected, no data returned"]
-pub const sl_wfx_error_e_WSM_SL_WFX_ERROR_PDS_VERSION: sl_wfx_error_e = 5;
-#[doc = "<Out-of-range temperature, no data returned"]
-pub const sl_wfx_error_e_WSM_SL_ERROR_OOR_TEMPERATURE: sl_wfx_error_e = 6;
-#[doc = "<Requets from Host are forbidden until the end of key exchange (Host should wait for the associated indication)"]
-pub const sl_wfx_error_e_WSM_SL_ERROR_REQ_DURING_KEY_EXCHANGE: sl_wfx_error_e = 7;
-#[doc = "<'Multi TX conf' feature is not supported in SecureLink mode"]
-pub const sl_wfx_error_e_WSM_SL_ERROR_MULTI_TX_CNF_SECURELINK: sl_wfx_error_e = 8;
-#[doc = "<HT SecureLink traffic is producing an internal overflow"]
-pub const sl_wfx_error_e_WSM_SL_ERROR_SECURELINK_OVERFLOW: sl_wfx_error_e = 9;
-#[doc = "<An error occured during message decryption (can be a counter mismatch or wrong CCM tag)"]
-pub const sl_wfx_error_e_WSM_SL_ERROR_SECURELINK_DECRYPTION: sl_wfx_error_e = 10;
-#[doc = " @brief specifies the type of error reported by the indication message sl_wfx_error_ind_body_t"]
-#[doc = ""]
-pub type sl_wfx_error_e = u32;
-pub use self::sl_wfx_error_e as sl_wfx_error_t;
 #[doc = " @brief Error indication message."]
 #[doc = ""]
 #[doc = " It reports user configuration errors."]
@@ -2540,7 +2668,7 @@ pub const sl_wfx_securelink_mac_key_dest_e_SECURE_LINK_MAC_KEY_DEST_OTP:
 #[doc = "<Key will be stored in RAM"]
 pub const sl_wfx_securelink_mac_key_dest_e_SECURE_LINK_MAC_KEY_DEST_RAM:
     sl_wfx_securelink_mac_key_dest_e = 135;
-#[doc = " @brief destination of the *Secure Link MAC key*, used by request message sl_wfx_set_sl_mac_key_req_body_t"]
+#[doc = " @brief destination of the *Secure Link MAC key*, used by request message sl_wfx_set_securelink_mac_key_req_body_t"]
 pub type sl_wfx_securelink_mac_key_dest_e = u32;
 pub use self::sl_wfx_securelink_mac_key_dest_e as sl_wfx_securelink_mac_key_dest_t;
 #[doc = " @brief Set the Secure Link MAC key"]
@@ -2551,180 +2679,196 @@ pub use self::sl_wfx_securelink_mac_key_dest_e as sl_wfx_securelink_mac_key_dest
 #[doc = " switch to *Trusted Enforced* mode"]
 #[repr(C, packed)]
 #[derive(Copy, Clone)]
-pub struct sl_wfx_set_sl_mac_key_req_body_s {
+pub struct sl_wfx_set_securemink_mac_key_req_body_s {
     #[doc = "<Key destination - OTP or RAM (see enum sl_wfx_securelink_mac_key_dest_t)"]
     pub otp_or_ram: u8,
     #[doc = "<Secure Link MAC Key value"]
     pub key_value: [u8; 32usize],
 }
 #[test]
-fn bindgen_test_layout_sl_wfx_set_sl_mac_key_req_body_s() {
+fn bindgen_test_layout_sl_wfx_set_securemink_mac_key_req_body_s() {
     assert_eq!(
-        ::core::mem::size_of::<sl_wfx_set_sl_mac_key_req_body_s>(),
+        ::core::mem::size_of::<sl_wfx_set_securemink_mac_key_req_body_s>(),
         33usize,
-        concat!("Size of: ", stringify!(sl_wfx_set_sl_mac_key_req_body_s))
+        concat!(
+            "Size of: ",
+            stringify!(sl_wfx_set_securemink_mac_key_req_body_s)
+        )
     );
     assert_eq!(
-        ::core::mem::align_of::<sl_wfx_set_sl_mac_key_req_body_s>(),
+        ::core::mem::align_of::<sl_wfx_set_securemink_mac_key_req_body_s>(),
         1usize,
         concat!(
             "Alignment of ",
-            stringify!(sl_wfx_set_sl_mac_key_req_body_s)
+            stringify!(sl_wfx_set_securemink_mac_key_req_body_s)
         )
     );
     assert_eq!(
         unsafe {
-            &(*(::core::ptr::null::<sl_wfx_set_sl_mac_key_req_body_s>())).otp_or_ram as *const _
-                as usize
+            &(*(::core::ptr::null::<sl_wfx_set_securemink_mac_key_req_body_s>())).otp_or_ram
+                as *const _ as usize
         },
         0usize,
         concat!(
             "Offset of field: ",
-            stringify!(sl_wfx_set_sl_mac_key_req_body_s),
+            stringify!(sl_wfx_set_securemink_mac_key_req_body_s),
             "::",
             stringify!(otp_or_ram)
         )
     );
     assert_eq!(
         unsafe {
-            &(*(::core::ptr::null::<sl_wfx_set_sl_mac_key_req_body_s>())).key_value as *const _
-                as usize
+            &(*(::core::ptr::null::<sl_wfx_set_securemink_mac_key_req_body_s>())).key_value
+                as *const _ as usize
         },
         1usize,
         concat!(
             "Offset of field: ",
-            stringify!(sl_wfx_set_sl_mac_key_req_body_s),
+            stringify!(sl_wfx_set_securemink_mac_key_req_body_s),
             "::",
             stringify!(key_value)
         )
     );
 }
-pub type sl_wfx_set_sl_mac_key_req_body_t = sl_wfx_set_sl_mac_key_req_body_s;
+pub type sl_wfx_set_securelink_mac_key_req_body_t = sl_wfx_set_securemink_mac_key_req_body_s;
 #[repr(C, packed)]
 #[derive(Copy, Clone)]
-pub struct sl_wfx_set_sl_mac_key_req_s {
+pub struct sl_wfx_set_securelink_mac_key_req_s {
     pub header: sl_wfx_header_t,
-    pub body: sl_wfx_set_sl_mac_key_req_body_t,
+    pub body: sl_wfx_set_securelink_mac_key_req_body_t,
 }
 #[test]
-fn bindgen_test_layout_sl_wfx_set_sl_mac_key_req_s() {
+fn bindgen_test_layout_sl_wfx_set_securelink_mac_key_req_s() {
     assert_eq!(
-        ::core::mem::size_of::<sl_wfx_set_sl_mac_key_req_s>(),
+        ::core::mem::size_of::<sl_wfx_set_securelink_mac_key_req_s>(),
         37usize,
-        concat!("Size of: ", stringify!(sl_wfx_set_sl_mac_key_req_s))
+        concat!("Size of: ", stringify!(sl_wfx_set_securelink_mac_key_req_s))
     );
     assert_eq!(
-        ::core::mem::align_of::<sl_wfx_set_sl_mac_key_req_s>(),
-        1usize,
-        concat!("Alignment of ", stringify!(sl_wfx_set_sl_mac_key_req_s))
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::core::ptr::null::<sl_wfx_set_sl_mac_key_req_s>())).header as *const _ as usize
-        },
-        0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(sl_wfx_set_sl_mac_key_req_s),
-            "::",
-            stringify!(header)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::core::ptr::null::<sl_wfx_set_sl_mac_key_req_s>())).body as *const _ as usize
-        },
-        4usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(sl_wfx_set_sl_mac_key_req_s),
-            "::",
-            stringify!(body)
-        )
-    );
-}
-pub type sl_wfx_set_sl_mac_key_req_t = sl_wfx_set_sl_mac_key_req_s;
-#[doc = " @brief Confirmation for the Secure Link MAC key setting"]
-#[repr(C, packed)]
-#[derive(Copy, Clone)]
-pub struct sl_wfx_set_sl_mac_key_cnf_body_s {
-    #[doc = "<Key upload status (see enum sl_wfx_status_t)"]
-    pub status: u32,
-}
-#[test]
-fn bindgen_test_layout_sl_wfx_set_sl_mac_key_cnf_body_s() {
-    assert_eq!(
-        ::core::mem::size_of::<sl_wfx_set_sl_mac_key_cnf_body_s>(),
-        4usize,
-        concat!("Size of: ", stringify!(sl_wfx_set_sl_mac_key_cnf_body_s))
-    );
-    assert_eq!(
-        ::core::mem::align_of::<sl_wfx_set_sl_mac_key_cnf_body_s>(),
+        ::core::mem::align_of::<sl_wfx_set_securelink_mac_key_req_s>(),
         1usize,
         concat!(
             "Alignment of ",
-            stringify!(sl_wfx_set_sl_mac_key_cnf_body_s)
+            stringify!(sl_wfx_set_securelink_mac_key_req_s)
         )
     );
     assert_eq!(
         unsafe {
-            &(*(::core::ptr::null::<sl_wfx_set_sl_mac_key_cnf_body_s>())).status as *const _
+            &(*(::core::ptr::null::<sl_wfx_set_securelink_mac_key_req_s>())).header as *const _
                 as usize
         },
         0usize,
         concat!(
             "Offset of field: ",
-            stringify!(sl_wfx_set_sl_mac_key_cnf_body_s),
-            "::",
-            stringify!(status)
-        )
-    );
-}
-pub type sl_wfx_set_sl_mac_key_cnf_body_t = sl_wfx_set_sl_mac_key_cnf_body_s;
-#[repr(C, packed)]
-#[derive(Copy, Clone)]
-pub struct sl_wfx_set_sl_mac_key_cnf_s {
-    pub header: sl_wfx_header_t,
-    pub body: sl_wfx_set_sl_mac_key_cnf_body_t,
-}
-#[test]
-fn bindgen_test_layout_sl_wfx_set_sl_mac_key_cnf_s() {
-    assert_eq!(
-        ::core::mem::size_of::<sl_wfx_set_sl_mac_key_cnf_s>(),
-        8usize,
-        concat!("Size of: ", stringify!(sl_wfx_set_sl_mac_key_cnf_s))
-    );
-    assert_eq!(
-        ::core::mem::align_of::<sl_wfx_set_sl_mac_key_cnf_s>(),
-        1usize,
-        concat!("Alignment of ", stringify!(sl_wfx_set_sl_mac_key_cnf_s))
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::core::ptr::null::<sl_wfx_set_sl_mac_key_cnf_s>())).header as *const _ as usize
-        },
-        0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(sl_wfx_set_sl_mac_key_cnf_s),
+            stringify!(sl_wfx_set_securelink_mac_key_req_s),
             "::",
             stringify!(header)
         )
     );
     assert_eq!(
         unsafe {
-            &(*(::core::ptr::null::<sl_wfx_set_sl_mac_key_cnf_s>())).body as *const _ as usize
+            &(*(::core::ptr::null::<sl_wfx_set_securelink_mac_key_req_s>())).body as *const _
+                as usize
         },
         4usize,
         concat!(
             "Offset of field: ",
-            stringify!(sl_wfx_set_sl_mac_key_cnf_s),
+            stringify!(sl_wfx_set_securelink_mac_key_req_s),
             "::",
             stringify!(body)
         )
     );
 }
-pub type sl_wfx_set_sl_mac_key_cnf_t = sl_wfx_set_sl_mac_key_cnf_s;
+pub type sl_wfx_set_securelink_mac_key_req_t = sl_wfx_set_securelink_mac_key_req_s;
+#[doc = " @brief Confirmation for the Secure Link MAC key setting"]
+#[repr(C, packed)]
+#[derive(Copy, Clone)]
+pub struct sl_wfx_set_securelink_mac_key_cnf_body_s {
+    #[doc = "<Key upload status (see enum sl_wfx_status_t)"]
+    pub status: u32,
+}
+#[test]
+fn bindgen_test_layout_sl_wfx_set_securelink_mac_key_cnf_body_s() {
+    assert_eq!(
+        ::core::mem::size_of::<sl_wfx_set_securelink_mac_key_cnf_body_s>(),
+        4usize,
+        concat!(
+            "Size of: ",
+            stringify!(sl_wfx_set_securelink_mac_key_cnf_body_s)
+        )
+    );
+    assert_eq!(
+        ::core::mem::align_of::<sl_wfx_set_securelink_mac_key_cnf_body_s>(),
+        1usize,
+        concat!(
+            "Alignment of ",
+            stringify!(sl_wfx_set_securelink_mac_key_cnf_body_s)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<sl_wfx_set_securelink_mac_key_cnf_body_s>())).status as *const _
+                as usize
+        },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(sl_wfx_set_securelink_mac_key_cnf_body_s),
+            "::",
+            stringify!(status)
+        )
+    );
+}
+pub type sl_wfx_set_securelink_mac_key_cnf_body_t = sl_wfx_set_securelink_mac_key_cnf_body_s;
+#[repr(C, packed)]
+#[derive(Copy, Clone)]
+pub struct sl_wfx_set_securelink_mac_key_cnf_s {
+    pub header: sl_wfx_header_t,
+    pub body: sl_wfx_set_securelink_mac_key_cnf_body_t,
+}
+#[test]
+fn bindgen_test_layout_sl_wfx_set_securelink_mac_key_cnf_s() {
+    assert_eq!(
+        ::core::mem::size_of::<sl_wfx_set_securelink_mac_key_cnf_s>(),
+        8usize,
+        concat!("Size of: ", stringify!(sl_wfx_set_securelink_mac_key_cnf_s))
+    );
+    assert_eq!(
+        ::core::mem::align_of::<sl_wfx_set_securelink_mac_key_cnf_s>(),
+        1usize,
+        concat!(
+            "Alignment of ",
+            stringify!(sl_wfx_set_securelink_mac_key_cnf_s)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<sl_wfx_set_securelink_mac_key_cnf_s>())).header as *const _
+                as usize
+        },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(sl_wfx_set_securelink_mac_key_cnf_s),
+            "::",
+            stringify!(header)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<sl_wfx_set_securelink_mac_key_cnf_s>())).body as *const _
+                as usize
+        },
+        4usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(sl_wfx_set_securelink_mac_key_cnf_s),
+            "::",
+            stringify!(body)
+        )
+    );
+}
+pub type sl_wfx_set_securelink_mac_key_cnf_t = sl_wfx_set_securelink_mac_key_cnf_s;
 #[doc = "< Session key is computed using curve25519 algorithm"]
 pub const sl_wfx_secure_link_session_key_alg_e_SECURE_LINK_CURVE25519:
     sl_wfx_secure_link_session_key_alg_e = 1;
@@ -3094,7 +3238,7 @@ pub type sl_wfx_securelink_exchange_pub_keys_ind_t = sl_wfx_securelink_exchange_
 #[doc = ""]
 #[doc = " To disable the protection, a given magic word (SL_WFX_SESSION_KEY_PROTECTION_DISABLE_MAGIC) must be provided as _DisableSessionKeyProtection_ parameter value. Any other value will let the protection set."]
 #[doc = ""]
-#[doc = " @note When SecureLink is activated, _SL Configure_ API must be called right after the key exchange."]
+#[doc = " @note When SecureLink is activated, _SL Configure_ API must be called right after the key exchange. Issuing another command instead will result in an error."]
 #[doc = " @note It is not recommended to call this API a second time during the same power cycle."]
 #[repr(C, packed)]
 #[derive(Copy, Clone)]
@@ -3199,17 +3343,23 @@ fn bindgen_test_layout_sl_wfx_securelink_configure_req_s() {
 }
 pub type sl_wfx_securelink_configure_req_t = sl_wfx_securelink_configure_req_s;
 #[doc = " @brief Confirmation of Secure Link Layer configuration sl_wfx_securelink_configure_req_body_t"]
+#[doc = ""]
+#[doc = " @return HI_STATUS_SUCCESS"]
+#[doc = ""]
+#[doc = " @note The host driver should wait for this confirmation to update its local bitmap with the returned value"]
 #[repr(C, packed)]
 #[derive(Copy, Clone)]
 pub struct sl_wfx_securelink_configure_cnf_body_s {
-    #[doc = "<Request status (see enum wsm_status)"]
+    #[doc = "<Request status (see enum sl_wfx_status_t)"]
     pub status: u32,
+    #[doc = "<Encryption bitmap"]
+    pub encr_bmp: [u8; 32usize],
 }
 #[test]
 fn bindgen_test_layout_sl_wfx_securelink_configure_cnf_body_s() {
     assert_eq!(
         ::core::mem::size_of::<sl_wfx_securelink_configure_cnf_body_s>(),
-        4usize,
+        36usize,
         concat!(
             "Size of: ",
             stringify!(sl_wfx_securelink_configure_cnf_body_s)
@@ -3236,6 +3386,19 @@ fn bindgen_test_layout_sl_wfx_securelink_configure_cnf_body_s() {
             stringify!(status)
         )
     );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<sl_wfx_securelink_configure_cnf_body_s>())).encr_bmp as *const _
+                as usize
+        },
+        4usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(sl_wfx_securelink_configure_cnf_body_s),
+            "::",
+            stringify!(encr_bmp)
+        )
+    );
 }
 pub type sl_wfx_securelink_configure_cnf_body_t = sl_wfx_securelink_configure_cnf_body_s;
 #[repr(C, packed)]
@@ -3248,7 +3411,7 @@ pub struct sl_wfx_securelink_configure_cnf_s {
 fn bindgen_test_layout_sl_wfx_securelink_configure_cnf_s() {
     assert_eq!(
         ::core::mem::size_of::<sl_wfx_securelink_configure_cnf_s>(),
-        8usize,
+        40usize,
         concat!("Size of: ", stringify!(sl_wfx_securelink_configure_cnf_s))
     );
     assert_eq!(
@@ -3914,11 +4077,11 @@ fn bindgen_test_layout_sl_wfx_pta_settings_cnf_s() {
     );
 }
 pub type sl_wfx_pta_settings_cnf_t = sl_wfx_pta_settings_cnf_s;
-#[doc = "< Maximizes priority to COEX, WLAN connection is not ensured"]
+#[doc = "< Maximizes priority to COEX"]
 pub const sl_wfx_pta_priority_e_SL_WFX_PTA_PRIORITY_COEX_MAXIMIZED: sl_wfx_pta_priority_e = 1378;
 #[doc = "< High priority to COEX, targets low-latency to COEX"]
 pub const sl_wfx_pta_priority_e_SL_WFX_PTA_PRIORITY_COEX_HIGH: sl_wfx_pta_priority_e = 1122;
-#[doc = "< Balanced PTA arbitration, WLAN acknowledge receptions are protected"]
+#[doc = "< Balanced PTA arbitration"]
 pub const sl_wfx_pta_priority_e_SL_WFX_PTA_PRIORITY_BALANCED: sl_wfx_pta_priority_e = 5217;
 #[doc = "< High priority to WLAN, protects WLAN transmissions"]
 pub const sl_wfx_pta_priority_e_SL_WFX_PTA_PRIORITY_WLAN_HIGH: sl_wfx_pta_priority_e = 6225;
@@ -4252,6 +4415,187 @@ fn bindgen_test_layout_sl_wfx_pta_state_cnf_s() {
     );
 }
 pub type sl_wfx_pta_state_cnf_t = sl_wfx_pta_state_cnf_s;
+#[doc = "< Use CCA defer threshold relative to channel noise"]
+pub const sl_wfx_cc_thr_mode_e_SL_WFX_CCA_THR_MODE_RELATIVE: sl_wfx_cc_thr_mode_e = 0;
+#[doc = "< Use absolute CCA defer threshold"]
+pub const sl_wfx_cc_thr_mode_e_SL_WFX_CCA_THR_MODE_ABSOLUTE: sl_wfx_cc_thr_mode_e = 1;
+#[doc = " @brief CCA Mode definition"]
+pub type sl_wfx_cc_thr_mode_e = u32;
+pub use self::sl_wfx_cc_thr_mode_e as sl_wfx_cc_thr_mode_t;
+#[doc = " @brief Request sent by host to set the Clear Channel Assessment configuration"]
+#[doc = " Set the CCA mode and the defer threshold"]
+#[repr(C, packed)]
+#[derive(Copy, Clone)]
+pub struct sl_wfx_set_cca_config_req_body_s {
+    #[doc = "< CCA threshold mode. See enum ::sl_wfx_cc_thr_mode_t."]
+    pub cca_thr_mode: u8,
+    #[doc = "< reserved for future use, set to 0"]
+    pub reserved: [u8; 3usize],
+}
+#[test]
+fn bindgen_test_layout_sl_wfx_set_cca_config_req_body_s() {
+    assert_eq!(
+        ::core::mem::size_of::<sl_wfx_set_cca_config_req_body_s>(),
+        4usize,
+        concat!("Size of: ", stringify!(sl_wfx_set_cca_config_req_body_s))
+    );
+    assert_eq!(
+        ::core::mem::align_of::<sl_wfx_set_cca_config_req_body_s>(),
+        1usize,
+        concat!(
+            "Alignment of ",
+            stringify!(sl_wfx_set_cca_config_req_body_s)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<sl_wfx_set_cca_config_req_body_s>())).cca_thr_mode as *const _
+                as usize
+        },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(sl_wfx_set_cca_config_req_body_s),
+            "::",
+            stringify!(cca_thr_mode)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<sl_wfx_set_cca_config_req_body_s>())).reserved as *const _
+                as usize
+        },
+        1usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(sl_wfx_set_cca_config_req_body_s),
+            "::",
+            stringify!(reserved)
+        )
+    );
+}
+pub type sl_wfx_set_cca_config_req_body_t = sl_wfx_set_cca_config_req_body_s;
+#[repr(C, packed)]
+#[derive(Copy, Clone)]
+pub struct sl_wfx_set_cca_config_req_s {
+    pub header: sl_wfx_header_t,
+    pub body: sl_wfx_set_cca_config_req_body_t,
+}
+#[test]
+fn bindgen_test_layout_sl_wfx_set_cca_config_req_s() {
+    assert_eq!(
+        ::core::mem::size_of::<sl_wfx_set_cca_config_req_s>(),
+        8usize,
+        concat!("Size of: ", stringify!(sl_wfx_set_cca_config_req_s))
+    );
+    assert_eq!(
+        ::core::mem::align_of::<sl_wfx_set_cca_config_req_s>(),
+        1usize,
+        concat!("Alignment of ", stringify!(sl_wfx_set_cca_config_req_s))
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<sl_wfx_set_cca_config_req_s>())).header as *const _ as usize
+        },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(sl_wfx_set_cca_config_req_s),
+            "::",
+            stringify!(header)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<sl_wfx_set_cca_config_req_s>())).body as *const _ as usize
+        },
+        4usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(sl_wfx_set_cca_config_req_s),
+            "::",
+            stringify!(body)
+        )
+    );
+}
+pub type sl_wfx_set_cca_config_req_t = sl_wfx_set_cca_config_req_s;
+#[doc = " @brief Confirmation sent by Wlan firmware after a ::SL_WFX_SET_CCA_CONFIG_REQ_ID request."]
+#[repr(C, packed)]
+#[derive(Copy, Clone)]
+pub struct sl_wfx_set_cca_config_cnf_body_s {
+    #[doc = "< Confirmation status, see enum ::sl_wfx_status_t"]
+    pub status: u32,
+}
+#[test]
+fn bindgen_test_layout_sl_wfx_set_cca_config_cnf_body_s() {
+    assert_eq!(
+        ::core::mem::size_of::<sl_wfx_set_cca_config_cnf_body_s>(),
+        4usize,
+        concat!("Size of: ", stringify!(sl_wfx_set_cca_config_cnf_body_s))
+    );
+    assert_eq!(
+        ::core::mem::align_of::<sl_wfx_set_cca_config_cnf_body_s>(),
+        1usize,
+        concat!(
+            "Alignment of ",
+            stringify!(sl_wfx_set_cca_config_cnf_body_s)
+        )
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<sl_wfx_set_cca_config_cnf_body_s>())).status as *const _
+                as usize
+        },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(sl_wfx_set_cca_config_cnf_body_s),
+            "::",
+            stringify!(status)
+        )
+    );
+}
+pub type sl_wfx_set_cca_config_cnf_body_t = sl_wfx_set_cca_config_cnf_body_s;
+#[repr(C, packed)]
+#[derive(Copy, Clone)]
+pub struct sl_wfx_set_cca_config_s {
+    pub header: sl_wfx_header_t,
+    pub body: sl_wfx_set_cca_config_cnf_body_t,
+}
+#[test]
+fn bindgen_test_layout_sl_wfx_set_cca_config_s() {
+    assert_eq!(
+        ::core::mem::size_of::<sl_wfx_set_cca_config_s>(),
+        8usize,
+        concat!("Size of: ", stringify!(sl_wfx_set_cca_config_s))
+    );
+    assert_eq!(
+        ::core::mem::align_of::<sl_wfx_set_cca_config_s>(),
+        1usize,
+        concat!("Alignment of ", stringify!(sl_wfx_set_cca_config_s))
+    );
+    assert_eq!(
+        unsafe { &(*(::core::ptr::null::<sl_wfx_set_cca_config_s>())).header as *const _ as usize },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(sl_wfx_set_cca_config_s),
+            "::",
+            stringify!(header)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(::core::ptr::null::<sl_wfx_set_cca_config_s>())).body as *const _ as usize },
+        4usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(sl_wfx_set_cca_config_s),
+            "::",
+            stringify!(body)
+        )
+    );
+}
+pub type sl_wfx_set_cca_config_t = sl_wfx_set_cca_config_s;
 #[doc = "< \\b SET_MAC_ADDRESS request ID uses body SL_WFX_SET_MAC_ADDRESS_REQ_BODY and returns SL_WFX_SET_MAC_ADDRESS_CNF_BODY"]
 pub const sl_wfx_requests_ids_e_SL_WFX_SET_MAC_ADDRESS_REQ_ID: sl_wfx_requests_ids_e = 66;
 #[doc = "< \\b CONNECT request ID uses body SL_WFX_CONNECT_REQ_BODY and returns SL_WFX_CONNECT_CNF_BODY"]
@@ -4274,10 +4618,6 @@ pub const sl_wfx_requests_ids_e_SL_WFX_STOP_SCAN_REQ_ID: sl_wfx_requests_ids_e =
 pub const sl_wfx_requests_ids_e_SL_WFX_GET_SIGNAL_STRENGTH_REQ_ID: sl_wfx_requests_ids_e = 78;
 #[doc = "< \\b DISCONNECT_AP_CLIENT request ID uses body SL_WFX_DISCONNECT_AP_CLIENT_REQ_BODY and returns SL_WFX_DISCONNECT_AP_CLIENT_CNF_BODY"]
 pub const sl_wfx_requests_ids_e_SL_WFX_DISCONNECT_AP_CLIENT_REQ_ID: sl_wfx_requests_ids_e = 79;
-#[doc = "< \\b JOIN_IBSS request ID uses body SL_WFX_JOIN_IBSS_REQ_BODY and returns SL_WFX_JOIN_IBSS_CNF_BODY"]
-pub const sl_wfx_requests_ids_e_SL_WFX_JOIN_IBSS_REQ_ID: sl_wfx_requests_ids_e = 80;
-#[doc = "< \\b LEAVE_IBSS request ID uses body SL_WFX_LEAVE_IBSS_REQ_BODY and returns SL_WFX_LEAVE_IBSS_CNF_BODY"]
-pub const sl_wfx_requests_ids_e_SL_WFX_LEAVE_IBSS_REQ_ID: sl_wfx_requests_ids_e = 81;
 #[doc = "< \\b SET_PM_MODE request ID uses body SL_WFX_SET_PM_MODE_REQ_BODY and returns SL_WFX_SET_PM_MODE_CNF_BODY"]
 pub const sl_wfx_requests_ids_e_SL_WFX_SET_PM_MODE_REQ_ID: sl_wfx_requests_ids_e = 82;
 #[doc = "< \\b ADD_MULTICAST_ADDR request ID uses body SL_WFX_ADD_MULTICAST_ADDR_REQ_BODY and returns SL_WFX_ADD_MULTICAST_ADDR_CNF_BODY"]
@@ -4316,6 +4656,8 @@ pub const sl_wfx_requests_ids_e_SL_WFX_GET_PMK_REQ_ID: sl_wfx_requests_ids_e = 9
 #[doc = "< \\b GET_AP_CLIENT_SIGNAL_STRENGTH request ID uses body SL_WFX_GET_AP_CLIENT_SIGNAL_STRENGTH_BODY and returns SL_WFX_GET_AP_CLIENT_SIGNAL_STRENGTH_CNF_BODY"]
 pub const sl_wfx_requests_ids_e_SL_WFX_GET_AP_CLIENT_SIGNAL_STRENGTH_REQ_ID: sl_wfx_requests_ids_e =
     99;
+#[doc = "< \\b EXT_AUTH request ID uses body SL_WFX_EXT_AUTH_BODY and returns SL_WFX_EXT_AUTH_CNF_BODY"]
+pub const sl_wfx_requests_ids_e_SL_WFX_EXT_AUTH_REQ_ID: sl_wfx_requests_ids_e = 100;
 #[doc = " @brief WFM API request message IDs."]
 pub type sl_wfx_requests_ids_e = u32;
 pub use self::sl_wfx_requests_ids_e as sl_wfx_requests_ids_t;
@@ -4343,10 +4685,6 @@ pub const sl_wfx_confirmations_ids_e_SL_WFX_GET_SIGNAL_STRENGTH_CNF_ID: sl_wfx_c
 #[doc = "< \\b DISCONNECT_AP_CLIENT confirmation Id. Returns body SL_WFX_DISCONNECT_AP_CLIENT_CNF_BODY"]
 pub const sl_wfx_confirmations_ids_e_SL_WFX_DISCONNECT_AP_CLIENT_CNF_ID:
     sl_wfx_confirmations_ids_e = 79;
-#[doc = "< \\b JOIN_IBSS confirmation Id. Returns body SL_WFX_JOIN_IBSS_CNF_BODY"]
-pub const sl_wfx_confirmations_ids_e_SL_WFX_JOIN_IBSS_CNF_ID: sl_wfx_confirmations_ids_e = 80;
-#[doc = "< \\b LEAVE_IBSS confirmation Id. Returns body SL_WFX_LEAVE_IBSS_CNF_BODY"]
-pub const sl_wfx_confirmations_ids_e_SL_WFX_LEAVE_IBSS_CNF_ID: sl_wfx_confirmations_ids_e = 81;
 #[doc = "< \\b SET_PM_MODE confirmation Id. Returns body SL_WFX_SET_PM_MODE_CNF_BODY"]
 pub const sl_wfx_confirmations_ids_e_SL_WFX_SET_PM_MODE_CNF_ID: sl_wfx_confirmations_ids_e = 82;
 #[doc = "< \\b ADD_MULTICAST_ADDR confirmation Id. Returns body SL_WFX_ADD_MULTICAST_ADDR_CNF_BODY"]
@@ -4399,6 +4737,8 @@ pub const sl_wfx_confirmations_ids_e_SL_WFX_GET_PMK_CNF_ID: sl_wfx_confirmations
 #[doc = "< \\b GET_AP_CLIENT_SIGNAL_STRENGTH confirmation Id. Returns body SL_WFX_GET_AP_CLIENT_SIGNAL_STRENGTH_CNF_BODY"]
 pub const sl_wfx_confirmations_ids_e_SL_WFX_GET_AP_CLIENT_SIGNAL_STRENGTH_CNF_ID:
     sl_wfx_confirmations_ids_e = 99;
+#[doc = "< \\b EXT_AUTH confirmation Id. Returns body SL_WFX_EXT_AUTH_BODY"]
+pub const sl_wfx_confirmations_ids_e_SL_WFX_EXT_AUTH_CNF_ID: sl_wfx_confirmations_ids_e = 100;
 #[doc = " @brief WFM API confirmation message IDs."]
 pub type sl_wfx_confirmations_ids_e = u32;
 pub use self::sl_wfx_confirmations_ids_e as sl_wfx_confirmations_ids_t;
@@ -4424,10 +4764,10 @@ pub const sl_wfx_indications_ids_e_SL_WFX_AP_CLIENT_REJECTED_IND_ID: sl_wfx_indi
 #[doc = "< \\b AP_CLIENT_DISCONNECTED indication id. Content is SL_WFX_AP_CLIENT_DISCONNECTED_IND_BODY"]
 pub const sl_wfx_indications_ids_e_SL_WFX_AP_CLIENT_DISCONNECTED_IND_ID: sl_wfx_indications_ids_e =
     207;
-#[doc = "< \\b JOIN_IBSS indication id. Content is SL_WFX_JOIN_IBSS_IND_BODY"]
-pub const sl_wfx_indications_ids_e_SL_WFX_JOIN_IBSS_IND_ID: sl_wfx_indications_ids_e = 208;
-#[doc = "< \\b LEAVE_IBSS indication id. Content is SL_WFX_LEAVE_IBSS_IND_BODY"]
-pub const sl_wfx_indications_ids_e_SL_WFX_LEAVE_IBSS_IND_ID: sl_wfx_indications_ids_e = 209;
+#[doc = "< \\b EXT_AUTH indication Id. Content is SL_WFX_EXT_AUTH_IND_BODY"]
+pub const sl_wfx_indications_ids_e_SL_WFX_EXT_AUTH_IND_ID: sl_wfx_indications_ids_e = 210;
+#[doc = "< \\b PS_MODE_ERROR indication Id. Content is SL_WFX_PS_MODE_ERROR_IND_BODY"]
+pub const sl_wfx_indications_ids_e_SL_WFX_PS_MODE_ERROR_IND_ID: sl_wfx_indications_ids_e = 211;
 #[doc = " @brief WFM API indication message IDs."]
 pub type sl_wfx_indications_ids_e = u32;
 pub use self::sl_wfx_indications_ids_e as sl_wfx_indications_ids_t;
@@ -4536,6 +4876,13 @@ pub const sl_wfx_pm_mode_e_WFM_PM_MODE_DTIM: sl_wfx_pm_mode_e = 2;
 #[doc = " @brief Device power management mode."]
 pub type sl_wfx_pm_mode_e = u32;
 pub use self::sl_wfx_pm_mode_e as sl_wfx_pm_mode_t;
+#[doc = "< Use U-APSD"]
+pub const sl_wfx_pm_poll_e_WFM_PM_POLL_UAPSD: sl_wfx_pm_poll_e = 0;
+#[doc = "< Use Fast PS"]
+pub const sl_wfx_pm_poll_e_WFM_PM_POLL_FAST_PS: sl_wfx_pm_poll_e = 1;
+#[doc = " @brief Device power save polling strategy."]
+pub type sl_wfx_pm_poll_e = u32;
+pub use self::sl_wfx_pm_poll_e as sl_wfx_pm_poll_t;
 #[doc = "< Best Effort"]
 pub const sl_wfx_priority_e_WFM_PRIORITY_BE0: sl_wfx_priority_e = 0;
 #[doc = "< Background"]
@@ -4570,6 +4917,24 @@ pub const sl_wfx_reason_e_WFM_REASON_AUTHENTICATION_FAILURE: sl_wfx_reason_e = 5
 #[doc = " @brief Reasons for AP to reject or disconnect a client."]
 pub type sl_wfx_reason_e = u32;
 pub use self::sl_wfx_reason_e as sl_wfx_reason_t;
+#[doc = "< Unspecified reason"]
+pub const sl_wfx_disconnected_reason_e_WFM_DISCONNECTED_REASON_UNSPECIFIED:
+    sl_wfx_disconnected_reason_e = 0;
+#[doc = "< AP timed out"]
+pub const sl_wfx_disconnected_reason_e_WFM_DISCONNECTED_REASON_AP_LOST:
+    sl_wfx_disconnected_reason_e = 1;
+#[doc = "< Disconnected by AP"]
+pub const sl_wfx_disconnected_reason_e_WFM_DISCONNECTED_REASON_REJECTED:
+    sl_wfx_disconnected_reason_e = 2;
+#[doc = "< Leaving intentionally"]
+pub const sl_wfx_disconnected_reason_e_WFM_DISCONNECTED_REASON_LEAVING_BSS:
+    sl_wfx_disconnected_reason_e = 3;
+#[doc = "< WPA countermeasures triggered a disconnection"]
+pub const sl_wfx_disconnected_reason_e_WFM_DISCONNECTED_REASON_WPA_COUNTERMEASURES:
+    sl_wfx_disconnected_reason_e = 4;
+#[doc = " @brief Reasons for STA disconnection"]
+pub type sl_wfx_disconnected_reason_e = u32;
+pub use self::sl_wfx_disconnected_reason_e as sl_wfx_disconnected_reason_t;
 #[doc = "< Passive scan: listen for beacons only"]
 pub const sl_wfx_scan_mode_e_WFM_SCAN_MODE_PASSIVE: sl_wfx_scan_mode_e = 0;
 #[doc = "< Active scan: send probe requests"]
@@ -4585,9 +4950,25 @@ pub const sl_wfx_security_mode_e_WFM_SECURITY_MODE_WEP: sl_wfx_security_mode_e =
 pub const sl_wfx_security_mode_e_WFM_SECURITY_MODE_WPA2_WPA1_PSK: sl_wfx_security_mode_e = 2;
 #[doc = "< Use only WPA2"]
 pub const sl_wfx_security_mode_e_WFM_SECURITY_MODE_WPA2_PSK: sl_wfx_security_mode_e = 4;
+#[doc = "< Use WPA3 (STA mode only)"]
+pub const sl_wfx_security_mode_e_WFM_SECURITY_MODE_WPA3_SAE: sl_wfx_security_mode_e = 6;
 #[doc = " @brief Security mode of a network."]
 pub type sl_wfx_security_mode_e = u32;
 pub use self::sl_wfx_security_mode_e as sl_wfx_security_mode_t;
+#[doc = "<"]
+pub const sl_wfx_ext_auth_data_type_e_WFM_EXT_AUTH_DATA_TYPE_SAE_START:
+    sl_wfx_ext_auth_data_type_e = 0;
+#[doc = "<"]
+pub const sl_wfx_ext_auth_data_type_e_WFM_EXT_AUTH_DATA_TYPE_SAE_COMMIT:
+    sl_wfx_ext_auth_data_type_e = 1;
+#[doc = "<"]
+pub const sl_wfx_ext_auth_data_type_e_WFM_EXT_AUTH_DATA_TYPE_SAE_CONFIRM:
+    sl_wfx_ext_auth_data_type_e = 2;
+#[doc = "<"]
+pub const sl_wfx_ext_auth_data_type_e_WFM_EXT_AUTH_DATA_TYPE_MSK: sl_wfx_ext_auth_data_type_e = 3;
+#[doc = " @brief Type of the authentication message."]
+pub type sl_wfx_ext_auth_data_type_e = u32;
+pub use self::sl_wfx_ext_auth_data_type_e as sl_wfx_ext_auth_data_type_t;
 #[doc = "< The device has successfully completed a request."]
 pub const sl_wfx_fmac_status_e_WFM_STATUS_SUCCESS: sl_wfx_fmac_status_e = 0;
 #[doc = "< A request contains one or more invalid parameters."]
@@ -4614,6 +4995,8 @@ pub const sl_wfx_fmac_status_e_WFM_STATUS_CONNECTION_AUTH_FAILURE: sl_wfx_fmac_s
 pub const sl_wfx_fmac_status_e_WFM_STATUS_RETRY_EXCEEDED: sl_wfx_fmac_status_e = 19;
 #[doc = "< The request failed because the MSDU life time was exceeded."]
 pub const sl_wfx_fmac_status_e_WFM_STATUS_TX_LIFETIME_EXCEEDED: sl_wfx_fmac_status_e = 20;
+#[doc = "< The request failed because TX is suspended (temperature too high)"]
+pub const sl_wfx_fmac_status_e_WFM_STATUS_REQUEUE: sl_wfx_fmac_status_e = 21;
 #[doc = " @brief Full MAC (UMAC) confirmation possible values for a returned 'status' field."]
 #[doc = ""]
 #[doc = " All Full MAC (UMAC) confirmation messages have a field 'status' just after the message header.@n"]
@@ -5302,7 +5685,6 @@ pub type sl_wfx_set_mac_address_req_body_t = sl_wfx_set_mac_address_req_body_s;
 #[doc = "          | idle           | Yes             |"]
 #[doc = "          | station        | No              |"]
 #[doc = "          | AP             | No              |"]
-#[doc = "          | IBSS           | No              |"]
 #[doc = "          <BR>"]
 #[doc = " @ingroup WFM_GROUP_MODE_IDLE"]
 #[repr(C, packed)]
@@ -5458,6 +5840,7 @@ pub struct sl_wfx_connect_req_body_s {
     #[doc = "          <BR><B>WFM_SECURITY_MODE_WEP</B>: The device will only connect to a WEP Access Point."]
     #[doc = "          <BR><B>WFM_SECURITY_MODE_WPA2_WPA1_PSK</B>: The device will only connect to a WPA-Personal or a WPA2-Personal Access Point."]
     #[doc = "          <BR><B>WFM_SECURITY_MODE_WPA2_PSK</B>: The device will only connect to a WPA2-Personal access point."]
+    #[doc = "          <BR><B>WFM_SECURITY_MODE_WPA3_SAE</B>: The device will only connect to a WPA3-SAE access point."]
     #[doc = "          <BR>See wfm_security_mode for enumeration values."]
     pub security_mode: u8,
     #[doc = " @brief Boolean option to prevent roaming between access points."]
@@ -5513,7 +5896,6 @@ pub type sl_wfx_connect_req_body_t = sl_wfx_connect_req_body_s;
 #[doc = "          | idle           | Yes             |"]
 #[doc = "          | station        | No              |"]
 #[doc = "          | AP             | No              |"]
-#[doc = "          | IBSS           | No              |"]
 #[doc = "          <BR>"]
 #[doc = " @ingroup WFM_GROUP_MODE_IDLE"]
 #[repr(C, packed)]
@@ -5780,7 +6162,6 @@ pub type sl_wfx_connect_ind_t = sl_wfx_connect_ind_s;
 #[doc = "          | idle           | No              |"]
 #[doc = "          | station        | Yes             |"]
 #[doc = "          | AP             | No              |"]
-#[doc = "          | IBSS           | No              |"]
 #[doc = " @ingroup WFM_GROUP_MODE_STA"]
 pub type sl_wfx_disconnect_req_t = sl_wfx_header_t;
 #[doc = " @brief Confirmation message body for sl_wfx_disconnect_cnf_t."]
@@ -5870,8 +6251,12 @@ pub struct sl_wfx_disconnect_ind_body_s {
     #[doc = " @brief MAC address of the access point."]
     pub mac: [u8; 6usize],
     #[doc = " @brief Reason for disconnection."]
-    #[doc = " @details <B>WFM_REASON_UNSPECIFIED</B>: The device was disconnected or it disconnected on its own."]
-    #[doc = "          <BR>See wfm_reason for enumeration values."]
+    #[doc = " @details <B>WFM_DISCONNECTED_REASON_UNSPECIFIED</B>: The device disconnected because of an internal error."]
+    #[doc = "          <BR><B>WFM_DISCONNECTED_REASON_AP_LOST</B>: The device lost the AP beacons for too long."]
+    #[doc = "          <BR><B>WFM_DISCONNECTED_REASON_REJECTED</B>: The device was disconnected by the AP."]
+    #[doc = "          <BR><B>WFM_DISCONNECTED_REASON_LEAVING_BSS</B>: Disconnection was requested through the device API."]
+    #[doc = "          <BR><B>WFM_DISCONNECTED_REASON_WPA_COUNTERMEASURES</B>: WPA countermeasures triggered a disconnection"]
+    #[doc = "          <BR>See sl_wfx_disconnected_reason_t for enumeration values."]
     pub reason: u16,
 }
 #[test]
@@ -5967,7 +6352,6 @@ pub type sl_wfx_disconnect_ind_t = sl_wfx_disconnect_ind_s;
 #[doc = "          | idle           | No              |"]
 #[doc = "          | station        | Yes             |"]
 #[doc = "          | AP             | No              |"]
-#[doc = "          | IBSS           | No              |"]
 #[doc = " @ingroup WFM_GROUP_MODE_STA"]
 pub type sl_wfx_get_signal_strength_req_t = sl_wfx_header_t;
 #[doc = " @brief Confirmation message body for sl_wfx_get_signal_strength_cnf_t."]
@@ -6096,7 +6480,12 @@ pub struct sl_wfx_set_pm_mode_req_body_s {
     #[doc = "          <BR><B>WFM_PM_MODE_BEACON</B>: the device will wake-up on beacons."]
     #[doc = "          <BR><B>WFM_PM_MODE_DTIM</B>: the device will wake-up on DTIMs."]
     #[doc = "          <BR>See wfm_pm_mode for enumeration values."]
-    pub power_mode: u16,
+    pub power_mode: u8,
+    #[doc = " @brief Power save polling strategy."]
+    #[doc = " @details <B>WFM_PM_POLL_UAPSD</B>: the device will use U-APSD (default)."]
+    #[doc = "          <BR><B>WFM_PM_POLL_FAST_PS</B>: the device will use Fast Power Save."]
+    #[doc = "          <BR>See WFM_PM_POLL for enumeration values."]
+    pub polling_strategy: u8,
     #[doc = " @brief Number of beacons/DTIMs to skip while sleeping."]
     #[doc = " @details <B>0</B>: wake-up on every beacon/DTIM."]
     #[doc = "          <BR><B>1 - 600</B>: the number of beacon/DTIMs to skip."]
@@ -6130,6 +6519,19 @@ fn bindgen_test_layout_sl_wfx_set_pm_mode_req_body_s() {
     );
     assert_eq!(
         unsafe {
+            &(*(::core::ptr::null::<sl_wfx_set_pm_mode_req_body_s>())).polling_strategy as *const _
+                as usize
+        },
+        1usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(sl_wfx_set_pm_mode_req_body_s),
+            "::",
+            stringify!(polling_strategy)
+        )
+    );
+    assert_eq!(
+        unsafe {
             &(*(::core::ptr::null::<sl_wfx_set_pm_mode_req_body_s>())).listen_interval as *const _
                 as usize
         },
@@ -6150,7 +6552,6 @@ pub type sl_wfx_set_pm_mode_req_body_t = sl_wfx_set_pm_mode_req_body_s;
 #[doc = "          | idle           | No              |"]
 #[doc = "          | station        | Yes             |"]
 #[doc = "          | AP             | No              |"]
-#[doc = "          | IBSS           | No              |"]
 #[doc = "          <BR>"]
 #[doc = " @ingroup WFM_GROUP_MODE_STA"]
 #[repr(C, packed)]
@@ -6279,6 +6680,13 @@ fn bindgen_test_layout_sl_wfx_set_pm_mode_cnf_s() {
     );
 }
 pub type sl_wfx_set_pm_mode_cnf_t = sl_wfx_set_pm_mode_cnf_s;
+#[doc = " @brief Indication message used to signal that the device has switched to Fast Power Save."]
+#[doc = " @details This indication occurs when the devices switches to Fast PS as an attempt to mitigate"]
+#[doc = "          poor performance with U-APSD. Listen interval falls back to 0 (listen to every beacon/DTIM)."]
+#[doc = "          This can be overridden by issuing SL_WFX_SET_PM_MODE_REQ command again."]
+#[doc = " @ingroup WFM_GROUP_MESSAGES"]
+#[doc = " @ingroup WFM_GROUP_MODE_STA"]
+pub type SL_WFX_PS_MODE_ERROR_IND = sl_wfx_header_t;
 #[doc = " @brief Request message body for sl_wfx_start_ap_req_t."]
 #[repr(C, packed)]
 pub struct sl_wfx_start_ap_req_body_s {
@@ -6301,6 +6709,7 @@ pub struct sl_wfx_start_ap_req_body_s {
     #[doc = "          <BR><B>WFM_SECURITY_MODE_WEP</B>: The device will only allow WEP connections."]
     #[doc = "          <BR><B>WFM_SECURITY_MODE_WPA2_WPA1_PSK</B>: The device will only allow WPA-Personal and WPA2-Personal connections."]
     #[doc = "          <BR><B>WFM_SECURITY_MODE_WPA2_PSK</B>: The device will only allow WPA2-Personal connections."]
+    #[doc = "          <BR><B>WFM_SECURITY_MODE_WPA3_SAE</B>: Unsupported in AP mode"]
     #[doc = "          <BR>See wfm_security_mode for enumeration values."]
     pub security_mode: u8,
     #[doc = " @brief Protected Management Frames (PMF) mode."]
@@ -6358,7 +6767,6 @@ pub type sl_wfx_start_ap_req_body_t = sl_wfx_start_ap_req_body_s;
 #[doc = "          | idle           | Yes             |"]
 #[doc = "          | station        | No              |"]
 #[doc = "          | AP             | No              |"]
-#[doc = "          | IBSS           | No              |"]
 #[doc = "          <BR>"]
 #[doc = " @ingroup WFM_GROUP_MODE_IDLE"]
 #[repr(C, packed)]
@@ -6583,7 +6991,6 @@ pub type sl_wfx_update_ap_req_body_t = sl_wfx_update_ap_req_body_s;
 #[doc = "          | idle           | No              |"]
 #[doc = "          | station        | No              |"]
 #[doc = "          | AP             | Yes             |"]
-#[doc = "          | IBSS           | No              |"]
 #[doc = "          <BR>"]
 #[doc = " @ingroup WFM_GROUP_MODE_AP"]
 #[repr(C, packed)]
@@ -6695,7 +7102,6 @@ pub type sl_wfx_update_ap_cnf_t = sl_wfx_update_ap_cnf_s;
 #[doc = "          | idle           | No              |"]
 #[doc = "          | station        | No              |"]
 #[doc = "          | AP             | Yes             |"]
-#[doc = "          | IBSS           | No              |"]
 #[doc = " @ingroup WFM_GROUP_MODE_AP"]
 pub type sl_wfx_stop_ap_req_t = sl_wfx_header_t;
 #[doc = " @brief Confirmation message body for sl_wfx_stop_ap_cnf_t."]
@@ -7037,7 +7443,6 @@ pub type sl_wfx_disconnect_ap_client_req_body_t = sl_wfx_disconnect_ap_client_re
 #[doc = "          | idle           | No              |"]
 #[doc = "          | station        | No              |"]
 #[doc = "          | AP             | Yes             |"]
-#[doc = "          | IBSS           | No              |"]
 #[doc = "          <BR>"]
 #[doc = " @ingroup WFM_GROUP_MODE_AP"]
 #[repr(C, packed)]
@@ -7338,11 +7743,9 @@ pub type sl_wfx_send_frame_req_body_t = sl_wfx_send_frame_req_body_s;
 #[doc = "          | idle           | No              |"]
 #[doc = "          | station        | Yes             |"]
 #[doc = "          | AP             | Yes             |"]
-#[doc = "          | IBSS           | Yes             |"]
 #[doc = "          <BR>"]
 #[doc = " @ingroup WFM_GROUP_MODE_STA"]
 #[doc = " @ingroup WFM_GROUP_MODE_AP"]
-#[doc = " @ingroup WFM_GROUP_MODE_IBSS"]
 #[repr(C, packed)]
 pub struct sl_wfx_send_frame_req_s {
     #[doc = " Common message header."]
@@ -7431,7 +7834,6 @@ pub type sl_wfx_send_frame_cnf_body_t = sl_wfx_send_frame_cnf_body_s;
 #[doc = " @brief Confirmation message for sl_wfx_send_frame_req_t."]
 #[doc = " @ingroup WFM_GROUP_MODE_STA"]
 #[doc = " @ingroup WFM_GROUP_MODE_AP"]
-#[doc = " @ingroup WFM_GROUP_MODE_IBSS"]
 #[repr(C, packed)]
 #[derive(Copy, Clone)]
 pub struct sl_wfx_send_frame_cnf_s {
@@ -7509,7 +7911,6 @@ pub type sl_wfx_received_ind_body_t = sl_wfx_received_ind_body_s;
 #[doc = "          has been received."]
 #[doc = " @ingroup WFM_GROUP_MODE_STA"]
 #[doc = " @ingroup WFM_GROUP_MODE_AP"]
-#[doc = " @ingroup WFM_GROUP_MODE_IBSS"]
 #[repr(C, packed)]
 pub struct sl_wfx_received_ind_s {
     #[doc = " Common message header."]
@@ -7595,7 +7996,6 @@ pub type sl_wfx_start_scan_req_body_t = sl_wfx_start_scan_req_body_s;
 #[doc = "          | idle           | Yes             |"]
 #[doc = "          | station        | Yes             |"]
 #[doc = "          | AP             | No              |"]
-#[doc = "          | IBSS           | No              |"]
 #[doc = "          <BR>"]
 #[doc = " @ingroup WFM_GROUP_MODE_IDLE"]
 #[doc = " @ingroup WFM_GROUP_MODE_STA"]
@@ -7709,7 +8109,6 @@ pub type sl_wfx_start_scan_cnf_t = sl_wfx_start_scan_cnf_s;
 #[doc = "          | idle           | Yes             |"]
 #[doc = "          | station        | Yes             |"]
 #[doc = "          | AP             | No              |"]
-#[doc = "          | IBSS           | No              |"]
 #[doc = " @ingroup WFM_GROUP_MODE_IDLE"]
 #[doc = " @ingroup WFM_GROUP_MODE_STA"]
 pub type sl_wfx_stop_scan_req_t = sl_wfx_header_t;
@@ -7945,448 +8344,6 @@ fn bindgen_test_layout_sl_wfx_scan_complete_ind_s() {
     );
 }
 pub type sl_wfx_scan_complete_ind_t = sl_wfx_scan_complete_ind_s;
-#[doc = " @brief Request message body for sl_wfx_join_ibss_req_t."]
-#[repr(C, packed)]
-#[derive(Copy, Clone)]
-pub struct sl_wfx_join_ibss_req_body_s {
-    #[doc = " @brief Service Set Identifier (SSID) of the network."]
-    pub ssid_def: sl_wfx_ssid_def_t,
-    #[doc = " @brief Channel of the network."]
-    #[doc = " @details <B>0</B>: The device will connect to a matching network on any channel."]
-    #[doc = "          <BR><B>1 - 13</B>: The device will only connect to a matching network on the given channel."]
-    pub channel: u32,
-    #[doc = " @brief Security mode of the network."]
-    #[doc = " @details <B>WFM_SECURITY_MODE_OPEN</B>: The device will only use unsecured connections."]
-    #[doc = "          <BR><B>WFM_SECURITY_MODE_WEP</B>: The device will only use WEP connections."]
-    #[doc = "          <BR>See wfm_security_mode for enumeration values."]
-    pub security_mode: u16,
-    #[doc = " @brief Length of the network password."]
-    #[doc = " @details <B>0 - 26</B>: The amount of bytes."]
-    pub password_length: u16,
-    #[doc = " @brief Password of the network."]
-    #[doc = " @details <B>64-bit WEP key</B>: 5 bytes in ASCII format or 10 bytes in HEX format."]
-    #[doc = "          <BR><B>128-bit WEP key</B>: 13 bytes in ASCII format or 26 bytes in HEX format."]
-    #[doc = "          <BR>See @ref WFM_CONCEPT_PASSWORD for further details."]
-    pub password: [u8; 64usize],
-}
-#[test]
-fn bindgen_test_layout_sl_wfx_join_ibss_req_body_s() {
-    assert_eq!(
-        ::core::mem::size_of::<sl_wfx_join_ibss_req_body_s>(),
-        108usize,
-        concat!("Size of: ", stringify!(sl_wfx_join_ibss_req_body_s))
-    );
-    assert_eq!(
-        ::core::mem::align_of::<sl_wfx_join_ibss_req_body_s>(),
-        1usize,
-        concat!("Alignment of ", stringify!(sl_wfx_join_ibss_req_body_s))
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::core::ptr::null::<sl_wfx_join_ibss_req_body_s>())).ssid_def as *const _ as usize
-        },
-        0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(sl_wfx_join_ibss_req_body_s),
-            "::",
-            stringify!(ssid_def)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::core::ptr::null::<sl_wfx_join_ibss_req_body_s>())).channel as *const _ as usize
-        },
-        36usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(sl_wfx_join_ibss_req_body_s),
-            "::",
-            stringify!(channel)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::core::ptr::null::<sl_wfx_join_ibss_req_body_s>())).security_mode as *const _
-                as usize
-        },
-        40usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(sl_wfx_join_ibss_req_body_s),
-            "::",
-            stringify!(security_mode)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::core::ptr::null::<sl_wfx_join_ibss_req_body_s>())).password_length as *const _
-                as usize
-        },
-        42usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(sl_wfx_join_ibss_req_body_s),
-            "::",
-            stringify!(password_length)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::core::ptr::null::<sl_wfx_join_ibss_req_body_s>())).password as *const _ as usize
-        },
-        44usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(sl_wfx_join_ibss_req_body_s),
-            "::",
-            stringify!(password)
-        )
-    );
-}
-pub type sl_wfx_join_ibss_req_body_t = sl_wfx_join_ibss_req_body_s;
-#[doc = " @brief Request message for connecting to or starting an IBSS network."]
-#[doc = " @details The host can use this request to connect to an IBSS network. If no existing network"]
-#[doc = "          is found, the device will start a new network."]
-#[doc = "          | Interface mode | Request allowed |"]
-#[doc = "          |:---------------|:----------------|"]
-#[doc = "          | idle           | Yes             |"]
-#[doc = "          | station        | No              |"]
-#[doc = "          | AP             | No              |"]
-#[doc = "          | IBSS           | No              |"]
-#[doc = "          <BR>"]
-#[doc = " @ingroup WFM_GROUP_MODE_IDLE"]
-#[repr(C, packed)]
-#[derive(Copy, Clone)]
-pub struct sl_wfx_join_ibss_req_s {
-    #[doc = " Common message header."]
-    pub header: sl_wfx_header_t,
-    #[doc = " Request message body."]
-    pub body: sl_wfx_join_ibss_req_body_t,
-}
-#[test]
-fn bindgen_test_layout_sl_wfx_join_ibss_req_s() {
-    assert_eq!(
-        ::core::mem::size_of::<sl_wfx_join_ibss_req_s>(),
-        112usize,
-        concat!("Size of: ", stringify!(sl_wfx_join_ibss_req_s))
-    );
-    assert_eq!(
-        ::core::mem::align_of::<sl_wfx_join_ibss_req_s>(),
-        1usize,
-        concat!("Alignment of ", stringify!(sl_wfx_join_ibss_req_s))
-    );
-    assert_eq!(
-        unsafe { &(*(::core::ptr::null::<sl_wfx_join_ibss_req_s>())).header as *const _ as usize },
-        0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(sl_wfx_join_ibss_req_s),
-            "::",
-            stringify!(header)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::core::ptr::null::<sl_wfx_join_ibss_req_s>())).body as *const _ as usize },
-        4usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(sl_wfx_join_ibss_req_s),
-            "::",
-            stringify!(body)
-        )
-    );
-}
-pub type sl_wfx_join_ibss_req_t = sl_wfx_join_ibss_req_s;
-#[doc = " @brief Confirmation message body for sl_wfx_join_ibss_cnf_t."]
-#[repr(C, packed)]
-#[derive(Copy, Clone)]
-pub struct sl_wfx_join_ibss_cnf_body_s {
-    #[doc = " @brief Status of the join request."]
-    #[doc = " @details <B>WFM_STATUS_SUCCESS</B>: the join request was accepted. It will be completed by sl_wfx_join_ibss_ind_t."]
-    #[doc = "          <BR><B>any other value</B>: the join request failed."]
-    #[doc = "          <BR>See sl_wfx_fmac_status_t for enumeration values."]
-    pub status: u32,
-}
-#[test]
-fn bindgen_test_layout_sl_wfx_join_ibss_cnf_body_s() {
-    assert_eq!(
-        ::core::mem::size_of::<sl_wfx_join_ibss_cnf_body_s>(),
-        4usize,
-        concat!("Size of: ", stringify!(sl_wfx_join_ibss_cnf_body_s))
-    );
-    assert_eq!(
-        ::core::mem::align_of::<sl_wfx_join_ibss_cnf_body_s>(),
-        1usize,
-        concat!("Alignment of ", stringify!(sl_wfx_join_ibss_cnf_body_s))
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::core::ptr::null::<sl_wfx_join_ibss_cnf_body_s>())).status as *const _ as usize
-        },
-        0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(sl_wfx_join_ibss_cnf_body_s),
-            "::",
-            stringify!(status)
-        )
-    );
-}
-pub type sl_wfx_join_ibss_cnf_body_t = sl_wfx_join_ibss_cnf_body_s;
-#[doc = " @brief Confirmation message for sl_wfx_join_ibss_req_t."]
-#[doc = " @ingroup WFM_GROUP_MODE_IDLE"]
-#[repr(C, packed)]
-#[derive(Copy, Clone)]
-pub struct sl_wfx_join_ibss_cnf_s {
-    #[doc = " Common message header."]
-    pub header: sl_wfx_header_t,
-    #[doc = " Confirmation message body."]
-    pub body: sl_wfx_join_ibss_cnf_body_t,
-}
-#[test]
-fn bindgen_test_layout_sl_wfx_join_ibss_cnf_s() {
-    assert_eq!(
-        ::core::mem::size_of::<sl_wfx_join_ibss_cnf_s>(),
-        8usize,
-        concat!("Size of: ", stringify!(sl_wfx_join_ibss_cnf_s))
-    );
-    assert_eq!(
-        ::core::mem::align_of::<sl_wfx_join_ibss_cnf_s>(),
-        1usize,
-        concat!("Alignment of ", stringify!(sl_wfx_join_ibss_cnf_s))
-    );
-    assert_eq!(
-        unsafe { &(*(::core::ptr::null::<sl_wfx_join_ibss_cnf_s>())).header as *const _ as usize },
-        0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(sl_wfx_join_ibss_cnf_s),
-            "::",
-            stringify!(header)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::core::ptr::null::<sl_wfx_join_ibss_cnf_s>())).body as *const _ as usize },
-        4usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(sl_wfx_join_ibss_cnf_s),
-            "::",
-            stringify!(body)
-        )
-    );
-}
-pub type sl_wfx_join_ibss_cnf_t = sl_wfx_join_ibss_cnf_s;
-#[doc = " @brief Indication message body for sl_wfx_join_ibss_ind_t."]
-#[repr(C, packed)]
-#[derive(Copy, Clone)]
-pub struct sl_wfx_join_ibss_ind_body_s {
-    #[doc = " @brief Status of the join request."]
-    #[doc = " @details <B>WFM_STATUS_SUCCESS</B>: the join request was completed successfully."]
-    #[doc = "          <BR><B>any other value</B>: the join request failed."]
-    #[doc = "          <BR>See sl_wfx_fmac_status_t for enumeration values."]
-    pub status: u32,
-    #[doc = " @brief Basic Service Set Identifier (BSSID) of the network."]
-    #[doc = " @details <BR>See @ref WFM_CONCEPT_BSSID for further details."]
-    pub bssid: [u8; 6usize],
-    #[doc = " @brief Reserved."]
-    pub reserved: u16,
-}
-#[test]
-fn bindgen_test_layout_sl_wfx_join_ibss_ind_body_s() {
-    assert_eq!(
-        ::core::mem::size_of::<sl_wfx_join_ibss_ind_body_s>(),
-        12usize,
-        concat!("Size of: ", stringify!(sl_wfx_join_ibss_ind_body_s))
-    );
-    assert_eq!(
-        ::core::mem::align_of::<sl_wfx_join_ibss_ind_body_s>(),
-        1usize,
-        concat!("Alignment of ", stringify!(sl_wfx_join_ibss_ind_body_s))
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::core::ptr::null::<sl_wfx_join_ibss_ind_body_s>())).status as *const _ as usize
-        },
-        0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(sl_wfx_join_ibss_ind_body_s),
-            "::",
-            stringify!(status)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::core::ptr::null::<sl_wfx_join_ibss_ind_body_s>())).bssid as *const _ as usize
-        },
-        4usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(sl_wfx_join_ibss_ind_body_s),
-            "::",
-            stringify!(bssid)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::core::ptr::null::<sl_wfx_join_ibss_ind_body_s>())).reserved as *const _ as usize
-        },
-        10usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(sl_wfx_join_ibss_ind_body_s),
-            "::",
-            stringify!(reserved)
-        )
-    );
-}
-pub type sl_wfx_join_ibss_ind_body_t = sl_wfx_join_ibss_ind_body_s;
-#[doc = " @brief Indication message used to signal the completion of a join request."]
-#[doc = " @details The device will send this indication to signal the join request initiated"]
-#[doc = "          with sl_wfx_join_ibss_req_t has been completed."]
-#[doc = " @ingroup WFM_GROUP_MODE_IDLE"]
-#[repr(C, packed)]
-#[derive(Copy, Clone)]
-pub struct sl_wfx_join_ibss_ind_s {
-    #[doc = " Common message header."]
-    pub header: sl_wfx_header_t,
-    #[doc = " Indication message body."]
-    pub body: sl_wfx_join_ibss_ind_body_t,
-}
-#[test]
-fn bindgen_test_layout_sl_wfx_join_ibss_ind_s() {
-    assert_eq!(
-        ::core::mem::size_of::<sl_wfx_join_ibss_ind_s>(),
-        16usize,
-        concat!("Size of: ", stringify!(sl_wfx_join_ibss_ind_s))
-    );
-    assert_eq!(
-        ::core::mem::align_of::<sl_wfx_join_ibss_ind_s>(),
-        1usize,
-        concat!("Alignment of ", stringify!(sl_wfx_join_ibss_ind_s))
-    );
-    assert_eq!(
-        unsafe { &(*(::core::ptr::null::<sl_wfx_join_ibss_ind_s>())).header as *const _ as usize },
-        0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(sl_wfx_join_ibss_ind_s),
-            "::",
-            stringify!(header)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::core::ptr::null::<sl_wfx_join_ibss_ind_s>())).body as *const _ as usize },
-        4usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(sl_wfx_join_ibss_ind_s),
-            "::",
-            stringify!(body)
-        )
-    );
-}
-pub type sl_wfx_join_ibss_ind_t = sl_wfx_join_ibss_ind_s;
-#[doc = " @struct sl_wfx_leave_ibss_req_t"]
-#[doc = " @brief Request message for disconnecting from an IBSS network."]
-#[doc = " @details The host can use this request to disconnect from an IBSS network."]
-#[doc = "          | Interface mode | Request allowed |"]
-#[doc = "          |:---------------|:----------------|"]
-#[doc = "          | idle           | No              |"]
-#[doc = "          | station        | No              |"]
-#[doc = "          | AP             | No              |"]
-#[doc = "          | IBSS           | Yes             |"]
-#[doc = " @ingroup WFM_GROUP_MODE_IBSS"]
-pub type sl_wfx_leave_ibss_req_t = sl_wfx_header_t;
-#[doc = " @brief Confirmation message body for sl_wfx_leave_ibss_cnf_t."]
-#[repr(C, packed)]
-#[derive(Copy, Clone)]
-pub struct sl_wfx_leave_ibss_cnf_body_s {
-    #[doc = " @brief Status of the disconnect request."]
-    #[doc = " @details <B>WFM_STATUS_SUCCESS</B>: the disconnect request was accepted. It will be completed by sl_wfx_leave_ibss_ind_t."]
-    #[doc = "          <BR><B>any other value</B>: the disconnect request failed."]
-    #[doc = "          <BR>See sl_wfx_fmac_status_t for enumeration values."]
-    pub status: u32,
-}
-#[test]
-fn bindgen_test_layout_sl_wfx_leave_ibss_cnf_body_s() {
-    assert_eq!(
-        ::core::mem::size_of::<sl_wfx_leave_ibss_cnf_body_s>(),
-        4usize,
-        concat!("Size of: ", stringify!(sl_wfx_leave_ibss_cnf_body_s))
-    );
-    assert_eq!(
-        ::core::mem::align_of::<sl_wfx_leave_ibss_cnf_body_s>(),
-        1usize,
-        concat!("Alignment of ", stringify!(sl_wfx_leave_ibss_cnf_body_s))
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::core::ptr::null::<sl_wfx_leave_ibss_cnf_body_s>())).status as *const _ as usize
-        },
-        0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(sl_wfx_leave_ibss_cnf_body_s),
-            "::",
-            stringify!(status)
-        )
-    );
-}
-pub type sl_wfx_leave_ibss_cnf_body_t = sl_wfx_leave_ibss_cnf_body_s;
-#[doc = " @brief Confirmation message for sl_wfx_leave_ibss_req_t."]
-#[doc = " @ingroup WFM_GROUP_MODE_IBSS"]
-#[repr(C, packed)]
-#[derive(Copy, Clone)]
-pub struct sl_wfx_leave_ibss_cnf_s {
-    #[doc = " Common message header."]
-    pub header: sl_wfx_header_t,
-    #[doc = " Confirmation message body."]
-    pub body: sl_wfx_leave_ibss_cnf_body_t,
-}
-#[test]
-fn bindgen_test_layout_sl_wfx_leave_ibss_cnf_s() {
-    assert_eq!(
-        ::core::mem::size_of::<sl_wfx_leave_ibss_cnf_s>(),
-        8usize,
-        concat!("Size of: ", stringify!(sl_wfx_leave_ibss_cnf_s))
-    );
-    assert_eq!(
-        ::core::mem::align_of::<sl_wfx_leave_ibss_cnf_s>(),
-        1usize,
-        concat!("Alignment of ", stringify!(sl_wfx_leave_ibss_cnf_s))
-    );
-    assert_eq!(
-        unsafe { &(*(::core::ptr::null::<sl_wfx_leave_ibss_cnf_s>())).header as *const _ as usize },
-        0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(sl_wfx_leave_ibss_cnf_s),
-            "::",
-            stringify!(header)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::core::ptr::null::<sl_wfx_leave_ibss_cnf_s>())).body as *const _ as usize },
-        4usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(sl_wfx_leave_ibss_cnf_s),
-            "::",
-            stringify!(body)
-        )
-    );
-}
-pub type sl_wfx_leave_ibss_cnf_t = sl_wfx_leave_ibss_cnf_s;
-#[doc = " @struct sl_wfx_leave_ibss_ind_t"]
-#[doc = " @brief Indication message used to signal the completion of a disconnect operation."]
-#[doc = " @details The device will send this indication to signal the disconnect request initiated"]
-#[doc = "          with sl_wfx_leave_ibss_req_t has been completed. The indication is also sent when"]
-#[doc = "          the network has encountered a fatal error."]
-#[doc = " @ingroup WFM_GROUP_MODE_IBSS"]
-pub type sl_wfx_leave_ibss_ind_t = sl_wfx_header_t;
 #[doc = " @brief Request message body for sl_wfx_add_multicast_addr_req_t."]
 #[repr(C, packed)]
 #[derive(Copy, Clone)]
@@ -8444,7 +8401,6 @@ pub type sl_wfx_add_multicast_addr_req_body_t = sl_wfx_add_multicast_addr_req_bo
 #[doc = "          | idle           | No              |"]
 #[doc = "          | station        | Yes             |"]
 #[doc = "          | AP             | Yes             |"]
-#[doc = "          | IBSS           | No              |"]
 #[doc = "          <BR>"]
 #[doc = " @ingroup WFM_GROUP_MODE_STA"]
 #[doc = " @ingroup WFM_GROUP_MODE_AP"]
@@ -8636,7 +8592,6 @@ pub type sl_wfx_remove_multicast_addr_req_body_t = sl_wfx_remove_multicast_addr_
 #[doc = "          | idle           | No              |"]
 #[doc = "          | station        | Yes             |"]
 #[doc = "          | AP             | Yes             |"]
-#[doc = "          | IBSS           | No              |"]
 #[doc = "          <BR>"]
 #[doc = " @ingroup WFM_GROUP_MODE_STA"]
 #[doc = " @ingroup WFM_GROUP_MODE_AP"]
@@ -8843,7 +8798,6 @@ pub type sl_wfx_set_max_ap_client_count_req_body_t = sl_wfx_set_max_ap_client_co
 #[doc = "          | idle           | No              |"]
 #[doc = "          | station        | No              |"]
 #[doc = "          | AP             | Yes             |"]
-#[doc = "          | IBSS           | No              |"]
 #[doc = "          <BR>"]
 #[doc = " @ingroup WFM_GROUP_MODE_AP"]
 #[repr(C, packed)]
@@ -9055,7 +9009,6 @@ pub type sl_wfx_set_max_ap_client_inactivity_req_body_t =
 #[doc = "          | idle           | No              |"]
 #[doc = "          | station        | No              |"]
 #[doc = "          | AP             | Yes             |"]
-#[doc = "          | IBSS           | No              |"]
 #[doc = "          <BR>"]
 #[doc = " @ingroup WFM_GROUP_MODE_AP"]
 #[repr(C, packed)]
@@ -9280,7 +9233,6 @@ pub type sl_wfx_set_roam_parameters_req_body_t = sl_wfx_set_roam_parameters_req_
 #[doc = "          | idle           | Yes             |"]
 #[doc = "          | station        | Yes             |"]
 #[doc = "          | AP             | No              |"]
-#[doc = "          | IBSS           | No              |"]
 #[doc = "          <BR>"]
 #[doc = " @ingroup WFM_GROUP_MODE_IDLE"]
 #[doc = " @ingroup WFM_GROUP_MODE_STA"]
@@ -9474,7 +9426,6 @@ pub type sl_wfx_set_tx_rate_parameters_req_body_t = sl_wfx_set_tx_rate_parameter
 #[doc = "          | idle           | Yes             |"]
 #[doc = "          | station        | Yes             |"]
 #[doc = "          | AP             | No              |"]
-#[doc = "          | IBSS           | No              |"]
 #[doc = "          <BR>"]
 #[doc = " @ingroup WFM_GROUP_MODE_IDLE"]
 #[doc = " @ingroup WFM_GROUP_MODE_STA"]
@@ -9682,7 +9633,6 @@ pub type sl_wfx_set_arp_ip_address_req_body_t = sl_wfx_set_arp_ip_address_req_bo
 #[doc = "          | idle           | No              |"]
 #[doc = "          | station        | Yes             |"]
 #[doc = "          | AP             | No              |"]
-#[doc = "          | IBSS           | No              |"]
 #[doc = "          <BR>"]
 #[doc = " @ingroup WFM_GROUP_MODE_STA"]
 #[repr(C, packed)]
@@ -9874,7 +9824,6 @@ pub type sl_wfx_set_ns_ip_address_req_body_t = sl_wfx_set_ns_ip_address_req_body
 #[doc = "          | idle           | No              |"]
 #[doc = "          | station        | Yes             |"]
 #[doc = "          | AP             | No              |"]
-#[doc = "          | IBSS           | No              |"]
 #[doc = "          <BR>"]
 #[doc = " @ingroup WFM_GROUP_MODE_STA"]
 #[repr(C, packed)]
@@ -10070,7 +10019,6 @@ pub type sl_wfx_set_broadcast_filter_req_body_t = sl_wfx_set_broadcast_filter_re
 #[doc = "          | idle           | No              |"]
 #[doc = "          | station        | Yes             |"]
 #[doc = "          | AP             | No              |"]
-#[doc = "          | IBSS           | No              |"]
 #[doc = "          <BR>"]
 #[doc = " @ingroup WFM_GROUP_MODE_STA"]
 #[repr(C, packed)]
@@ -10318,7 +10266,6 @@ pub type sl_wfx_set_scan_parameters_req_body_t = sl_wfx_set_scan_parameters_req_
 #[doc = "          | idle           | Yes             |"]
 #[doc = "          | station        | Yes             |"]
 #[doc = "          | AP             | No              |"]
-#[doc = "          | IBSS           | No              |"]
 #[doc = "          <BR>"]
 #[doc = " @ingroup WFM_GROUP_MODE_IDLE"]
 #[doc = " @ingroup WFM_GROUP_MODE_STA"]
@@ -10522,7 +10469,6 @@ pub type sl_wfx_set_unicast_filter_req_body_t = sl_wfx_set_unicast_filter_req_bo
 #[doc = "          | idle           | No              |"]
 #[doc = "          | station        | No              |"]
 #[doc = "          | AP             | Yes             |"]
-#[doc = "          | IBSS           | No              |"]
 #[doc = "          <BR>"]
 #[doc = " @ingroup WFM_GROUP_MODE_AP"]
 #[repr(C, packed)]
@@ -10717,7 +10663,6 @@ pub type sl_wfx_add_whitelist_addr_req_body_t = sl_wfx_add_whitelist_addr_req_bo
 #[doc = "          | idle           | No              |"]
 #[doc = "          | station        | No              |"]
 #[doc = "          | AP             | Yes             |"]
-#[doc = "          | IBSS           | No              |"]
 #[doc = "          <BR>"]
 #[doc = " @ingroup WFM_GROUP_MODE_AP"]
 #[repr(C, packed)]
@@ -10912,7 +10857,6 @@ pub type sl_wfx_add_blacklist_addr_req_body_t = sl_wfx_add_blacklist_addr_req_bo
 #[doc = "          | idle           | No              |"]
 #[doc = "          | station        | No              |"]
 #[doc = "          | AP             | Yes             |"]
-#[doc = "          | IBSS           | No              |"]
 #[doc = "          <BR>"]
 #[doc = " @ingroup WFM_GROUP_MODE_AP"]
 #[repr(C, packed)]
@@ -11104,12 +11048,10 @@ pub type sl_wfx_set_max_tx_power_req_body_t = sl_wfx_set_max_tx_power_req_body_s
 #[doc = "          | idle           | Yes             |"]
 #[doc = "          | station        | Yes             |"]
 #[doc = "          | AP             | Yes             |"]
-#[doc = "          | IBSS           | Yes             |"]
 #[doc = "          <BR>"]
 #[doc = " @ingroup WFM_GROUP_MODE_IDLE"]
 #[doc = " @ingroup WFM_GROUP_MODE_STA"]
 #[doc = " @ingroup WFM_GROUP_MODE_AP"]
-#[doc = " @ingroup WFM_GROUP_MODE_IBSS"]
 #[repr(C, packed)]
 #[derive(Copy, Clone)]
 pub struct sl_wfx_set_max_tx_power_req_s {
@@ -11200,7 +11142,6 @@ pub type sl_wfx_set_max_tx_power_cnf_body_t = sl_wfx_set_max_tx_power_cnf_body_s
 #[doc = " @ingroup WFM_GROUP_MODE_IDLE"]
 #[doc = " @ingroup WFM_GROUP_MODE_STA"]
 #[doc = " @ingroup WFM_GROUP_MODE_AP"]
-#[doc = " @ingroup WFM_GROUP_MODE_IBSS"]
 #[repr(C, packed)]
 #[derive(Copy, Clone)]
 pub struct sl_wfx_set_max_tx_power_cnf_s {
@@ -11255,11 +11196,9 @@ pub type sl_wfx_set_max_tx_power_cnf_t = sl_wfx_set_max_tx_power_cnf_s;
 #[doc = "          | idle           | Yes             |"]
 #[doc = "          | station        | Yes             |"]
 #[doc = "          | AP             | Yes             |"]
-#[doc = "          | IBSS           | Yes             |"]
 #[doc = " @ingroup WFM_GROUP_MODE_IDLE"]
 #[doc = " @ingroup WFM_GROUP_MODE_STA"]
 #[doc = " @ingroup WFM_GROUP_MODE_AP"]
-#[doc = " @ingroup WFM_GROUP_MODE_IBSS"]
 pub type sl_wfx_get_max_tx_power_req_t = sl_wfx_header_t;
 #[doc = " @brief Confirmation message body for sl_wfx_get_max_tx_power_cnf_t."]
 #[repr(C, packed)]
@@ -11337,7 +11276,6 @@ pub type sl_wfx_get_max_tx_power_cnf_body_t = sl_wfx_get_max_tx_power_cnf_body_s
 #[doc = " @ingroup WFM_GROUP_MODE_IDLE"]
 #[doc = " @ingroup WFM_GROUP_MODE_STA"]
 #[doc = " @ingroup WFM_GROUP_MODE_AP"]
-#[doc = " @ingroup WFM_GROUP_MODE_IBSS"]
 #[repr(C, packed)]
 #[derive(Copy, Clone)]
 pub struct sl_wfx_get_max_tx_power_cnf_s {
@@ -11395,7 +11333,6 @@ pub type sl_wfx_get_max_tx_power_cnf_t = sl_wfx_get_max_tx_power_cnf_s;
 #[doc = "          | idle           | No              |"]
 #[doc = "          | station        | Yes             |"]
 #[doc = "          | AP             | Yes             |"]
-#[doc = "          | IBSS           | No              |"]
 #[doc = " @ingroup WFM_GROUP_MODE_STA"]
 #[doc = " @ingroup WFM_GROUP_MODE_AP"]
 pub type sl_wfx_get_pmk_req_t = sl_wfx_header_t;
@@ -11560,7 +11497,6 @@ pub type sl_wfx_get_ap_client_signal_strength_req_body_t =
 #[doc = "          | idle           | No              |"]
 #[doc = "          | station        | No              |"]
 #[doc = "          | AP             | Yes             |"]
-#[doc = "          | IBSS           | No              |"]
 #[doc = "          <BR>"]
 #[doc = " @ingroup WFM_GROUP_MODE_AP"]
 #[repr(C, packed)]
@@ -11624,7 +11560,7 @@ pub struct sl_wfx_get_ap_client_signal_strength_cnf_body_s {
     #[doc = " @brief Status of the get request."]
     #[doc = " @details <B>WFM_STATUS_SUCCESS</B>: the get request was completed."]
     #[doc = "          <BR><B>any other value</B>: the get request failed."]
-    #[doc = "          <BR>See WFM_STATUS for enumeration values."]
+    #[doc = "          <BR>See sl_wfx_fmac_status_t for enumeration values."]
     pub status: u32,
     #[doc = " @brief Received Channel Power Indicator (RCPI) of the client."]
     #[doc = " @details See @ref WFM_CONCEPT_RCPI for further details."]
@@ -11677,7 +11613,7 @@ fn bindgen_test_layout_sl_wfx_get_ap_client_signal_strength_cnf_body_s() {
 }
 pub type sl_wfx_get_ap_client_signal_strength_cnf_body_t =
     sl_wfx_get_ap_client_signal_strength_cnf_body_s;
-#[doc = " @brief Confirmation message for sl_wfx_get_ap_client_signal_strength_cnf_t."]
+#[doc = " @brief Confirmation message for sl_wfx_get_ap_client_signal_strength_req_t."]
 #[doc = " @ingroup WFM_GROUP_MODE_AP"]
 #[repr(C, packed)]
 #[derive(Copy, Clone)]
@@ -11733,10 +11669,182 @@ fn bindgen_test_layout_sl_wfx_get_ap_client_signal_strength_cnf_s() {
     );
 }
 pub type sl_wfx_get_ap_client_signal_strength_cnf_t = sl_wfx_get_ap_client_signal_strength_cnf_s;
-extern "C" {
-    pub static mut sl_wfx_firmware: [u8; 291920usize];
+#[doc = " @brief Request message body for sl_wfx_ext_auth_req_t."]
+#[repr(C, packed)]
+pub struct sl_wfx_ext_auth_req_body_s {
+    #[doc = " @brief Type of the authentication message"]
+    #[doc = " @details See ::sl_wfx_ext_auth_data_type_t for enumeration values."]
+    pub auth_data_type: u16,
+    #[doc = " @brief Length of the authentication message"]
+    pub auth_data_length: u16,
+    #[doc = " @brief The authentication message"]
+    pub auth_data: __IncompleteArrayField<u8>,
 }
-pub const sl_wfx_firmware_size: u32 = 291920;
+#[test]
+fn bindgen_test_layout_sl_wfx_ext_auth_req_body_s() {
+    assert_eq!(
+        ::core::mem::size_of::<sl_wfx_ext_auth_req_body_s>(),
+        4usize,
+        concat!("Size of: ", stringify!(sl_wfx_ext_auth_req_body_s))
+    );
+    assert_eq!(
+        ::core::mem::align_of::<sl_wfx_ext_auth_req_body_s>(),
+        1usize,
+        concat!("Alignment of ", stringify!(sl_wfx_ext_auth_req_body_s))
+    );
+}
+pub type sl_wfx_ext_auth_req_body_t = sl_wfx_ext_auth_req_body_s;
+#[repr(C, packed)]
+pub struct sl_wfx_ext_auth_req_s {
+    #[doc = " Common message header."]
+    pub header: sl_wfx_header_t,
+    #[doc = " Request message body."]
+    pub body: sl_wfx_ext_auth_req_body_t,
+}
+#[test]
+fn bindgen_test_layout_sl_wfx_ext_auth_req_s() {
+    assert_eq!(
+        ::core::mem::size_of::<sl_wfx_ext_auth_req_s>(),
+        8usize,
+        concat!("Size of: ", stringify!(sl_wfx_ext_auth_req_s))
+    );
+    assert_eq!(
+        ::core::mem::align_of::<sl_wfx_ext_auth_req_s>(),
+        1usize,
+        concat!("Alignment of ", stringify!(sl_wfx_ext_auth_req_s))
+    );
+}
+pub type sl_wfx_ext_auth_req_t = sl_wfx_ext_auth_req_s;
+#[doc = " @brief Confirmation message body for sl_wfx_ext_auth_cnf_t."]
+#[repr(C, packed)]
+#[derive(Copy, Clone)]
+pub struct sl_wfx_ext_auth_cnf_body_s {
+    #[doc = " @brief Status of the update request."]
+    #[doc = " @details <B>WFM_STATUS_SUCCESS</B>: the authentication request was completed."]
+    #[doc = "          <BR><B>any other value</B>: the authentication request failed."]
+    #[doc = "          <BR>See sl_wfx_fmac_status_t for enumeration values."]
+    pub status: u32,
+}
+#[test]
+fn bindgen_test_layout_sl_wfx_ext_auth_cnf_body_s() {
+    assert_eq!(
+        ::core::mem::size_of::<sl_wfx_ext_auth_cnf_body_s>(),
+        4usize,
+        concat!("Size of: ", stringify!(sl_wfx_ext_auth_cnf_body_s))
+    );
+    assert_eq!(
+        ::core::mem::align_of::<sl_wfx_ext_auth_cnf_body_s>(),
+        1usize,
+        concat!("Alignment of ", stringify!(sl_wfx_ext_auth_cnf_body_s))
+    );
+    assert_eq!(
+        unsafe {
+            &(*(::core::ptr::null::<sl_wfx_ext_auth_cnf_body_s>())).status as *const _ as usize
+        },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(sl_wfx_ext_auth_cnf_body_s),
+            "::",
+            stringify!(status)
+        )
+    );
+}
+pub type sl_wfx_ext_auth_cnf_body_t = sl_wfx_ext_auth_cnf_body_s;
+#[doc = " @brief Confirmation message for sl_wfx_ext_auth_req_t."]
+#[doc = " @ingroup WFM_GROUP_MODE_STA"]
+#[repr(C, packed)]
+#[derive(Copy, Clone)]
+pub struct sl_wfx_ext_auth_cnf_s {
+    #[doc = " Common message header."]
+    pub header: sl_wfx_header_t,
+    #[doc = " Confirmation message body."]
+    pub body: sl_wfx_ext_auth_cnf_body_t,
+}
+#[test]
+fn bindgen_test_layout_sl_wfx_ext_auth_cnf_s() {
+    assert_eq!(
+        ::core::mem::size_of::<sl_wfx_ext_auth_cnf_s>(),
+        8usize,
+        concat!("Size of: ", stringify!(sl_wfx_ext_auth_cnf_s))
+    );
+    assert_eq!(
+        ::core::mem::align_of::<sl_wfx_ext_auth_cnf_s>(),
+        1usize,
+        concat!("Alignment of ", stringify!(sl_wfx_ext_auth_cnf_s))
+    );
+    assert_eq!(
+        unsafe { &(*(::core::ptr::null::<sl_wfx_ext_auth_cnf_s>())).header as *const _ as usize },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(sl_wfx_ext_auth_cnf_s),
+            "::",
+            stringify!(header)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(::core::ptr::null::<sl_wfx_ext_auth_cnf_s>())).body as *const _ as usize },
+        4usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(sl_wfx_ext_auth_cnf_s),
+            "::",
+            stringify!(body)
+        )
+    );
+}
+pub type sl_wfx_ext_auth_cnf_t = sl_wfx_ext_auth_cnf_s;
+#[doc = " @brief Indication message body for sl_wfx_ext_auth_ind_t."]
+#[repr(C, packed)]
+pub struct sl_wfx_ext_auth_ind_body_s {
+    #[doc = " @brief Type of the authentication message"]
+    #[doc = " @details See ::sl_wfx_ext_auth_data_type_t for enumeration values."]
+    pub auth_data_type: u16,
+    #[doc = " @brief Length of the authentication message"]
+    pub auth_data_length: u16,
+    #[doc = " @brief The authentication message"]
+    pub auth_data: __IncompleteArrayField<u8>,
+}
+#[test]
+fn bindgen_test_layout_sl_wfx_ext_auth_ind_body_s() {
+    assert_eq!(
+        ::core::mem::size_of::<sl_wfx_ext_auth_ind_body_s>(),
+        4usize,
+        concat!("Size of: ", stringify!(sl_wfx_ext_auth_ind_body_s))
+    );
+    assert_eq!(
+        ::core::mem::align_of::<sl_wfx_ext_auth_ind_body_s>(),
+        1usize,
+        concat!("Alignment of ", stringify!(sl_wfx_ext_auth_ind_body_s))
+    );
+}
+pub type sl_wfx_ext_auth_ind_body_t = sl_wfx_ext_auth_ind_body_s;
+#[repr(C, packed)]
+pub struct sl_wfx_ext_auth_ind_s {
+    #[doc = " Common message header."]
+    pub header: sl_wfx_header_t,
+    #[doc = " Indication message body."]
+    pub body: sl_wfx_ext_auth_ind_body_t,
+}
+#[test]
+fn bindgen_test_layout_sl_wfx_ext_auth_ind_s() {
+    assert_eq!(
+        ::core::mem::size_of::<sl_wfx_ext_auth_ind_s>(),
+        8usize,
+        concat!("Size of: ", stringify!(sl_wfx_ext_auth_ind_s))
+    );
+    assert_eq!(
+        ::core::mem::align_of::<sl_wfx_ext_auth_ind_s>(),
+        1usize,
+        concat!("Alignment of ", stringify!(sl_wfx_ext_auth_ind_s))
+    );
+}
+pub type sl_wfx_ext_auth_ind_t = sl_wfx_ext_auth_ind_s;
+extern "C" {
+    pub static mut sl_wfx_firmware: [u8; 305232usize];
+}
+pub const sl_wfx_firmware_size: u32 = 305232;
 pub const sl_wfx_register_address_t_SL_WFX_CONFIG_REG_ID: sl_wfx_register_address_t = 0;
 pub const sl_wfx_register_address_t_SL_WFX_CONTROL_REG_ID: sl_wfx_register_address_t = 1;
 pub const sl_wfx_register_address_t_SL_WFX_IN_OUT_QUEUE_REG_ID: sl_wfx_register_address_t = 2;
@@ -11839,6 +11947,37 @@ fn bindgen_test_layout_sl_wfx_mac_address_t() {
         )
     );
 }
+#[doc = " @struct sl_wfx_password_t"]
+#[doc = " @brief Structure to handle password format"]
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct sl_wfx_password_t {
+    #[doc = "< Table to store a password"]
+    pub password: [u8; 64usize],
+}
+#[test]
+fn bindgen_test_layout_sl_wfx_password_t() {
+    assert_eq!(
+        ::core::mem::size_of::<sl_wfx_password_t>(),
+        64usize,
+        concat!("Size of: ", stringify!(sl_wfx_password_t))
+    );
+    assert_eq!(
+        ::core::mem::align_of::<sl_wfx_password_t>(),
+        1usize,
+        concat!("Alignment of ", stringify!(sl_wfx_password_t))
+    );
+    assert_eq!(
+        unsafe { &(*(::core::ptr::null::<sl_wfx_password_t>())).password as *const _ as usize },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(sl_wfx_password_t),
+            "::",
+            stringify!(password)
+        )
+    );
+}
 #[doc = " @struct sl_wfx_nonce_t"]
 #[doc = " @brief Structure to maintain secure link counters"]
 #[repr(C)]
@@ -11891,6 +12030,58 @@ fn bindgen_test_layout_sl_wfx_nonce_t() {
             stringify!(sl_wfx_nonce_t),
             "::",
             stringify!(tx_packet_count)
+        )
+    );
+}
+#[doc = " @struct sl_wfx_error_log_t"]
+#[doc = " @brief Structure used to display error logs"]
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct sl_wfx_err_log_t {
+    pub val: u32,
+    pub str: *const c_types::c_char,
+    pub param_length: u8,
+}
+#[test]
+fn bindgen_test_layout_sl_wfx_err_log_t() {
+    assert_eq!(
+        ::core::mem::size_of::<sl_wfx_err_log_t>(),
+        12usize,
+        concat!("Size of: ", stringify!(sl_wfx_err_log_t))
+    );
+    assert_eq!(
+        ::core::mem::align_of::<sl_wfx_err_log_t>(),
+        4usize,
+        concat!("Alignment of ", stringify!(sl_wfx_err_log_t))
+    );
+    assert_eq!(
+        unsafe { &(*(::core::ptr::null::<sl_wfx_err_log_t>())).val as *const _ as usize },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(sl_wfx_err_log_t),
+            "::",
+            stringify!(val)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(::core::ptr::null::<sl_wfx_err_log_t>())).str as *const _ as usize },
+        4usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(sl_wfx_err_log_t),
+            "::",
+            stringify!(str)
+        )
+    );
+    assert_eq!(
+        unsafe { &(*(::core::ptr::null::<sl_wfx_err_log_t>())).param_length as *const _ as usize },
+        8usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(sl_wfx_err_log_t),
+            "::",
+            stringify!(param_length)
         )
     );
 }
@@ -12230,7 +12421,8 @@ extern "C" {
 extern "C" {
     #[doc = " @brief Called when the driver needs to lock its access"]
     #[doc = ""]
-    #[doc = " @returns Returns SL_STATUS_OK if successful, SL_STATUS_FAIL otherwise"]
+    #[doc = " @returns Returns SL_STATUS_OK if successful, SL_STATUS_NO_MORE_RESOURCE"]
+    #[doc = " otherwise"]
     pub fn sl_wfx_host_lock() -> sl_status_t;
 }
 extern "C" {
@@ -15999,6 +16191,9 @@ extern "C" {
     pub fn sl_wfx_pta_state(pta_state: u32) -> sl_status_t;
 }
 extern "C" {
+    pub fn sl_wfx_set_cca_config(cca_thr_mode: u8) -> sl_status_t;
+}
+extern "C" {
     pub fn sl_wfx_prevent_rollback(magic_word: u32) -> sl_status_t;
 }
 extern "C" {
@@ -16041,7 +16236,11 @@ extern "C" {
     ) -> sl_status_t;
 }
 extern "C" {
-    pub fn sl_wfx_set_power_mode(mode: sl_wfx_pm_mode_t, interval: u16) -> sl_status_t;
+    pub fn sl_wfx_set_power_mode(
+        mode: sl_wfx_pm_mode_t,
+        strategy: sl_wfx_pm_poll_t,
+        interval: u16,
+    ) -> sl_status_t;
 }
 extern "C" {
     pub fn sl_wfx_set_wake_up_bit(state: u8) -> sl_status_t;
@@ -16051,19 +16250,6 @@ extern "C" {
 }
 extern "C" {
     pub fn sl_wfx_disable_device_power_save() -> sl_status_t;
-}
-extern "C" {
-    pub fn sl_wfx_join_ibss_command(
-        ssid: *const u8,
-        ssid_length: u32,
-        channel: u32,
-        security_mode: u16,
-        passkey: *const u8,
-        passkey_length: u16,
-    ) -> sl_status_t;
-}
-extern "C" {
-    pub fn sl_wfx_leave_ibss_command() -> sl_status_t;
 }
 extern "C" {
     pub fn sl_wfx_get_signal_strength(rcpi: *mut u32) -> sl_status_t;
@@ -16138,7 +16324,7 @@ extern "C" {
 }
 extern "C" {
     pub fn sl_wfx_get_pmk(
-        password: *mut u8,
+        password: *mut sl_wfx_password_t,
         password_length: *mut u32,
         interface: sl_wfx_interface_t,
     ) -> sl_status_t;
@@ -16147,6 +16333,13 @@ extern "C" {
     pub fn sl_wfx_get_ap_client_signal_strength(
         client: *const sl_wfx_mac_address_t,
         signal_strength: *mut u32,
+    ) -> sl_status_t;
+}
+extern "C" {
+    pub fn sl_wfx_ext_auth(
+        auth_data_type: sl_wfx_ext_auth_data_type_t,
+        auth_data_length: u16,
+        auth_data: *const u8,
     ) -> sl_status_t;
 }
 extern "C" {
