@@ -82,6 +82,15 @@ for `WFX_FIRMWARE_OFFSET` and `WFX_FIRMWARE_SIZE`. In particular, when
 updating the firmware, the `WFX_FIRMWARE_SIZE` parameter should also be
 updated.
 
+If you must update the bindings, you will need to be able to run `bindgen`.
+Install it by doing something like this:
+
+```
+sudo apt install llvm-dev libclang-dev clang
+sudo apt install gcc-multilib
+cargo install bindgen
+```
+
 ## Updating ##
 
 To update the repo to the upstream version, including all dependencies, run:
