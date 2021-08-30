@@ -15,6 +15,7 @@ const DEST_FILE: &'static str = formatcp!("bt-ec.bin");
 const DESTDIR: &'static str = "code/precursors/";
 const UPDATE_EC: &'static str = "precursors/ec_fw.bin";
 const UPDATE_WF: &'static str = "precursors/wf200_fw.bin";
+const WF200_NAKED: &'static str = "sw/imports/wfx-firmware/wfm_wf200_C0.sec";
 
 fn main() {
     if let Err(e) = try_main() {
@@ -102,6 +103,7 @@ fn push_to_pi(target: Option<String>, id: Option<String>) -> Result<(), DynError
     scp(&target_str.clone(), "pi", id.clone(), Path::new(&IMAGE_PATH), &dest);
     scp(&target_str.clone(), "pi", id.clone(), Path::new(&UPDATE_EC), Path::new(&(DESTDIR.to_string() + "ec_fw.bin")));
     scp(&target_str.clone(), "pi", id.clone(), Path::new(&UPDATE_WF), Path::new(&(DESTDIR.to_string() + "wf200_fw.bin")));
+    scp(&target_str.clone(), "pi", id.clone(), Path::new(&WF200_NAKED), Path::new(&(DESTDIR.to_string() + "wfm_wf200_C0.sec")));
 
     let dest_str = DESTDIR.to_string() + "ec-csr.csv";
     let dest = Path::new(&dest_str);
@@ -345,7 +347,7 @@ fn create_image(
         wf_fw.write(&[0x77, 0x66, 0x32, 0x30])?; // signature 'wf20' in BE
         wf_fw.write(&(1 as u32).to_le_bytes())?;
         // load the wf200 firmware blob
-        let mut wf200_fw_file = std::fs::File::open(PathBuf::from("sw/imports/wfx-firmware/wfm_wf200_C0.sec"))?;
+        let mut wf200_fw_file = std::fs::File::open(PathBuf::from(WF200_NAKED))?;
         let mut wf200_fw: Vec<u8> = Vec::new();
         wf200_fw_file.read_to_end(&mut wf200_fw)?;
         // note the length & resize
