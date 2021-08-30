@@ -48,7 +48,7 @@ pub use wfx_bindings::{
     sl_wfx_send_scan_command, sl_wfx_set_power_mode, sl_wfx_ssid_def_t,
     sl_wfx_state_t_SL_WFX_STA_INTERFACE_CONNECTED, u_int32_t, SL_STATUS_ALLOCATION_FAILED,
     SL_STATUS_IO_TIMEOUT, SL_STATUS_OK, SL_STATUS_WIFI_SLEEP_GRANTED, SL_WFX_CONT_NEXT_LEN_MASK,
-    SL_WFX_EXCEPTION_DATA_SIZE,
+    SL_WFX_EXCEPTION_DATA_SIZE_MAX,
 };
 
 // ==========================================================
@@ -890,8 +890,8 @@ pub unsafe extern "C" fn sl_wfx_host_post_event(
             let exception_ind: *const sl_wfx_exception_ind_t =
                 event_payload as *const sl_wfx_exception_ind_t;
             sprintln!("WFX_EXCEPTION_IND:");
-            for i in 0..SL_WFX_EXCEPTION_DATA_SIZE {
-                sprint!("{:02X} ", (*exception_ind).body.data[i as usize]);
+            for i in 0..SL_WFX_EXCEPTION_DATA_SIZE_MAX {
+                sprint!("{:02X} ", (*exception_ind).body.data.as_slice(SL_WFX_EXCEPTION_DATA_SIZE_MAX as usize)[i as usize]);
             }
         }
         sl_wfx_general_indications_ids_e_SL_WFX_ERROR_IND_ID => {
