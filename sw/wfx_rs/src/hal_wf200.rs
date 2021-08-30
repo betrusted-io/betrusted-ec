@@ -11,7 +11,7 @@ mod bt_wf200_pds;
 
 use bt_wf200_pds::PDS_DATA;
 use debug;
-use debug::{sprint, sprintln, log, logln, LL};
+use debug::{log, logln, sprint, sprintln, LL};
 
 // The mixed case constants here are the reason for the `allow(nonstandard_style)` above
 pub use wfx_bindings::{
@@ -42,8 +42,8 @@ pub use wfx_bindings::{
     sl_wfx_indications_ids_e_SL_WFX_SCAN_COMPLETE_IND_ID,
     sl_wfx_indications_ids_e_SL_WFX_SCAN_RESULT_IND_ID, sl_wfx_init, sl_wfx_mac_address_t,
     sl_wfx_pm_mode_e_WFM_PM_MODE_ACTIVE, sl_wfx_pm_mode_e_WFM_PM_MODE_PS, sl_wfx_receive_frame,
-    sl_wfx_received_ind_t, sl_wfx_register_address_t, sl_wfx_rx_stats_s,
-    sl_wfx_scan_complete_ind_t, sl_wfx_scan_mode_e_WFM_SCAN_MODE_ACTIVE,
+    sl_wfx_received_ind_body_s, sl_wfx_received_ind_t, sl_wfx_register_address_t,
+    sl_wfx_rx_stats_s, sl_wfx_scan_complete_ind_t, sl_wfx_scan_mode_e_WFM_SCAN_MODE_ACTIVE,
     sl_wfx_scan_result_ind_body_t, sl_wfx_scan_result_ind_t, sl_wfx_send_configuration,
     sl_wfx_send_scan_command, sl_wfx_set_power_mode, sl_wfx_ssid_def_t,
     sl_wfx_state_t_SL_WFX_STA_INTERFACE_CONNECTED, u_int32_t, SL_STATUS_ALLOCATION_FAILED,
@@ -246,7 +246,9 @@ pub fn wf200_fw_major() -> u8 {
 }
 
 pub fn wfx_init() -> sl_status_t {
-    unsafe { CURRENT_STATUS = State::Initializing; }
+    unsafe {
+        CURRENT_STATUS = State::Initializing;
+    }
     unsafe { sl_wfx_init(&mut WIFI_CONTEXT) } // use this to drive porting of the wfx library
 }
 
@@ -728,7 +730,9 @@ fn sl_wfx_connect_callback(_mac: [u8; 6usize], status: u32) {
             logln!(LL::Debug, "Error {:X}", status);
         }
     }
-    unsafe { CURRENT_STATUS = new_status; }
+    unsafe {
+        CURRENT_STATUS = new_status;
+    }
 }
 
 fn sl_wfx_disconnect_callback(_mac: [u8; 6usize], _reason: u16) {
@@ -740,8 +744,79 @@ fn sl_wfx_disconnect_callback(_mac: [u8; 6usize], _reason: u16) {
     // TODO: callback to lwip_set_sta_link_down -- teardown the IP link
 }
 
+fn log_hex(s: &[u8]) {
+    for i in s {
+        log!(LL::Debug, "{:02X}", *i);
+    }
+    log!(LL::Debug, " ");
+}
+
+fn log_udp(data: &[u8]) {
+    let dest_mac = &data[..6];
+    let src_mac = &data[6..12];
+    let ethertype = &data[12..14];
+    let ip_ver_ihl = &data[14..15];
+    let ip_dcsp_ecn = &data[15..16];
+    let ip_length = &data[16..18];
+    let ip_id = &data[18..20];
+    let ip_flags_frag = &data[20..22];
+    let ip_ttl = &data[22..23];
+    let ip_proto = &data[23..24];
+    let ip_checksum = &data[24..26];
+    let ip_src = &data[26..30];
+    let ip_dst = &data[30..34];
+    log!(LL::Debug, "RxUDP ");
+    log_hex(dest_mac);
+    log_hex(src_mac);
+    log_hex(ethertype);
+    log_hex(ip_ver_ihl);
+    log_hex(ip_dcsp_ecn);
+    log!(LL::Debug, "len:");
+    log_hex(ip_length);
+    log_hex(ip_id);
+    log_hex(ip_flags_frag);
+    log_hex(ip_ttl);
+    log!(LL::Debug, "proto:");
+    log_hex(ip_proto);
+    log_hex(ip_checksum);
+    log_hex(ip_src);
+    log_hex(ip_dst);
+    logln!(LL::Debug, "");
+}
+
+fn log_arp(data: &[u8]) {
+    let dest_mac = &data[..6];
+    let src_mac = &data[6..12];
+    let ethertype = &data[12..14];
+    log!(LL::Debug, "RxARP ");
+    log_hex(dest_mac);
+    log_hex(src_mac);
+    log_hex(ethertype);
+    log_hex(&data[14..]);
+    logln!(LL::Debug, "");
+}
+
 fn sl_wfx_host_received_frame_callback(_rx_buffer: *const sl_wfx_received_ind_t) {
-    // TODO: do something with received ethernet frames!
+    let body: &sl_wfx_received_ind_body_s = unsafe { &(*_rx_buffer).body };
+    let _frame_type: u8 = body.frame_type;
+    let padding = body.frame_padding as usize;
+    let length = body.frame_length as usize;
+    let data = unsafe { &body.frame.as_slice(length + padding)[padding..] };
+    if length < 24 {
+        // Drop frames that are too short
+        return;
+    }
+    let ethertype = &data[12..14]; // ipv4=0x0800, ipv6=0x86DD, arp=0x0806
+    let ip_proto = &data[23..24];
+    const IPV4: &[u8] = &[0x08, 0x00];
+    const ARP: &[u8] = &[0x08, 0x06];
+    const UDP: &[u8] = &[0x11];
+    // Filter packets that are not ARP or IPv4 UDP
+    if ethertype == IPV4 && ip_proto == UDP {
+        log_udp(data);
+    } else if ethertype == ARP {
+        log_arp(data);
+    }
 }
 
 unsafe fn sl_wfx_scan_result_callback(scan_result: *const sl_wfx_scan_result_ind_body_t) {
@@ -891,7 +966,13 @@ pub unsafe extern "C" fn sl_wfx_host_post_event(
                 event_payload as *const sl_wfx_exception_ind_t;
             sprintln!("WFX_EXCEPTION_IND:");
             for i in 0..SL_WFX_EXCEPTION_DATA_SIZE_MAX {
-                sprint!("{:02X} ", (*exception_ind).body.data.as_slice(SL_WFX_EXCEPTION_DATA_SIZE_MAX as usize)[i as usize]);
+                sprint!(
+                    "{:02X} ",
+                    (*exception_ind)
+                        .body
+                        .data
+                        .as_slice(SL_WFX_EXCEPTION_DATA_SIZE_MAX as usize)[i as usize]
+                );
             }
         }
         sl_wfx_general_indications_ids_e_SL_WFX_ERROR_IND_ID => {
@@ -952,7 +1033,5 @@ pub unsafe extern "C" fn sl_wfx_host_post_event(
 
 /// Return current WF200 power and connection status
 pub fn get_status() -> State {
-    unsafe {
-        CURRENT_STATUS
-    }
+    unsafe { CURRENT_STATUS }
 }
