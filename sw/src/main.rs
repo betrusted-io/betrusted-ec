@@ -74,8 +74,8 @@ fn ticktimer_int_handler(_irq_no: usize) {
         && (power_csr.rf(utra::power::STATS_STATE) == 0)
     {
         // drive sense for keyboard
-        let power = power_csr.ms(utra::power::POWER_SELF, 1)
-            | power_csr.ms(utra::power::POWER_KBDDRIVE, 1);
+        let power =
+            power_csr.ms(utra::power::POWER_SELF, 1) | power_csr.ms(utra::power::POWER_KBDDRIVE, 1);
         power_csr.wo(utra::power::POWER, power);
 
         if power_csr.rf(utra::power::STATS_MONKEY) == 3 {
@@ -222,6 +222,8 @@ fn main() -> ! {
             if Ok(true) == Imu::get_single_tap(&mut i2c) {
                 logln!(LL::Debug, "SingleTap");
                 tap_check_phase = 1000;
+                // Log packet filter stats, etc. when tap is detected
+                wfx_rs::hal_wf200::log_net_state();
             }
         } else {
             tap_check_phase = tap_check_phase.saturating_sub(1);

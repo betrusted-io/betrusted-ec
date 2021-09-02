@@ -10,6 +10,7 @@ edition = "2018"
 wfx_sys = { path = "../wfx_sys" }
 c_types = { path = "../c_types" }
 debug = { path = "../debug" }
+net = { path = "../net" }
 betrusted-hal = { path = "../betrusted-hal" }
 wfx_bindings = { path = "../wfx_bindings" }
 xous-nommu = { path = "../xous-nommu" }
