@@ -210,25 +210,25 @@ fn main() -> ! {
                 &mut pow,
             );
             //////////////////////// ---------------------------
-        }
 
-        //////////////////////// IMU TAP HANDLER BLOCK --------
-        if tap_check_phase == 1 {
-            // Clear any pending out of phase latched tap interrupt
-            // TODO: Tune the tap timing parameters or otherwise find a better way to debounce this
-            let _ = Imu::get_single_tap(&mut i2c);
-        }
-        if tap_check_phase == 0 {
-            if Ok(true) == Imu::get_single_tap(&mut i2c) {
-                logln!(LL::Debug, "SingleTap");
-                tap_check_phase = 1000;
-                // Log packet filter stats, etc. when tap is detected
-                wfx_rs::hal_wf200::log_net_state();
+            //////////////////////// IMU TAP HANDLER BLOCK --------
+            if tap_check_phase == 1 {
+                // Clear any pending out of phase latched tap interrupt
+                // TODO: Tune the tap timing parameters or otherwise find a better way to debounce this
+                let _ = Imu::get_single_tap(&mut i2c);
             }
-        } else {
-            tap_check_phase = tap_check_phase.saturating_sub(1);
+            if tap_check_phase == 0 {
+                if Ok(true) == Imu::get_single_tap(&mut i2c) {
+                    logln!(LL::Debug, "SingleTap");
+                    tap_check_phase = 1000;
+                    // Log packet filter stats, etc. when tap is detected
+                    wfx_rs::hal_wf200::log_net_state();
+                }
+            } else {
+                tap_check_phase = tap_check_phase.saturating_sub(1);
+            }
+            //////////////////////// ------------------------------
         }
-        //////////////////////// ------------------------------
 
         //////////////////////// COM HANDLER BLOCK ---------
         if hw.power_csr.rf(utra::power::STATS_STATE) == 0 {
