@@ -100,7 +100,7 @@ fn ticktimer_int_handler(_irq_no: usize) {
 /// The wake sequence state machine is designed to be case sensitive but tolerate
 /// different OS-specific styles of line-ending sequences. For example, any of these
 /// strings should work to wake from bypass mode: "AT\r\n", "AT\r", "AT\n".
-#[derive(Copy,Clone)]
+#[derive(Copy, Clone)]
 enum UartState {
     BypassOnAwaitA = 0,
     ExpectT,
@@ -306,7 +306,16 @@ fn main() -> ! {
             // Uart starts in bypass mode, so this won't start returning bytes
             // until after it sees the "at\r\n" wake sequence (or "AT\r\n")
             if let Some(b) = uart_rx_byte(&mut uart_state) {
-                logln!(LL::Debug, "UartRx {:X}", b);
+                match b {
+                    0x1B => {
+                        // In case of ANSI escape sequences (arrow keys, etc.) turn UART bypass mode
+                        // on to avoid the hassle of having to parse the escape sequences or deal
+                        // with whatever commands they might accidentally trigger
+                        uart_state = UartState::BypassOnAwaitA;
+                        logln!(LL::Debug, "UartRx ESC -> BypassOn");
+                    }
+                    _ => logln!(LL::Debug, "UartRx {:X}", b),
+                }
             }
             ///////////////////////////// --------------------------------------
         }
