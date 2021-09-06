@@ -38,6 +38,7 @@ use volatile::Volatile;
 mod com_bus;
 mod power_mgmt;
 mod spi;
+mod uart;
 mod wifi;
 mod wlan;
 use com_bus::{com_rx, com_tx};
@@ -96,73 +97,6 @@ fn ticktimer_int_handler(_irq_no: usize) {
     ticktimer_csr.wfo(utra::ticktimer::EV_PENDING_ALARM, 1);
 }
 
-/// Debug UART input is protected by a state machine to detect wake sequence: A T Newline
-/// The wake sequence state machine is designed to be case sensitive but tolerate
-/// different OS-specific styles of line-ending sequences. For example, any of these
-/// strings should work to wake from bypass mode: "AT\r\n", "AT\r", "AT\n".
-#[derive(Copy, Clone)]
-enum UartState {
-    BypassOnAwaitA = 0,
-    ExpectT,
-    ExpectCROrLF,
-    Waking,
-    BypassOff,
-}
-
-/// Empty the UART RX buffer
-fn uart_drain_rx_buf() {
-    let mut uart_csr = CSR::new(utra::uart::HW_UART_BASE as *mut u8);
-    for _ in 0..32 {
-        let no_pending_events = uart_csr.rf(utra::uart::EV_PENDING_RX) == 0;
-        let rx_buffer_empty = uart_csr.rf(utra::uart::RXEMPTY_RXEMPTY) != 0;
-        if no_pending_events && rx_buffer_empty {
-            return;
-        }
-        let _ = uart_csr.rf(utra::uart::RXTX_RXTX);
-        uart_csr.wfo(utra::uart::EV_PENDING_RX, 1);
-    }
-}
-
-/// Dump registers involved in UART RX
-fn uart_dump_rx_state(uart_state: UartState) {
-    let uart_csr = CSR::new(utra::uart::HW_UART_BASE as *mut u8);
-    let p = uart_csr.rf(utra::uart::EV_PENDING_RX);
-    let e = uart_csr.rf(utra::uart::RXEMPTY_RXEMPTY);
-    let f = uart_csr.rf(utra::uart::RXFULL_RXFULL);
-    let s = uart_state as u8;
-    logln!(LL::Debug, "Uart p:{:X} e:{:X} f:{:X} s:{:X}", p, e, f, s);
-}
-
-/// Receive one byte from the Debug UART, subject to RX bypass controlled by wake sequence
-fn uart_rx_byte(uart_state: &mut UartState) -> Option<u8> {
-    let mut uart_csr = CSR::new(utra::uart::HW_UART_BASE as *mut u8);
-    let no_pending_events = uart_csr.rf(utra::uart::EV_PENDING_RX) == 0;
-    let rx_buffer_empty = uart_csr.rf(utra::uart::RXEMPTY_RXEMPTY) != 0;
-    if no_pending_events && rx_buffer_empty {
-        return None;
-    }
-    let b = uart_csr.rf(utra::uart::RXTX_RXTX) as u8;
-    // Writing 1 to EV_PENDING_RX acts as an ACK
-    uart_csr.wfo(utra::uart::EV_PENDING_RX, 1);
-    // Only disable the RX bypass once "AT\n" wake sequence has been received ("AT\r\n" also works).
-    // Going through the Waking -> BypassOff sequence at the end makes sure that the CR or LF char
-    // that finished the wake sequence gets consumed (return None). The following char will be the
-    // first Some(_).
-    let next_state = match *uart_state {
-        UartState::BypassOff => UartState::BypassOff,
-        UartState::BypassOnAwaitA if b == 'A' as u8 => UartState::ExpectT,
-        UartState::ExpectT if b == 'T' as u8 => UartState::ExpectCROrLF,
-        UartState::ExpectCROrLF if (b == '\r' as u8) || (b == '\n' as u8) => UartState::Waking,
-        UartState::Waking => UartState::BypassOff,
-        _ => UartState::BypassOnAwaitA,
-    };
-    *uart_state = next_state;
-    match *uart_state {
-        UartState::BypassOff => Some(b),
-        _ => None,
-    }
-}
-
 #[entry]
 fn main() -> ! {
     logln!(LL::Info, "\r\n====UP5K==09");
@@ -170,7 +104,7 @@ fn main() -> ! {
     let mut crg_csr = CSR::new(HW_CRG_BASE as *mut u32);
     let mut ticktimer_csr = CSR::new(HW_TICKTIMER_BASE as *mut u32);
     let git_csr = CSR::new(HW_GIT_BASE as *mut u32);
-    let mut uart_state: UartState = UartState::BypassOnAwaitA;
+    let mut uart_state: uart::RxState = uart::RxState::BypassOnAwaitA;
 
     let com_rd_ptr: *mut u32 = utralib::HW_COM_MEM as *mut u32;
     let com_rd = com_rd_ptr as *mut Volatile<u32>;
@@ -249,7 +183,7 @@ fn main() -> ! {
     crg_csr.wfo(utra::crg::WATCHDOG_ENABLE, 1); // 1 = enable the watchdog reset
 
     // Drain the UART RX buffer
-    uart_drain_rx_buf();
+    uart::drain_rx_buf();
 
     // Reset & Init WF200 before starting the main loop
     if use_wifi {
@@ -294,8 +228,6 @@ fn main() -> ! {
                     tap_check_phase = 1000;
                     // Log packet filter stats, etc. when tap is detected
                     wfx_rs::hal_wf200::log_net_state();
-                    // Dump UART RX registers
-                    uart_dump_rx_state(uart_state);
                 }
             } else {
                 tap_check_phase = tap_check_phase.saturating_sub(1);
@@ -305,17 +237,32 @@ fn main() -> ! {
             ///////////////////////////// DEBUG UART RX HANDLER BLOCK ----------
             // Uart starts in bypass mode, so this won't start returning bytes
             // until after it sees the "at\r\n" wake sequence (or "AT\r\n")
-            if let Some(b) = uart_rx_byte(&mut uart_state) {
+            if let Some(b) = uart::rx_byte(&mut uart_state) {
                 match b {
                     0x1B => {
                         // In case of ANSI escape sequences (arrow keys, etc.) turn UART bypass mode
                         // on to avoid the hassle of having to parse the escape sequences or deal
                         // with whatever commands they might accidentally trigger
-                        uart_state = UartState::BypassOnAwaitA;
+                        uart_state = uart::RxState::BypassOnAwaitA;
                         logln!(LL::Debug, "UartRx ESC -> BypassOn");
                     }
-                    _ => logln!(LL::Debug, "UartRx {:X}", b),
+                    b'h' | b'H' | b'?' => logln!(
+                        LL::Debug,
+                        concat!(
+                            "UartRx Help:\r\n",
+                            " 1 => ARP req\r\n",
+                            " 2 => DHCP req\r\n",
+                            " 3 => Show net stats"
+                        )
+                    ),
+                    b'1' => logln!(LL::Debug, "TODO: Send ARP request"),
+                    b'2' => logln!(LL::Debug, "TODO: Send DHCP request"),
+                    b'3' => wfx_rs::hal_wf200::log_net_state(),
+                    _ => (),
                 }
+            } else if uart_state == uart::RxState::Waking {
+                logln!(LL::Debug, "UartRx OK");
+                uart_state = uart::RxState::BypassOff;
             }
             ///////////////////////////// --------------------------------------
         }
