@@ -55,6 +55,7 @@ impl NetState {
         logln!(LL::Debug, "DropMulti {:X}", self.filter_stats.drop_multi);
         logln!(LL::Debug, "DropProto {:X}", self.filter_stats.drop_proto);
         logln!(LL::Debug, "DropFrag {:X}", self.filter_stats.drop_frag);
+        logln!(LL::Debug, "DropIpCk {:X}", self.filter_stats.drop_ipck);
         logln!(LL::Debug, "ArpReq {:X}", self.filter_stats.arp_req);
         logln!(LL::Debug, "ArpReply {:X}", self.filter_stats.arp_reply);
         logln!(LL::Debug, "Icmp {:X}", self.filter_stats.icmp);
@@ -137,6 +138,22 @@ fn log_hex(s: &[u8]) {
     log!(LL::Debug, " ");
 }
 
+/// Calculate one's complement IPv4 header checksum according to RFC 1071
+fn ipv4_checksum(data: &[u8]) -> u16 {
+    let pre_checksum_it = data[14..24].chunks_exact(2);
+    let post_checksum_it = data[26..34].chunks_exact(2);
+    let header_it = pre_checksum_it.chain(post_checksum_it);
+    let mut sum: u16 = 0;
+    for c in header_it {
+        let x = ((c[0] as u16) << 8) | (c[1] as u16);
+        sum = match sum.overflowing_add(x) {
+            (n, true) => n + 1,
+            (n, false) => n,
+        };
+    }
+    !sum
+}
+
 fn handle_ipv4_frame(data: &[u8]) -> FilterBin {
     if data.len() < IPV4_MIN_FRAME_LEN {
         // Drop frames that are too short to hold an IPV4 header
@@ -149,7 +166,9 @@ fn handle_ipv4_frame(data: &[u8]) -> FilterBin {
     const VER4_LEN5: u8 = 0x4_5;
     if ip_ver_ihl[0] != VER4_LEN5 {
         // Drop frames with IP version field not 4 or IP header length longer than minimum (5*32-bits=20 bytes)
-        // DANGER! DANGER! Blithely dropping IP datagrams that have header options is probably a bad idea
+        // The main effect of this is to drop frames with IP header options. Dropping
+        // packets with IP options is apparently common practice and probably mostly fine?
+        // For additional context, see RFC 7126: Filtering of IP-Optioned Packets
         return FilterBin::DropNoise;
     }
     const IGNORE_DF_MASK: u8 = 0b101_11111;
@@ -157,9 +176,10 @@ fn handle_ipv4_frame(data: &[u8]) -> FilterBin {
         // Drop frames that are part of a fragmented IP packet
         return FilterBin::DropFrag;
     }
-    //
-    // TODO: Verify checksum
-    //
+    let csum = ipv4_checksum(data);
+    if csum != u16::from_be_bytes([ip_checksum[0], ip_checksum[1]]) {
+        return FilterBin::DropIpCk;
+    }
     const PROTO_UDP: u8 = 0x11;
     const PROTO_ICMP: u8 = 0x01;
     match ip_proto[0] {
