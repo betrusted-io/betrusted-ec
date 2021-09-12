@@ -56,6 +56,7 @@ impl NetState {
         logln!(LL::Debug, "DropProto {:X}", self.filter_stats.drop_proto);
         logln!(LL::Debug, "DropFrag {:X}", self.filter_stats.drop_frag);
         logln!(LL::Debug, "DropIpCk {:X}", self.filter_stats.drop_ipck);
+        logln!(LL::Debug, "DropUdpCk {:X}", self.filter_stats.drop_udpck);
         logln!(LL::Debug, "ArpReq {:X}", self.filter_stats.arp_req);
         logln!(LL::Debug, "ArpReply {:X}", self.filter_stats.arp_reply);
         logln!(LL::Debug, "Icmp {:X}", self.filter_stats.icmp);
@@ -138,13 +139,47 @@ fn log_hex(s: &[u8]) {
     log!(LL::Debug, " ");
 }
 
-/// Calculate one's complement IPv4 header checksum according to RFC 1071
+/// Calculate one's complement IPv4 header checksum according to RFC 1071 & RFC 791
 fn ipv4_checksum(data: &[u8]) -> u16 {
     let pre_checksum_it = data[14..24].chunks_exact(2);
     let post_checksum_it = data[26..34].chunks_exact(2);
     let header_it = pre_checksum_it.chain(post_checksum_it);
     let mut sum: u16 = 0;
     for c in header_it {
+        let x = ((c[0] as u16) << 8) | (c[1] as u16);
+        sum = match sum.overflowing_add(x) {
+            (n, true) => n + 1,
+            (n, false) => n,
+        };
+    }
+    !sum
+}
+
+/// Calculate one's complement UDP checksum according to RFC 1071 & RFC 768
+/// UDP checksum includes IP pseudo-header {src,dst,zero,protocol,UDP_len} and the whole UDP datagram
+fn ipv4_udp_checksum(data: &[u8]) -> u16 {
+    const ZERO_PAD_PROTO_UDP: u16 = 0x0011;
+    let udp = &data[IPV4_MIN_FRAME_LEN..];
+    // Build a chained iterator over the IP pseudoheader and UDP datagram
+    let ip_src_dst_it = data[26..34].chunks_exact(2);
+    let udp_length_it = udp[4..6].chunks_exact(2);
+    let pseudo_header_it = ip_src_dst_it.chain(udp_length_it);
+    let udp_pre_checksum_it = udp[..6].chunks_exact(2);
+    let udp_post_checksum_it = udp[8..].chunks_exact(2);
+    let udp_remainder = udp_post_checksum_it.remainder();
+    let udp_tail = match udp_remainder.is_empty() {
+        true => [0, 0],
+        // If the UDP datagram length was not an integer multiple of 16-bits, pad it
+        false => [udp_remainder[0], 0],
+    };
+    let udp_tail_it = udp_tail.chunks_exact(2);
+    let datagram_it = udp_pre_checksum_it
+        .chain(udp_post_checksum_it)
+        .chain(udp_tail_it);
+    // Putting the UDP protocol code in an iterator would be silly since it's a constant
+    let mut sum: u16 = ZERO_PAD_PROTO_UDP;
+    // Do the math
+    for c in pseudo_header_it.chain(datagram_it) {
         let x = ((c[0] as u16) << 8) | (c[1] as u16);
         sum = match sum.overflowing_add(x) {
             (n, true) => n + 1,
@@ -263,17 +298,17 @@ fn handle_icmp_frame(data: &[u8]) -> FilterBin {
 
 fn handle_udp_frame(data: &[u8]) -> FilterBin {
     if data.len() < MIN_UDP_FRAME_LEN {
-        return FilterBin::DropNoise;
-    }
-    // Precondition IP header does not use any options, so is minimum length of 5 words (this is probably a bad idea)
-    let ip_ver_ihl = &data[14..15];
-    if ip_ver_ihl[0] != 0x45 {
+        // Drop if frame is too short for a minimal well formed UDP datagram
         return FilterBin::DropNoise;
     }
     let udp = &data[IPV4_MIN_FRAME_LEN..];
+    let checksum = &udp[6..8];
+    if u16::from_be_bytes([checksum[0], checksum[1]]) != ipv4_udp_checksum(data) {
+        // Drop if UDP checksum validation fails
+        return FilterBin::DropUdpCk;
+    }
     let dst_port = &udp[2..4];
     let _length = &udp[4..6];
-    let _checksum = &udp[6..8];
     let payload = &udp[8..];
     match dst_port {
         &[0, 67] | &[0, 68] => return handle_dhcp_frame(data),

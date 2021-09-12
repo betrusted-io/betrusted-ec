@@ -7,6 +7,7 @@ pub enum FilterBin {
     DropProto, // Unsupported IP layer protocol (perhaps TCP)
     DropFrag,  // Unsupported packet fragment
     DropIpCk,  // Bad IP header checksum
+    DropUdpCk, // Bad UDP header checksum
     ArpReq,
     ArpReply,
     Icmp,
@@ -22,6 +23,7 @@ pub struct FilterStats {
     pub drop_proto: u16,
     pub drop_frag: u16,
     pub drop_ipck: u16,
+    pub drop_udpck: u16,
     pub arp_req: u16,
     pub arp_reply: u16,
     pub icmp: u16,
@@ -38,6 +40,7 @@ impl FilterStats {
             drop_proto: 0,
             drop_frag: 0,
             drop_ipck: 0,
+            drop_udpck: 0,
             arp_req: 0,
             arp_reply: 0,
             icmp: 0,
@@ -60,6 +63,7 @@ impl FilterStats {
             FilterBin::DropProto => self.drop_proto = self.drop_proto.saturating_add(1),
             FilterBin::DropFrag => self.drop_frag = self.drop_frag.saturating_add(1),
             FilterBin::DropIpCk => self.drop_ipck = self.drop_ipck.saturating_add(1),
+            FilterBin::DropUdpCk => self.drop_udpck = self.drop_udpck.saturating_add(1),
             FilterBin::ArpReq => self.arp_req = self.arp_req.saturating_add(1),
             FilterBin::ArpReply => self.arp_reply = self.arp_reply.saturating_add(1),
             FilterBin::Icmp => self.icmp = self.icmp.saturating_add(1),
