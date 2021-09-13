@@ -22,7 +22,7 @@ use betrusted_hal::api_lsm6ds3::Imu;
 use betrusted_hal::api_tusb320::BtUsbCc;
 //use betrusted_hal::hal_hardi2c::Hardi2c;
 use betrusted_hal::hal_i2c::Hardi2c;
-use betrusted_hal::hal_time::{get_time_ms, set_msleep_target_ticks, time_init};
+use betrusted_hal::hal_time::{get_time_ms, set_msleep_target_ticks, time_init, get_time_ticks};
 use com_rs::serdes::{StringSer, STR_64_U8_SIZE, STR_64_WORDS};
 use com_rs::ComState;
 use core::panic::PanicInfo;
@@ -103,6 +103,7 @@ fn main() -> ! {
     let mut crg_csr = CSR::new(HW_CRG_BASE as *mut u32);
     let mut ticktimer_csr = CSR::new(HW_TICKTIMER_BASE as *mut u32);
     let git_csr = CSR::new(HW_GIT_BASE as *mut u32);
+    let mut entropy_seed: Option<[u16; 8]> = None;
 
     let com_rd_ptr: *mut u32 = utralib::HW_COM_MEM as *mut u32;
     let com_rd = com_rd_ptr as *mut Volatile<u32>;
@@ -556,6 +557,28 @@ fn main() -> ! {
                         logln!(LL::Debug, "default");
                         wifi::wf200_reset_and_init(&mut use_wifi, &mut wifi_ready);
                     }
+                }
+            } else if rx == ComState::UPTIME.verb {
+                log!(LL::Debug, "CUptime");
+                let mut time = get_time_ticks();
+                for _ in 0..4 {
+                    com_tx(time as u16);
+                    time >>= 16;
+                }
+            } else if rx == ComState::TRNG_SEED.verb {
+                log!(LL::Debug, "CTrngSeed");
+                let mut entropy: [u16; 8] = [0; 8];
+                let mut error = false;
+                for e in entropy.iter_mut() {
+                    match com_rx(200) {
+                        Ok(result) => {
+                            *e = result;
+                        }
+                        _ => error = true,
+                    }
+                }
+                if !error {
+                    entropy_seed = Some(entropy);
                 }
             } else if rx == ComState::SSID_SCAN_ON.verb {
                 logln!(LL::Debug, "CSsidScan1");
