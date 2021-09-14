@@ -615,6 +615,8 @@ class BaseSoC(SoCCore):
             with_uart=False,
             cpu_reset_address=self.mem_map["spiflash"]+GATEWARE_SIZE,
             csr_data_width=32, **kwargs)
+        self.cpu.use_external_variant(
+            "deps/pythondata-cpu-vexriscv/pythondata_cpu_vexriscv/verilog/VexRiscv_MinPlus.v")
 
         self.submodules.crg = platform.CRG(platform)
         self.add_csr("crg")
