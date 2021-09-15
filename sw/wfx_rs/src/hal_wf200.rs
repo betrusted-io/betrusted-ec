@@ -127,6 +127,10 @@ pub fn reseed_net_prng(seed: &[u16; 8]) {
     unsafe { NET_STATE.prng.reseed(seed) };
 }
 
+pub fn net_prng_rand() -> u32 {
+    unsafe { NET_STATE.prng.next() }
+}
+
 /// Send a DHCP request
 pub fn send_dhcp_request() {
     // TODO: implement a proper state machine for the DHCP Discover flow

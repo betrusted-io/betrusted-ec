@@ -22,7 +22,7 @@ use betrusted_hal::api_lsm6ds3::Imu;
 use betrusted_hal::api_tusb320::BtUsbCc;
 //use betrusted_hal::hal_hardi2c::Hardi2c;
 use betrusted_hal::hal_i2c::Hardi2c;
-use betrusted_hal::hal_time::{get_time_ms, set_msleep_target_ticks, time_init, get_time_ticks};
+use betrusted_hal::hal_time::{get_time_ms, get_time_ticks, set_msleep_target_ticks, time_init};
 use com_rs::serdes::{StringSer, STR_64_U8_SIZE, STR_64_WORDS};
 use com_rs::ComState;
 use core::panic::PanicInfo;
@@ -95,6 +95,27 @@ fn ticktimer_int_handler(_irq_no: usize) {
     set_msleep_target_ticks(50); // resetting this will also clear the alarm
 
     ticktimer_csr.wfo(utra::ticktimer::EV_PENDING_ALARM, 1);
+}
+
+/// This logs a time comparison of many short shifts vs same number of long shifts.
+/// The point is to verify that the CPU is using single cycle shifts.
+fn shift_speed_test() {
+    let count = 50_000;
+    let mut a: u32 = wfx_rs::hal_wf200::net_prng_rand();
+    let mut b: u32 = a;
+    let t0 = get_time_ms();
+    for _ in 0..count {
+        a = (a >> 1) ^ (a << 3) ^ (a << 5);
+    }
+    let t1 = get_time_ms();
+    for _ in 0..count {
+        b = (b >> 1) ^ (b << 30) ^ (b << 23);
+    }
+    let t2 = get_time_ms();
+    let x = (a ^ b) & 15;
+    let y = t1 - t0; // Time for short shifts (distance 8 left)
+    let z = t2 - t1; // Time for long shifts (distance 53 left)
+    logln!(LL::Debug, "ShiftSpeed _:{:X}, 8L:{:X}, 53L:{:X}", x, y, z);
 }
 
 #[entry]
@@ -252,12 +273,14 @@ fn main() -> ! {
                             "UartRx Help:\r\n",
                             " 1 => ARP req\r\n",
                             " 2 => DHCP req\r\n",
-                            " 3 => Show net stats"
+                            " 3 => Show net stats\r\n",
+                            " 4 => Shift speed test"
                         )
                     ),
                     b'1' => logln!(LL::Debug, "TODO: Send ARP request"),
                     b'2' => wfx_rs::hal_wf200::send_dhcp_request(),
                     b'3' => wfx_rs::hal_wf200::log_net_state(),
+                    b'4' => shift_speed_test(),
                     _ => (),
                 }
             } else if uart_state == uart::RxState::Waking {
