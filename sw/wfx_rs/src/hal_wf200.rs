@@ -130,7 +130,7 @@ pub fn reseed_net_prng(seed: &[u16; 8]) {
 /// Send a DHCP request
 pub fn send_dhcp_request() {
     // TODO: implement a proper state machine for the DHCP Discover flow
-    let mut str_buf = [0u8; 15];
+    let mut str_buf = [0u8; 8];
     match unsafe { NET_STATE.prng.hostname(&mut str_buf) } {
         Ok(hostname) => logln!(LL::Debug, "PrngHostname: {:}", hostname),
         Err(err_code) => logln!(LL::Debug, "PrngHostnameErr {:X}", err_code),

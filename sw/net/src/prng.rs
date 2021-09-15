@@ -40,33 +40,35 @@ impl NetPrng {
 
     /// Encode new pseudorandom hostname string into str_buf and return as &str.
     /// See RFC 952, RFC 1123 § 2.1, and RFC 2181 § 11
-    pub fn hostname<'a>(&mut self, str_buf: &'a mut [u8; 15]) -> Result<&'a str, u8> {
+    pub fn hostname<'a>(&mut self, str_buf: &'a mut [u8; 8]) -> Result<&'a str, u8> {
+        // Select hostname length between 5 and 8 characters
+        let len = str_buf.len() - ((self.next() & 0b011) as usize);
+        // Gather enough random bytes for up to 8 characters
         let rbytes0: [u8; 4] = self.next().to_le_bytes();
         let rbytes4: [u8; 4] = self.next().to_le_bytes();
-        let rbytes8: [u8; 4] = self.next().to_le_bytes();
-        let rbytes12: [u8; 4] = self.next().to_le_bytes();
-        let mut rbytes = rbytes0
-            .iter()
-            .chain(rbytes4.iter())
-            .chain(rbytes8.iter())
-            .chain(rbytes12.iter());
-        // Use bottom 3 bits of first random byte to select hostname length between 8 and 15
-        let len = str_buf.len() - ((rbytes.next().unwrap_or(&7) & 0b0111) as usize);
-        let sb_it = str_buf.iter_mut();
-        // Set first len bytes of str_buf to random selection from [0-9A-Z] and remaining bytes to null
-        for (i, c) in sb_it.enumerate() {
-            *c = 0;
-            if i >= len {
-                continue;
+        let skip = str_buf.len() - len;
+        let rbytes = rbytes0.iter().chain(rbytes4.iter()).skip(skip);
+        // Set first len bytes of str_buf to independent random symbols picked from charset
+        for (i, (dst, src)) in str_buf.iter_mut().zip(rbytes).enumerate() {
+            let mut masked_src = src & 0b0001_1111;
+            if (i == 0) && masked_src < 10 {
+                masked_src += 11; // Avoid starting with a number or 'A'
             }
-            if let Some(rb) = rbytes.next() {
-                // Pick 1 from {10 digits, 26 letters}
-                *c = match rb % (10 + 26) {
-                    x @ 0..=9 => ('0' as u8) + x,
-                    x @ 10..=35 => ('A' as u8) + x - 10,
-                    _ => '0' as u8,
-                };
-            }
+            // Translation table for charset "0123456789ABCDFGHJKLMNPQRSTVWXYZ" (32 symbols)
+            // 0123456789 ABCD E FGH I JKLMN O PQRST U VWXYZ
+            // 0000000000 1111 1 111 1 12222 2 22222 3 33333
+            // 0123456789 0123 4 567 8 90123 4 56789 0 12345
+            // 0000000000 1111   111   11122   22222   22233
+            // 0123456789 0123   456   78901   23456   78901
+            *dst = match masked_src {
+                x @ 0..=9 => ('0' as u8) + x,
+                x @ 10..=13 => ('A' as u8) + x - 10,
+                x @ 14..=16 => ('F' as u8) + x - 14,
+                x @ 17..=21 => ('J' as u8) + x - 17,
+                x @ 22..=26 => ('P' as u8) + x - 22,
+                x @ 27..=31 => ('V' as u8) + x - 27,
+                _ => '0' as u8,
+            };
         }
         match core::str::from_utf8(&str_buf[..len]) {
             Ok(hostname) => Ok(hostname),
