@@ -105,7 +105,6 @@ fn main() -> ! {
     let mut ticktimer_csr = CSR::new(HW_TICKTIMER_BASE as *mut u32);
     let git_csr = CSR::new(HW_GIT_BASE as *mut u32);
     let mut uart_state: uart::RxState = uart::RxState::BypassOnAwaitA;
-    let mut entropy_seed: Option<[u16; 8]> = None;
 
     let com_rd_ptr: *mut u32 = utralib::HW_COM_MEM as *mut u32;
     let com_rd = com_rd_ptr as *mut Volatile<u32>;
@@ -257,7 +256,7 @@ fn main() -> ! {
                         )
                     ),
                     b'1' => logln!(LL::Debug, "TODO: Send ARP request"),
-                    b'2' => logln!(LL::Debug, "TODO: Send DHCP request"),
+                    b'2' => wfx_rs::hal_wf200::send_dhcp_request(),
                     b'3' => wfx_rs::hal_wf200::log_net_state(),
                     _ => (),
                 }
@@ -605,7 +604,7 @@ fn main() -> ! {
                     time >>= 16;
                 }
             } else if rx == ComState::TRNG_SEED.verb {
-                log!(LL::Debug, "CTrngSeed");
+                logln!(LL::Debug, "CTrngSeed");
                 let mut entropy: [u16; 8] = [0; 8];
                 let mut error = false;
                 for e in entropy.iter_mut() {
@@ -617,7 +616,9 @@ fn main() -> ! {
                     }
                 }
                 if !error {
-                    entropy_seed = Some(entropy);
+                    wfx_rs::hal_wf200::reseed_net_prng(&entropy);
+                } else {
+                    logln!(LL::Debug, "CTrngSeedErr");
                 }
             } else if rx == ComState::SSID_SCAN_ON.verb {
                 logln!(LL::Debug, "CSsidScan1");

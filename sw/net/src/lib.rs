@@ -4,7 +4,9 @@ use debug;
 use debug::{log, logln, sprint, sprintln, LL};
 
 pub mod filter;
+pub mod prng;
 use filter::{FilterBin, FilterStats};
+use prng::NetPrng;
 
 // Configure Log Level (used in macro expansions)
 const LOG_LEVEL: LL = LL::Debug;
@@ -27,6 +29,7 @@ const ETHERTYPE_ARP: &[u8] = &[0x08, 0x06];
 pub struct NetState {
     pub mac: [u8; 6],
     pub filter_stats: FilterStats,
+    pub prng: NetPrng,
 }
 impl NetState {
     /// Initialize a new NetState struct
@@ -34,6 +37,7 @@ impl NetState {
         NetState {
             mac: [0u8; 6],
             filter_stats: FilterStats::new_all_zero(),
+            prng: NetPrng::new_from(&[0x55u16; 8]),
         }
     }
 

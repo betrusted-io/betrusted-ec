@@ -122,6 +122,21 @@ pub fn log_net_state() {
     unsafe { NET_STATE.log_state() };
 }
 
+/// Export an API for the main event loop to reseed the network stack's PRNG
+pub fn reseed_net_prng(seed: &[u16; 8]) {
+    unsafe { NET_STATE.prng.reseed(seed) };
+}
+
+/// Send a DHCP request
+pub fn send_dhcp_request() {
+    // TODO: implement a proper state machine for the DHCP Discover flow
+    let mut str_buf = [0u8; 15];
+    match unsafe { NET_STATE.prng.hostname(&mut str_buf) } {
+        Ok(hostname) => logln!(LL::Debug, "PrngHostname: {:}", hostname),
+        Err(err_code) => logln!(LL::Debug, "PrngHostnameErr {:X}", err_code),
+    }
+}
+
 /// Note -- PDS spec says max PDS size is 256 bytes, so let's just pin the buffer at that
 /// returns true if send was OK
 pub fn wf200_send_pds(data: [u8; 256], length: u16) -> bool {
