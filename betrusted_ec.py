@@ -144,19 +144,24 @@ class BetrustedPlatform(LatticePlatform):
 
             # POR reset logic- POR generated from sys clk, POR logic feeds sys clk
             # reset. Just need a pulse one cycle wide to get things working right.
-            # ^^^ this line is a lie. I have found devices that do not reliably reset with
+            # ^^^ this line is a lie and full of sadness. I have found devices that do not reliably reset with
             # one pulse. Extending the pulse to 2 wide seems to fix the issue.
+            # update: found a device that needs 3-wide pulse to reset. Extending to 4 "just in case".
             self.clock_domains.cd_por = ClockDomain()
             reset_cascade = Signal(reset=1)
             reset_cascade2 = Signal(reset=1)
+            reset_cascade3 = Signal(reset=1)
+            reset_cascade4 = Signal(reset=1)
             reset_initiator = Signal()
             self.sync.por += [
                 reset_cascade.eq(reset_initiator),
                 reset_cascade2.eq(reset_cascade),
+                reset_cascade3.eq(reset_cascade2),
+                reset_cascade4.eq(reset_cascade3),
             ]
             self.comb += [
                 self.cd_por.clk.eq(self.cd_sys.clk),
-                self.cd_sys.rst.eq(reset_cascade2),
+                self.cd_sys.rst.eq(reset_cascade4),
             ]
 
             # generate a >1us-wide pulse at ~1Hz based on sysclk for display extcomm signal
