@@ -84,6 +84,10 @@ static mut WFX_PTR_LIST: [usize; WFX_MAX_PTRS] = [0; WFX_MAX_PTRS];
 
 static mut SSID_SCAN_IN_PROGRESS: bool = false;
 
+// Buffer for building TX packets
+const PBUF_SIZE: usize = 1500;
+static mut PACKET_BUF: [u8; PBUF_SIZE] = [0; PBUF_SIZE];
+
 #[derive(Copy, Clone)]
 pub enum State {
     Unknown,
@@ -136,7 +140,22 @@ pub fn send_dhcp_request() {
     // TODO: implement a proper state machine for the DHCP Discover flow
     let mut str_buf = [0u8; 8];
     match unsafe { NET_STATE.prng.hostname(&mut str_buf) } {
-        Ok(hostname) => logln!(LL::Debug, "PrngHostname: {:}", hostname),
+        Ok(hostname) => {
+            logln!(LL::Debug, "PrngHostname: {:}", hostname);
+            let src_mac: [u8; 6] = unsafe { NET_STATE.mac.clone() };
+            let ip_id: u16 = unsafe { NET_STATE.prng.next() } as u16;
+            let dhcp_xid: u32 = unsafe { NET_STATE.prng.next() };
+            let seconds: u16 = 0;
+            let _ = net::dhcp::build_discover_frame(
+                unsafe { &mut PACKET_BUF },
+                &src_mac,
+                ip_id,
+                dhcp_xid,
+                seconds,
+                &hostname,
+            );
+            let _ = net::handle_frame(unsafe{ &mut NET_STATE}, unsafe { &PACKET_BUF });
+        }
         Err(err_code) => logln!(LL::Debug, "PrngHostnameErr {:X}", err_code),
     }
 }

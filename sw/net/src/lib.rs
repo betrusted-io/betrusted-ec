@@ -95,19 +95,19 @@ pub fn handle_frame(net_state: &mut NetState, data: &[u8]) -> FilterBin {
 }
 
 /// Populate the MAC header portion of an Ethernet frame buffer
-// fn fill_ethernet_mac_header(
+// fn fill_mac_header(
+//     pbuf: &mut [u8],
 //     src_mac: &[u8; 6],
 //     dst_mac: &[u8; 6],
-//     frame: &mut [u8],
-// ) -> Result<(), ()> {
-//     if frame.len() < MAC_HEADER_LEN {
-//         return Err(());
+// ) -> Result<(), u8> {
+//     if pbuf.len() < MAC_HEADER_LEN {
+//         return Err(0x01);
 //     }
 //     let dst_mac_it = dst_mac.iter();
 //     let src_mac_it = src_mac.iter();
 //     let ethertype_it = ETHERTYPE_ARP.iter();
 //     let mac_header_it = dst_mac_it.chain(src_mac_it).chain(ethertype_it);
-//     for (dst, src) in frame.iter_mut().zip(mac_header_it) {
+//     for (dst, src) in pbuf.iter_mut().zip(mac_header_it) {
 //         *dst = *src;
 //     }
 //     return Ok(());
@@ -115,24 +115,25 @@ pub fn handle_frame(net_state: &mut NetState, data: &[u8]) -> FilterBin {
 
 /// Populate the IP header portion of an Ethernet frame buffer
 // fn fill_ip_header(
+//     pbuf: &mut [u8],
+//     prng: &mut NetPrng,
 //     src_ip: &[u8; 4],
 //     dst_ip: &[u8; 4],
+//     length: u16;
+//     id: u16;
+//     ttl: u8;
 //     protocol: u8,
-//     frame: &mut [u8],
-// ) -> Result<(), ()> {
+// ) -> Result<(), u8> {
 //     if frame.len() < IPV4_MIN_FRAME_LEN {
-//         return Err(());
+//         return Err(0x02);
 //     }
 //     let ver_ihl: u8 = 0x4_5; // ver=IPv4, IPv4 Header Length: 5 * 32-bits = 20 bytes
 //     let dcsp_ecn: u8 = 0b000000_00; // Standard service class, Default forwarding, Non ECN-Capable transport
-//     let length: u16 = IPV4_MIN_HEADER_LEN as u16; // Protocol layer will need to update this
-//     let id: u16 = 0xABCD; // TODO: set this with PRNG
 //     let flags_offset: u8 = 0b0_0_0_00000; // Reserved=0, DF=0, MF=0, Offset=0
-//     let ttl: u8 = 0xFF; // Max TTL
 //     let checksum = 0; // Protocol layer needs to update this once length is known; See RFC1071 (checksum)
 
 //     // TODO: Implement this
-//     return Err(());
+//     return Ok(());
 // }
 
 fn log_hex(s: &[u8]) {
