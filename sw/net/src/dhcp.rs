@@ -8,19 +8,24 @@ const LOG_LEVEL: LL = LL::Debug;
 
 const DHCP_HEADER_LEN: usize = 241; // op field -> one byte past options magic cookie
 const MIN_DHCP_FRAME_LEN: usize = MIN_UDP_FRAME_LEN + DHCP_HEADER_LEN;
+const DHCP_FRAME_LEN: usize = 342;
 
-/// Build a DHCP discover packet by filling in a template of byte arrays
-pub fn build_discover_frame(
-    pbuf: &mut [u8],
+/// Build a DHCP discover packet by filling in a template of byte arrays.
+/// Returns Ok(data_length), where data_length is the number of bytes of pbuf.len()
+/// that were used to hold the packet data
+pub fn build_discover_frame<'a>(
+    mut pbuf: &'a mut [u8],
     src_mac: &[u8; 6],
     ip_id: u16,
     dhcp_xid: u32,
     seconds: u16,
     hostname: &str,
-) -> Result<(), u8> {
-    if pbuf.len() < MIN_DHCP_FRAME_LEN {
+) -> Result<u32, u8> {
+    if pbuf.len() < DHCP_FRAME_LEN {
         return Err(0x03);
     }
+    // Buffer might be a full MTU, so only use what we need. (this determines number of loop iterations below)
+    pbuf = &mut pbuf[..DHCP_FRAME_LEN];
     // Ethernet MAC header
     let dst_mac = [255u8, 255, 255, 255, 255, 255];
     let ethertype = [8u8, 0];
@@ -78,16 +83,17 @@ pub fn build_discover_frame(
     for (dst, src) in pbuf.iter_mut().zip(src_it) {
         *dst = *src;
     }
-    // Checksum fixup
+    // Do the checksum fixup. Note how these checksum offsets assume the minimum MAC and
+    // IP header size. On some networks (VLAN?), that assumption might cause problems.
     let ip_csum: u16 = crate::ipv4_checksum(&pbuf);
     for (dst, src) in pbuf[24..26].iter_mut().zip(ip_csum.to_be_bytes().iter()) {
         *dst = *src;
     }
     let udp_csum: u16 = crate::ipv4_udp_checksum(&pbuf);
-    for (dst, src) in pbuf[34+6..34+8].iter_mut().zip(udp_csum.to_be_bytes().iter()) {
+    for (dst, src) in pbuf[40..42].iter_mut().zip(udp_csum.to_be_bytes().iter()) {
         *dst = *src;
     }
-    return Ok(());
+    return Ok(pbuf.len() as u32);
 }
 
 pub fn handle_dhcp_frame(data: &[u8]) -> FilterBin {
@@ -111,7 +117,7 @@ pub fn handle_dhcp_frame(data: &[u8]) -> FilterBin {
     // let _file: &[u8] = &dhcp[108..236];
     let option_mc: &[u8] = &dhcp[236..240]; // Options magic cookie
     let options: &[u8] = &dhcp[240..]; // First option -> ...
-    log!(LL::Debug, "RxDHCP\r\n ");
+    log!(LL::Debug, "RxDHCP {:X}\r\n ", data.len());
     log_mac_header(data);
     log!(LL::Debug, "\r\n ");
     log_ipv4_header(data);

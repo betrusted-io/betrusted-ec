@@ -41,15 +41,16 @@ pub use wfx_bindings::{
     sl_wfx_indications_ids_e_SL_WFX_DISCONNECT_IND_ID,
     sl_wfx_indications_ids_e_SL_WFX_RECEIVED_IND_ID,
     sl_wfx_indications_ids_e_SL_WFX_SCAN_COMPLETE_IND_ID,
-    sl_wfx_indications_ids_e_SL_WFX_SCAN_RESULT_IND_ID, sl_wfx_init, sl_wfx_mac_address_t,
+    sl_wfx_indications_ids_e_SL_WFX_SCAN_RESULT_IND_ID, sl_wfx_init,
+    sl_wfx_interface_t_SL_WFX_STA_INTERFACE, sl_wfx_mac_address_t,
     sl_wfx_pm_mode_e_WFM_PM_MODE_ACTIVE, sl_wfx_pm_mode_e_WFM_PM_MODE_PS, sl_wfx_receive_frame,
     sl_wfx_received_ind_body_s, sl_wfx_received_ind_t, sl_wfx_register_address_t,
     sl_wfx_rx_stats_s, sl_wfx_scan_complete_ind_t, sl_wfx_scan_mode_e_WFM_SCAN_MODE_ACTIVE,
     sl_wfx_scan_result_ind_body_t, sl_wfx_scan_result_ind_t, sl_wfx_send_configuration,
-    sl_wfx_send_scan_command, sl_wfx_set_power_mode, sl_wfx_ssid_def_t,
-    sl_wfx_state_t_SL_WFX_STA_INTERFACE_CONNECTED, u_int32_t, SL_STATUS_ALLOCATION_FAILED,
-    SL_STATUS_IO_TIMEOUT, SL_STATUS_OK, SL_STATUS_WIFI_SLEEP_GRANTED, SL_WFX_CONT_NEXT_LEN_MASK,
-    SL_WFX_EXCEPTION_DATA_SIZE_MAX,
+    sl_wfx_send_ethernet_frame, sl_wfx_send_frame_req_t, sl_wfx_send_scan_command,
+    sl_wfx_set_power_mode, sl_wfx_ssid_def_t, sl_wfx_state_t_SL_WFX_STA_INTERFACE_CONNECTED,
+    u_int32_t, SL_STATUS_ALLOCATION_FAILED, SL_STATUS_IO_TIMEOUT, SL_STATUS_OK,
+    SL_STATUS_WIFI_SLEEP_GRANTED, SL_WFX_CONT_NEXT_LEN_MASK, SL_WFX_EXCEPTION_DATA_SIZE_MAX,
 };
 
 // ==========================================================
@@ -83,10 +84,6 @@ static mut WFX_PTR_COUNT: u8 = 0;
 static mut WFX_PTR_LIST: [usize; WFX_MAX_PTRS] = [0; WFX_MAX_PTRS];
 
 static mut SSID_SCAN_IN_PROGRESS: bool = false;
-
-// Buffer for building TX packets
-const PBUF_SIZE: usize = 1500;
-static mut PACKET_BUF: [u8; PBUF_SIZE] = [0; PBUF_SIZE];
 
 #[derive(Copy, Clone)]
 pub enum State {
@@ -136,27 +133,59 @@ pub fn net_prng_rand() -> u32 {
 }
 
 /// Send a DHCP request
-pub fn send_dhcp_request() {
+pub fn send_dhcp_request() -> Result<(), u8> {
+    // DANGER! DANGER! DANGER!
+    //
+    // The wfx driver API for sending frames takes an argument of a C struct with a zero
+    // length array (aka flexible array member). Zero length arrays are dangerous because
+    // they extend into memory beyond the size of the struct that declares them. You can't
+    // just define a sl_wfx_send_frame_req_t and use it. Rather, you have to define a
+    // buffer big enough to hold the sl_wfx_send_frame_req_t (header), plus however much
+    // data goes in the frame (perhaps up to 1500 bytes), then cast a pointer to the buffer
+    // into a sl_wfx_send_frame_req_t reference.
+    //
+    // The following code does those things. Be wary of this stuff. It is dangerous.
+    const HEADER_SIZE: usize = core::mem::size_of::<sl_wfx_send_frame_req_t>();
+    const DATA_SIZE: usize = 342;
+    const BUF_SIZE: usize = HEADER_SIZE + DATA_SIZE + 4;
+    let mut buf: [u8; BUF_SIZE] = [0; BUF_SIZE];
     // TODO: implement a proper state machine for the DHCP Discover flow
     let mut str_buf = [0u8; 8];
-    match unsafe { NET_STATE.prng.hostname(&mut str_buf) } {
-        Ok(hostname) => {
-            logln!(LL::Debug, "PrngHostname: {:}", hostname);
-            let src_mac: [u8; 6] = unsafe { NET_STATE.mac.clone() };
-            let ip_id: u16 = unsafe { NET_STATE.prng.next() } as u16;
-            let dhcp_xid: u32 = unsafe { NET_STATE.prng.next() };
-            let seconds: u16 = 0;
-            let _ = net::dhcp::build_discover_frame(
-                unsafe { &mut PACKET_BUF },
-                &src_mac,
-                ip_id,
-                dhcp_xid,
-                seconds,
-                &hostname,
-            );
-            let _ = net::handle_frame(unsafe{ &mut NET_STATE}, unsafe { &PACKET_BUF });
+    let hostname = unsafe { NET_STATE.prng.hostname(&mut str_buf) }?;
+    logln!(LL::Debug, "PrngHostname: {:}", hostname);
+    let src_mac: [u8; 6] = unsafe { NET_STATE.mac.clone() };
+    let ip_id: u16 = unsafe { NET_STATE.prng.next() } as u16;
+    let dhcp_xid: u32 = unsafe { NET_STATE.prng.next() };
+    let seconds: u16 = 0;
+    // =================================================================
+    // === This is the dangerous part ==================================
+    let data_length = net::dhcp::build_discover_frame(
+        &mut buf[HEADER_SIZE..],
+        &src_mac,
+        ip_id,
+        dhcp_xid,
+        seconds,
+        &hostname,
+    )?;
+    // Convert the byte buffer to a struct pointer for the sl_wfx API
+    let frame_req_ptr: *mut sl_wfx_send_frame_req_t =
+        buf.as_mut_ptr() as *mut _ as *mut sl_wfx_send_frame_req_t;
+    // Send the frame
+    let result = unsafe {
+        sl_wfx_send_ethernet_frame(
+            frame_req_ptr,
+            data_length,
+            sl_wfx_interface_t_SL_WFX_STA_INTERFACE,
+            0,
+        )
+    };
+    // =================================================================
+    match result {
+        SL_STATUS_OK => Ok(()),
+        e => {
+            logln!(LL::Debug, "SendFrameErr {:X}", e);
+            Err(0x10)
         }
-        Err(err_code) => logln!(LL::Debug, "PrngHostnameErr {:X}", err_code),
     }
 }
 

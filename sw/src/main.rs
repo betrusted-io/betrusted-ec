@@ -278,7 +278,11 @@ fn main() -> ! {
                         )
                     ),
                     b'1' => logln!(LL::Debug, "TODO: Send ARP request"),
-                    b'2' => wfx_rs::hal_wf200::send_dhcp_request(),
+                    b'2' => {
+                        if let Err(e) = wfx_rs::hal_wf200::send_dhcp_request() {
+                            logln!(LL::Debug, "SendDhcpReqErr {:X}", e);
+                        }
+                    }
                     b'3' => wfx_rs::hal_wf200::log_net_state(),
                     b'4' => shift_speed_test(),
                     _ => (),
