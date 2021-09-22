@@ -822,7 +822,10 @@ unsafe fn sl_wfx_scan_result_callback(scan_result: *const sl_wfx_scan_result_ind
     let _mac = sr.mac;
     let _dbm = dbm;
     let _chan = sr.channel as u8;
-    for (dst_ssid, src_ssid) in SSID_ARRAY[SSID_INDEX].iter_mut().zip(ssid.as_bytes().iter()) {
+    for (dst_ssid, src_ssid) in SSID_ARRAY[SSID_INDEX]
+        .iter_mut()
+        .zip(ssid.as_bytes().iter())
+    {
         // Filter nulls to '.' to bypass `ssid scan` shellchat command's broken filter
         *dst_ssid = match *src_ssid {
             0 => b'.',
