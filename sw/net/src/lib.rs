@@ -68,7 +68,22 @@ impl NetState {
     }
 }
 
-/// Handle an inbound Ethernet frame
+/// Handle an inbound Ethernet II frame
+///
+/// This was written for the 14-byte "Ethernet II frame header" format described in
+/// Silicon Labs WF200 documentation: {6-byte dest MAC, 6-byte src MAC, 2-byte ethertype},
+/// with no preamble nor trailing checksum. Etherent II is similar to, and largely
+/// compatible with, the newer 802.3 MAC headers, but 802.3 brings the possibility of a
+/// variable length MAC header due to tags (VLAN, etc).
+///
+/// See: https://docs.silabs.com/wifi/wf200/rtos/latest/group-w-f-m-g-r-o-u-p-c-o-n-c-e-p-t-s#WFM-CONCEPT-PACKET
+///
+/// Here we expect to see a fixed 14 byte MAC header and, as a defensive precaution, drop
+/// frames with EtherType values indicating a long 802.3 style MAC header containing tags.
+/// If you want to repurpose this code for use with other network interfaces, particularly
+/// with wired Ethernet, keep in mind that code from this crate was originally written
+/// assuming a fixed-length Ethernet II MAC header at the start of each frame.
+///
 pub fn handle_frame(net_state: &mut NetState, data: &[u8]) -> FilterBin {
     if data.len() < MAC_HEADER_LEN {
         // Drop frames that are too short to contain an Ethernet MAC header
@@ -84,7 +99,7 @@ pub fn handle_frame(net_state: &mut NetState, data: &[u8]) -> FilterBin {
         net_state.filter_stats.inc_count_for(bin);
         return bin;
     }
-    let ethertype = &data[12..14]; // ipv4=0x0800, ipv6=0x86DD, arp=0x0806
+    let ethertype = &data[12..14]; // ipv4=0x0800, ipv6=0x86DD, arp=0x0806, vlan=0x8100
     let filter_bin = match ethertype {
         ETHERTYPE_IPV4 => handle_ipv4_frame(data),
         ETHERTYPE_ARP => handle_arp_frame(data),
@@ -93,48 +108,6 @@ pub fn handle_frame(net_state: &mut NetState, data: &[u8]) -> FilterBin {
     net_state.filter_stats.inc_count_for(filter_bin);
     return filter_bin;
 }
-
-/// Populate the MAC header portion of an Ethernet frame buffer
-// fn fill_mac_header(
-//     pbuf: &mut [u8],
-//     src_mac: &[u8; 6],
-//     dst_mac: &[u8; 6],
-// ) -> Result<(), u8> {
-//     if pbuf.len() < MAC_HEADER_LEN {
-//         return Err(0x01);
-//     }
-//     let dst_mac_it = dst_mac.iter();
-//     let src_mac_it = src_mac.iter();
-//     let ethertype_it = ETHERTYPE_ARP.iter();
-//     let mac_header_it = dst_mac_it.chain(src_mac_it).chain(ethertype_it);
-//     for (dst, src) in pbuf.iter_mut().zip(mac_header_it) {
-//         *dst = *src;
-//     }
-//     return Ok(());
-// }
-
-/// Populate the IP header portion of an Ethernet frame buffer
-// fn fill_ip_header(
-//     pbuf: &mut [u8],
-//     prng: &mut NetPrng,
-//     src_ip: &[u8; 4],
-//     dst_ip: &[u8; 4],
-//     length: u16;
-//     id: u16;
-//     ttl: u8;
-//     protocol: u8,
-// ) -> Result<(), u8> {
-//     if frame.len() < IPV4_MIN_FRAME_LEN {
-//         return Err(0x02);
-//     }
-//     let ver_ihl: u8 = 0x4_5; // ver=IPv4, IPv4 Header Length: 5 * 32-bits = 20 bytes
-//     let dcsp_ecn: u8 = 0b000000_00; // Standard service class, Default forwarding, Non ECN-Capable transport
-//     let flags_offset: u8 = 0b0_0_0_00000; // Reserved=0, DF=0, MF=0, Offset=0
-//     let checksum = 0; // Protocol layer needs to update this once length is known; See RFC1071 (checksum)
-
-//     // TODO: Implement this
-//     return Ok(());
-// }
 
 fn log_hex(s: &[u8]) {
     for i in s {
