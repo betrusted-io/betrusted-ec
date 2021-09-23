@@ -1,5 +1,68 @@
 #![no_std]
 #![forbid(unsafe_code)]
+//! This crate provides a minimalist IP stack with packet filtering.
+//!
+//! The code here is a significant departure from POSIX style networking APIs you may be
+//! familiar with. Guiding principle of this design is to provide minimalist connectivity
+//! for updates and chat while keeping attack surface as small as possible.
+//!
+//! Goals:
+//! 1. Provide transport layer support for downloading software updates
+//! 2. Provide transport layer support for Matrix chat
+//! 3. Keep binary size small enough for EC (UP5K) to run a packet filter, dropping
+//!    broadcast chatter, port scans, and other noise, so that SoC (XC7S) can sleep more
+//!    to make battery last longer
+//! 4. Implement IP standards well enough to interoperate reliably, blend in with other
+//!    hosts, and avoid irritating the local network admins
+//! 5. Take advantage of Rust's safety features: In particular, whenever possible, do
+//!    packet parsing and assembly in modules protected by `#[forbid(unsafe_code)]`
+//!
+//! Anti-Goals:
+//! 1. Supporting web browsing is not a priority
+//! 2. Strict implementation of all "required" features in RFC 791 (Internet Protocol) and
+//!    RFC 1122 (Host Requirements) is not a priority. Guiding principle is to find a
+//!    balance between the goals of interoperating smoothly and limiting attack surface.
+//!    In particular, the packet filter drops packets with IPv4 fragments or options.
+//!
+//! Other Limits of Scope:
+//! 1. Focus of this crate is on safely parsing and assembling Ethernet II frames and
+//!    maintaining related Internet protocol state machines.
+//! 2. Things that require `unsafe`, such as static mut struct instances or network driver
+//!    C FFI calls, should go elsewhere (see sw/src/main.rs and sw/wfx_rs)
+//! 3. Code specific to details of a particular network interface device should probably
+//!    go elsewhere (see sw/wfx_rs). Ethernet II MAC header stuff is sort of an exception.
+//! 4. API code to manage link layer connections should go elsewhere (see sw/src/wlan.rs)
+//!
+//! Fuzzy Edges:
+//! 1. Necessary level of support for DNS is unclear. Using a manually managed contact
+//!    list of static IP addresses might be good enough for communicating with update
+//!    server or proof of concept chat client using a Raspberry Pi on private LAN hosting
+//!    a Matrix homeserver. Might be possible to bridge DNS Ethernet frames across COM bus
+//!    to smoltcp running in Xous.
+//! 2. How to do transport layer for software updates is unclear. Signing and verification
+//!    of binary image files works, so encrypted transport is strictly not required. Might
+//!    still be desirable though.
+//! 3. How to do transport layer for Matrix chat is unclear. Normal clients do Olm double
+//!    ratchet on client, then use https for transport to Matrix server. Maybe we can use
+//!    smoltcp and rustls in Xous with bridging of TCP Ethernet frames across COM bus.
+//!
+//! Priority 1 Features to Support Factory Test ([x]=works, [-]=partial, [ ]=todo):
+//! - [x] Ethernet frame RX and protocol handler dispatch
+//! - [x] Packet filter: drop multicast, unsuported protocol, failed checksum, etc.
+//! - [-] Diagnostic stats event counters with COM bus API
+//! - [-] Ethernet frame TX
+//! - [-] DHCP client
+//! - [ ] ARP Responder
+//! - [ ] ARP cache
+//! - [ ] TX Packet routing to local MAC or gateway using ARP cache and IP/netmask
+//! - [ ] ICMP echo responder and COM bus ping API
+//! - [ ] Connectivity check after DHCP ACK (ping gateway)
+//! - [ ] Handle ICMP destination unreachable
+//!
+//! Priority 2 Features:
+//! - [ ] UDP sockets with COM bus API
+//! - [ ] TCP sockets with COM bus API (maybe pass TCP frames to Xous + smoltcp?)
+//!
 use debug;
 use debug::{log, logln, sprint, sprintln, LL};
 
