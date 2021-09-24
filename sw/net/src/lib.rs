@@ -69,6 +69,7 @@ use debug::{log, logln, sprint, sprintln, LL};
 pub mod dhcp;
 pub mod filter;
 pub mod prng;
+use dhcp::DhcpStateMachine;
 use filter::{FilterBin, FilterStats};
 use prng::NetPrng;
 
@@ -92,6 +93,7 @@ pub struct NetState {
     pub mac: [u8; 6],
     pub filter_stats: FilterStats,
     pub prng: NetPrng,
+    pub dsm: DhcpStateMachine,
 }
 impl NetState {
     /// Initialize a new NetState struct
@@ -100,6 +102,7 @@ impl NetState {
             mac: [0u8; 6],
             filter_stats: FilterStats::new_all_zero(),
             prng: NetPrng::new_from(&[0x55u16; 8]),
+            dsm: DhcpStateMachine::new(),
         }
     }
 
@@ -147,7 +150,7 @@ impl NetState {
 /// with wired Ethernet, keep in mind that code from this crate was originally written
 /// assuming a fixed-length Ethernet II MAC header at the start of each frame.
 ///
-pub fn handle_frame(net_state: &mut NetState, data: &[u8]) -> FilterBin {
+pub fn handle_frame(mut net_state: &mut NetState, data: &[u8]) -> FilterBin {
     if data.len() < MAC_HEADER_LEN {
         // Drop frames that are too short to contain an Ethernet MAC header
         let bin = FilterBin::DropNoise;
@@ -164,7 +167,7 @@ pub fn handle_frame(net_state: &mut NetState, data: &[u8]) -> FilterBin {
     }
     let ethertype = &data[12..14]; // ipv4=0x0800, ipv6=0x86DD, arp=0x0806, vlan=0x8100
     let filter_bin = match ethertype {
-        ETHERTYPE_IPV4 => handle_ipv4_frame(data),
+        ETHERTYPE_IPV4 => handle_ipv4_frame(&mut net_state, data),
         ETHERTYPE_ARP => handle_arp_frame(data),
         _ => FilterBin::DropEType,
     };
@@ -229,7 +232,7 @@ fn ipv4_udp_checksum(data: &[u8]) -> u16 {
     !sum
 }
 
-fn handle_ipv4_frame(data: &[u8]) -> FilterBin {
+fn handle_ipv4_frame(net_state: &mut NetState, data: &[u8]) -> FilterBin {
     if data.len() < IPV4_MIN_FRAME_LEN {
         // Drop frames that are too short to hold an IPV4 header
         return FilterBin::DropNoise;
@@ -258,7 +261,7 @@ fn handle_ipv4_frame(data: &[u8]) -> FilterBin {
     const PROTO_UDP: u8 = 0x11;
     const PROTO_ICMP: u8 = 0x01;
     match ip_proto[0] {
-        PROTO_UDP => handle_udp_frame(data),
+        PROTO_UDP => handle_udp_frame(net_state, data),
         PROTO_ICMP => handle_icmp_frame(data),
         _ => FilterBin::DropProto,
     }
@@ -336,7 +339,7 @@ fn handle_icmp_frame(data: &[u8]) -> FilterBin {
     return FilterBin::Icmp;
 }
 
-fn handle_udp_frame(data: &[u8]) -> FilterBin {
+fn handle_udp_frame(mut net_state: &mut NetState, data: &[u8]) -> FilterBin {
     if data.len() < MIN_UDP_FRAME_LEN {
         // Drop if frame is too short for a minimal well formed UDP datagram
         return FilterBin::DropNoise;
@@ -351,7 +354,7 @@ fn handle_udp_frame(data: &[u8]) -> FilterBin {
     let _length = &udp[4..6];
     let payload = &udp[8..];
     match dst_port {
-        &[0, 67] | &[0, 68] => return dhcp::handle_dhcp_frame(data),
+        &[0, 67] | &[0, 68] => return dhcp::handle_dhcp_frame(&mut net_state, data),
         _ => {
             log!(LL::Debug, "RxUDP ");
             log_mac_header(data);
