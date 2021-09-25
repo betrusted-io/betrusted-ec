@@ -6,7 +6,7 @@ parsing with u8 buffers containing Ethernet II frames (fixed length 14 byte
 header, as opposed to variable length 802.3) as the central data structure.
 
 For people reading this who are already experts in Rust, network programming,
-embedded systems, please forgive the potential explanations of things you
+or embedded systems, please forgive the potential explanations of things you
 already know. The main idea here is to help people from a variety of
 backgrounds get up to speed with sufficient tools and background knowledge to
 read and understand the code of this crate.
@@ -15,8 +15,8 @@ read and understand the code of this crate.
 ## Reading RFCs
 
 References to "RFC" in comments of this crate refer to IETF RFC standards
-documents describing Internet protocols unless otherwise noted. IETF RFCs are
-unrelated to Rust language RFCs.
+documents describing Internet protocols unless otherwise noted. IETF RFCs are,
+for the most part, unrelated to Rust language RFCs.
 
 Many of the variable names and hardcoded byte offsets in this crate correspond
 to packet header diagrams in IETF RFC documents. When you see code comments
@@ -67,11 +67,12 @@ The key idea is that errors will show up on the serial log as a string like,
 `UniqueStr 5A`, which you can use with a multi-file search against the source
 code of this repo.
 
-Searching for `UniqueStr` will lead to an `Err(e) => logln!(..., e),` arm of a
-match block in high level function. The match will be on a `Result` from
-calling an intermediate level function. Searching that intermediate function
-for the `5A` hex literal from the debug log should lead to a unique match, like
-`return 0x5A;` or `foo(..., 0x5a)?;`, that identifies the error's origin.
+Searching for `UniqueStr` will lead to the arm of a match expression in a high
+level function, such as `Err(e) => logln!("UniqueStr {:X}", e),`. The match
+will be on a `Result` from calling an intermediate level function. Searching
+that intermediate function for the `5A` hex literal from the debug log should
+lead to a unique match, like `return Err(0x5A);` or `foo(..., 0x5a)?;`, that
+identifies the error's origin.
 
 For rationale... Space on the EC is tight. To achieve reasonable runtime
 instruction fetch speed, the EC copies its code from flash to RAM at boot, then
@@ -99,7 +100,7 @@ In practice, the error handling mostly looks like this:
    fn high_level_func(...) {
        match intermediate_func(...) {
            Ok(...) => ...,
-           Err(err_code) => logln!(LL::Debug, "UniqueStr {:X}", err_code),
+           Err(e) => logln!(LL::Debug, "UniqueStr {:X}", e),
        };
    }
    ```
@@ -178,5 +179,5 @@ Procedure:
    device it's talking to on the other router, Wireshark should see the
    conversation.
 
-5. Use Wireshark in the normal way. You might find it helpful to use a view
+5. Use Wireshark in the normal way. You might find it helpful to use a display
    filter like "not arp and not mdns and not dns".
