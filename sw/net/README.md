@@ -68,7 +68,7 @@ The key idea is that errors will show up on the serial log as a string like,
 code of this repo.
 
 Searching for `UniqueStr` will lead to the arm of a match expression in a high
-level function, such as `Err(e) => logln!("UniqueStr {:X}", e),`. The match
+level function, such as `Err(e) => logln!(... "UniqueStr {:X}", e),`. The match
 will be on a `Result` from calling an intermediate level function. Searching
 that intermediate function for the `5A` hex literal from the debug log should
 lead to a unique match, like `return Err(0x5A);` or `foo(..., 0x5a)?;`, that
