@@ -272,19 +272,25 @@ fn main() -> ! {
                         concat!(
                             "UartRx Help:\r\n",
                             " 1 => ARP req\r\n",
-                            " 2 => DHCP req\r\n",
-                            " 3 => Show net stats\r\n",
-                            " 4 => Shift speed test"
+                            " 2 => DHCP reset\r\n",
+                            " 3 => DHCP next\r\n",
+                            " 4 => Show net stats\r\n",
+                            " 5 => Shift speed test"
                         )
                     ),
                     b'1' => logln!(LL::Debug, "TODO: Send ARP request"),
                     b'2' => {
-                        if let Err(e) = wfx_rs::hal_wf200::send_dhcp_request() {
-                            logln!(LL::Debug, "SendDhcpReqErr {:X}", e);
+                        if let Err(e) = wfx_rs::hal_wf200::dhcp_reset() {
+                            logln!(LL::Debug, "DhcpResetErr {:X}", e);
                         }
                     }
-                    b'3' => wfx_rs::hal_wf200::log_net_state(),
-                    b'4' => shift_speed_test(),
+                    b'3' => {
+                        if let Err(e) = wfx_rs::hal_wf200::dhcp_do_next() {
+                            logln!(LL::Debug, "DhcpNextErr {:X}", e);
+                        }
+                    }
+                    b'4' => wfx_rs::hal_wf200::log_net_state(),
+                    b'5' => shift_speed_test(),
                     _ => (),
                 }
             } else if uart_state == uart::RxState::Waking {

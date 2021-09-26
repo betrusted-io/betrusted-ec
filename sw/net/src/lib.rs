@@ -40,7 +40,7 @@
 //!    a Matrix homeserver. Might be possible to bridge DNS Ethernet frames across COM bus
 //!    to smoltcp running in Xous.
 //! 2. How to do transport layer for software updates is unclear. Signing and verification
-//!    of binary image files works, so encrypted transport is strictly not required. Might
+//!    of binary image files works, so encrypted transport is not strictly required. Might
 //!    still be desirable though.
 //! 3. How to do transport layer for Matrix chat is unclear. Normal clients do Olm double
 //!    ratchet on client, then use https for transport to Matrix server. Maybe we can use
@@ -68,8 +68,9 @@ use debug::{log, logln, sprint, sprintln, LL};
 
 pub mod dhcp;
 pub mod filter;
+pub mod hostname;
 pub mod prng;
-use dhcp::DhcpStateMachine;
+use dhcp::DhcpClient;
 use filter::{FilterBin, FilterStats};
 use prng::NetPrng;
 
@@ -88,12 +89,12 @@ const MIN_UDP_FRAME_LEN: usize = IPV4_MIN_FRAME_LEN + UDP_HEADER_LEN;
 const ETHERTYPE_IPV4: &[u8] = &[0x08, 0x00];
 const ETHERTYPE_ARP: &[u8] = &[0x08, 0x06];
 
-/// Context maintains network stack state such as addresses and diagnostic stats
+/// Holds network stack state such as DHCP client state, addresses, and diagnostic stats
 pub struct NetState {
     pub mac: [u8; 6],
     pub filter_stats: FilterStats,
     pub prng: NetPrng,
-    pub dsm: DhcpStateMachine,
+    pub dhcp: DhcpClient,
 }
 impl NetState {
     /// Initialize a new NetState struct
@@ -102,7 +103,7 @@ impl NetState {
             mac: [0u8; 6],
             filter_stats: FilterStats::new_all_zero(),
             prng: NetPrng::new_from(&[0x55u16; 8]),
-            dsm: DhcpStateMachine::new(),
+            dhcp: DhcpClient::new(),
         }
     }
 
@@ -138,7 +139,7 @@ impl NetState {
 ///
 /// This was written for the 14-byte "Ethernet II frame header" format described in
 /// Silicon Labs WF200 documentation: {6-byte dest MAC, 6-byte src MAC, 2-byte ethertype},
-/// with no preamble nor trailing checksum. Etherent II is similar to, and largely
+/// with no preamble nor trailing checksum. Ethernet II is similar to, and largely
 /// compatible with, the newer 802.3 MAC headers, but 802.3 brings the possibility of a
 /// variable length MAC header due to tags (VLAN, etc).
 ///
@@ -350,11 +351,11 @@ fn handle_udp_frame(mut net_state: &mut NetState, data: &[u8]) -> FilterBin {
         // Drop if UDP checksum validation fails
         return FilterBin::DropUdpCk;
     }
-    let dst_port = &udp[2..4];
-    let _length = &udp[4..6];
+    let dst_port = u16::from_be_bytes([udp[2], udp[3]]);
     let payload = &udp[8..];
+    const DHCP_CLIENT: u16 = 68;
     match dst_port {
-        &[0, 67] | &[0, 68] => return dhcp::handle_dhcp_frame(&mut net_state, data),
+        DHCP_CLIENT => return dhcp::handle_dhcp_frame(&mut net_state, data),
         _ => {
             log!(LL::Debug, "RxUDP ");
             log_mac_header(data);

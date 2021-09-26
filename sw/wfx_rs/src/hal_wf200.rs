@@ -1,5 +1,4 @@
-#![allow(nonstandard_style)]
-
+#![allow(non_upper_case_globals)]
 use crate::betrusted_hal::hal_time::delay_ms;
 use crate::betrusted_hal::hal_time::get_time_ms;
 use crate::wfx_bindings;
@@ -14,7 +13,7 @@ use debug;
 use debug::{log, logln, sprint, sprintln, LL};
 use net;
 
-// The mixed case constants here are the reason for the `allow(nonstandard_style)` above
+// The mixed case constants here are the reason for the `allow(non_upper_case_globals)` above
 pub use wfx_bindings::{
     sl_status_t, sl_wfx_buffer_type_t, sl_wfx_confirmations_ids_e_SL_WFX_CONNECT_CNF_ID,
     sl_wfx_confirmations_ids_e_SL_WFX_DISCONNECT_CNF_ID,
@@ -54,12 +53,9 @@ pub use wfx_bindings::{
     SL_STATUS_WIFI_SLEEP_GRANTED, SL_WFX_CONT_NEXT_LEN_MASK, SL_WFX_EXCEPTION_DATA_SIZE_MAX,
 };
 
-// ==========================================================
 // ===== Configure Log Level (used in macro expansions) =====
-// ==========================================================
 #[allow(dead_code)]
 const LOG_LEVEL: LL = LL::Debug;
-// ==========================================================
 
 // This is defined in wfx-fullMAC-driver/wfx_fmac_driver/firmware/sl_wfx_general_error_api.h in the enum
 // typedef for sl_wfx_error_t. For some reason that I don't care to hunt down at the moment, this is not
@@ -122,6 +118,16 @@ static mut WIFI_CONTEXT: sl_wfx_context_t = sl_wfx_context_t {
     state: 0,
 };
 
+// DANGER! DANGER! DANGER!
+// The math for these PBUF_* constants, and related buffer slicing using them, determines
+// the correctness of casting PBUF to a `*mut sl_wfx_send_frame_req_t` as required for
+// calling sl_wfx_send_ethernet_frame(). Be wary of any code involving PBUF_* constants.
+const PBUF_HEADER_SIZE: usize = core::mem::size_of::<sl_wfx_send_frame_req_t>();
+const PBUF_DATA_SIZE: usize = 1500;
+const PBUF_SIZE: usize = PBUF_HEADER_SIZE + PBUF_DATA_SIZE;
+/// Packet buffer for building outbound Ethernet II frames
+static mut PBUF: [u8; PBUF_SIZE] = [0; PBUF_SIZE];
+
 /// Export an API for the main event loop to trigger a log dump of packet filter stats, etc.
 pub fn log_net_state() {
     unsafe { NET_STATE.log_state() };
@@ -137,8 +143,25 @@ pub fn net_prng_rand() -> u32 {
     unsafe { NET_STATE.prng.next() }
 }
 
+/// Reset DHCP client state machine to start at INIT state with new random hostname
+pub fn dhcp_reset() -> Result<(), u8> {
+    let mut entropy = [0u32; 3];
+    for dst in entropy.iter_mut() {
+        *dst = unsafe { NET_STATE.prng.next() };
+    }
+    unsafe { NET_STATE.dhcp.begin_at_init(entropy) };
+    let hostname = unsafe { NET_STATE.dhcp.hostname.as_str() };
+    match unsafe { NET_STATE.dhcp.xid } {
+        Some(xid) => {
+            logln!(LL::Debug, "DhcpReset x:{:08X} h:{}", xid, hostname);
+        }
+        _ => return Err(0x01),
+    }
+    Ok(())
+}
+
 /// Send a DHCP request
-pub fn send_dhcp_request() -> Result<(), u8> {
+pub fn dhcp_do_next() -> Result<(), u8> {
     // DANGER! DANGER! DANGER!
     //
     // The wfx driver API for sending frames takes an argument of a C struct with a zero
@@ -150,46 +173,39 @@ pub fn send_dhcp_request() -> Result<(), u8> {
     // into a sl_wfx_send_frame_req_t reference.
     //
     // The following code does those things. Be wary of this stuff. It is dangerous.
-    const HEADER_SIZE: usize = core::mem::size_of::<sl_wfx_send_frame_req_t>();
-    const DATA_SIZE: usize = 342;
-    const BUF_SIZE: usize = HEADER_SIZE + DATA_SIZE + 4;
-    let mut buf: [u8; BUF_SIZE] = [0; BUF_SIZE];
+    const DHCP_DATA_SIZE: usize = 342;
     // TODO: implement a proper state machine for the DHCP Discover flow
-    let mut str_buf = [0u8; 8];
-    let hostname = unsafe { NET_STATE.prng.hostname(&mut str_buf) }?;
-    logln!(LL::Debug, "PrngHostname: {:}", hostname);
     let src_mac: [u8; 6] = unsafe { NET_STATE.mac.clone() };
     let ip_id: u16 = unsafe { NET_STATE.prng.next() } as u16;
-    let dhcp_xid: u32 = unsafe { NET_STATE.prng.next() };
-    let seconds: u16 = 0;
-    // =================================================================
-    // === This is the dangerous part ==================================
-    let data_length = net::dhcp::build_discover_frame(
-        &mut buf[HEADER_SIZE..],
-        &src_mac,
-        ip_id,
-        dhcp_xid,
-        seconds,
-        &hostname,
-    )?;
-    // Convert the byte buffer to a struct pointer for the sl_wfx API
-    let frame_req_ptr: *mut sl_wfx_send_frame_req_t =
-        buf.as_mut_ptr() as *mut _ as *mut sl_wfx_send_frame_req_t;
-    // Send the frame
-    let result = unsafe {
-        sl_wfx_send_ethernet_frame(
+    // Update the packet buffer with bytes for an outbound frame
+    let frame_start = PBUF_HEADER_SIZE;
+    let frame_end = PBUF_HEADER_SIZE + DHCP_DATA_SIZE;
+    unsafe {
+        // CAUTION! PBUF is not zeroed between outbound packets, so old packet data may be
+        // present in PBUF[data_length..PBUF_SIZE]. As long as the math for data_length
+        // correctly specifies the length of the newly generated frame data, all should be
+        // well when sl_wfx_send_ethernet_frame(..., data_length, ...) is called.
+        let data_length = NET_STATE.dhcp.build_discover_frame(
+            &mut PBUF[frame_start..frame_end],
+            &src_mac,
+            ip_id,
+        )?;
+        // Convert the byte buffer to a struct pointer for the sl_wfx API
+        let frame_req_ptr: *mut sl_wfx_send_frame_req_t =
+            PBUF.as_mut_ptr() as *mut _ as *mut sl_wfx_send_frame_req_t;
+        // Send the frame
+        let result = sl_wfx_send_ethernet_frame(
             frame_req_ptr,
             data_length,
             sl_wfx_interface_t_SL_WFX_STA_INTERFACE,
             0,
-        )
-    };
-    // =================================================================
-    match result {
-        SL_STATUS_OK => Ok(()),
-        e => {
-            logln!(LL::Debug, "SendFrameErr {:X}", e);
-            Err(0x10)
+        );
+        match result {
+            SL_STATUS_OK => Ok(()),
+            e => {
+                logln!(LL::Debug, "SendFrameErr {:X}", e);
+                Err(0x10)
+            }
         }
     }
 }

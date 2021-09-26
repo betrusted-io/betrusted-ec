@@ -10,7 +10,7 @@
 //! driver. But, for example, using this code for wired 802.3 Ethernet with variable
 //! header size (VLAN tags) would require modifications.
 //!
-use crate::{FilterBin, NetState, MIN_UDP_FRAME_LEN};
+use crate::{hostname::Hostname, FilterBin, NetState, MIN_UDP_FRAME_LEN};
 use debug::{logln, sprint, sprintln, LL};
 
 // Configure Log Level (used in macro expansions)
@@ -19,92 +19,6 @@ const LOG_LEVEL: LL = LL::Debug;
 const DHCP_HEADER_LEN: usize = 241; // op field -> one byte past options magic cookie
 const MIN_DHCP_FRAME_LEN: usize = MIN_UDP_FRAME_LEN + DHCP_HEADER_LEN;
 const DHCP_FRAME_LEN: usize = 342;
-
-/// Build a DHCP discover packet by filling in a template of byte arrays.
-/// Returns Ok(data_length), where data_length is the number of bytes of pbuf.len()
-/// that were used to hold the packet data
-pub fn build_discover_frame<'a>(
-    mut pbuf: &'a mut [u8],
-    src_mac: &[u8; 6],
-    ip_id: u16,
-    dhcp_xid: u32,
-    seconds: u16,
-    hostname: &str,
-) -> Result<u32, u8> {
-    if pbuf.len() < DHCP_FRAME_LEN {
-        return Err(0x03);
-    }
-    // Buffer might be a full MTU, so only use what we need. (this determines number of loop iterations below)
-    pbuf = &mut pbuf[..DHCP_FRAME_LEN];
-    // Ethernet MAC header
-    let dst_mac = [255u8, 255, 255, 255, 255, 255];
-    let ethertype = [8u8, 0];
-    let mac_it = dst_mac.iter().chain(src_mac.iter()).chain(ethertype.iter());
-    // IP header (checksum starts 0x0000 and gets updated later)
-    let ip_vihl_tos_len = [0x45 as u8, 0x00, 0x01, 0x48];
-    let ip_id_flagfrag = [(ip_id >> 8) as u8, ip_id as u8, 0x00, 0x00];
-    let ip_ttl_proto_csum = [255u8, 17, 0, 0];
-    let ip_src_dst = [0u8, 0, 0, 0, 255, 255, 255, 255];
-    // UDP header
-    let udp_srcp_dstp_len_csum = [0, 68, 0, 67, 0x01, 0x34, 0, 0];
-    let ip_udp_it = ip_vihl_tos_len
-        .iter()
-        .chain(ip_id_flagfrag.iter())
-        .chain(ip_ttl_proto_csum.iter())
-        .chain(ip_src_dst.iter())
-        .chain(udp_srcp_dstp_len_csum.iter());
-    // DHCP
-    let zero = [0u8];
-    let dhcp_op_ht_hl_hop_s = [1u8, 1, 6, 0];
-    let xid = dhcp_xid.to_be_bytes();
-    let dhcp_secs_flags = [(seconds >> 8) as u8, seconds as u8, 0, 0];
-    let dhcp_ci_yi_si_gi = zero.iter().cycle().take(16);
-    let dhcp_chaddr = src_mac.iter().chain(zero.iter().cycle().take(10));
-    let dhcp_sname_file = zero.iter().cycle().take(64 + 128);
-    let dhcp_it = dhcp_op_ht_hl_hop_s
-        .iter()
-        .chain(xid.iter())
-        .chain(dhcp_secs_flags.iter())
-        .chain(dhcp_ci_yi_si_gi)
-        .chain(dhcp_chaddr)
-        .chain(dhcp_sname_file);
-    // DHCP options part 1: magic cookie, 53_type, 55_paramRequestList, 57_maxMsgSize, 61_clientId
-    let dopt1 = [
-        0x63 as u8, 0x82, 0x53, 0x63, 53, 1, 1, 55, 7, 1, 121, 3, 6, 15, 119, 252, 57, 2, 0x05,
-        0xdc, 61, 7, 1,
-    ];
-    // Part 2: chain source MAC as Client ID to finish option 61
-    let dopt2 = src_mac.iter();
-    // Part 3: 51_IpLeaseTime, 12_hostname
-    let dopt3 = [51u8, 4, 0x00, 0x76, 0xa7, 0x00, 12, hostname.len() as u8];
-    // Part 4: chain hostname to finish option 12
-    let dopt4 = hostname.as_bytes().iter();
-    // Part 5: 255_end
-    let dopt5 = [255u8];
-    let pad = zero.iter().cycle();
-    let dhcp_opts_it = dopt1
-        .iter()
-        .chain(dopt2)
-        .chain(dopt3.iter())
-        .chain(dopt4)
-        .chain(dopt5.iter())
-        .chain(pad);
-    let src_it = mac_it.chain(ip_udp_it).chain(dhcp_it).chain(dhcp_opts_it);
-    for (dst, src) in pbuf.iter_mut().zip(src_it) {
-        *dst = *src;
-    }
-    // Do the checksum fixup. Note how these checksum offsets assume the minimum MAC and
-    // IP header size. On some networks (VLAN?), that assumption might cause problems.
-    let ip_csum: u16 = crate::ipv4_checksum(&pbuf);
-    for (dst, src) in pbuf[24..26].iter_mut().zip(ip_csum.to_be_bytes().iter()) {
-        *dst = *src;
-    }
-    let udp_csum: u16 = crate::ipv4_udp_checksum(&pbuf);
-    for (dst, src) in pbuf[40..42].iter_mut().zip(udp_csum.to_be_bytes().iter()) {
-        *dst = *src;
-    }
-    return Ok(pbuf.len() as u32);
-}
 
 /// Parse a DHCP reply and update the DHCP client state machine
 pub fn handle_dhcp_frame(net_state: &mut NetState, data: &[u8]) -> FilterBin {
@@ -159,15 +73,15 @@ pub fn handle_dhcp_frame(net_state: &mut NetState, data: &[u8]) -> FilterBin {
                 opts.dns,
             ) {
                 (Some(DHCPOFFER), Some(sid), Some(gw), Some(sn), Some(dns)) => {
-                    net_state.dsm.handle_offer(xid, sid, yiaddr, gw, sn, dns);
+                    net_state.dhcp.handle_offer(xid, sid, yiaddr, gw, sn, dns);
                     return FilterBin::Dhcp;
                 }
                 (Some(DHCPACK), Some(sid), _, _, _) => {
-                    net_state.dsm.handle_ack(xid, sid);
+                    net_state.dhcp.handle_ack(xid, sid);
                     return FilterBin::Dhcp;
                 }
                 (Some(DHCPNAK), Some(sid), _, _, _) => {
-                    net_state.dsm.handle_nak(xid, sid);
+                    net_state.dhcp.handle_nak(xid, sid);
                     return FilterBin::Dhcp;
                 }
                 // Responses missing any of the required options will match here and get dropped
@@ -181,9 +95,11 @@ pub fn handle_dhcp_frame(net_state: &mut NetState, data: &[u8]) -> FilterBin {
     }
 }
 
-/// State Machine to control DHCP client
-pub struct DhcpStateMachine {
+/// State Machine for DHCP client
+pub struct DhcpClient {
+    pub hostname: Hostname,
     pub state: State,
+    pub secs: u16,
     pub xid: Option<u32>,
     pub sid: Option<u32>,
     pub ip: Option<u32>,
@@ -191,10 +107,12 @@ pub struct DhcpStateMachine {
     pub gateway: Option<u32>,
     pub dns: Option<u32>,
 }
-impl DhcpStateMachine {
+impl DhcpClient {
     pub const fn new() -> Self {
         Self {
+            hostname: Hostname::new_blank(),
             state: State::Init,
+            secs: 0,
             xid: None,
             sid: None,
             ip: None,
@@ -204,8 +122,12 @@ impl DhcpStateMachine {
         }
     }
 
-    pub fn set_xid(&mut self, xid: u32) {
-        self.xid = Some(xid);
+    /// Feed the state machine some entropy so it can start at INIT with new random hostname and xid
+    pub fn begin_at_init(&mut self, entropy: [u32; 3]) {
+        self.hostname.randomize(entropy[0], entropy[1]);
+        self.state = State::Init;
+        self.secs = 0;
+        self.xid = Some(entropy[2]);
     }
 
     /// Handle DHCPOFFER event: transaction ID, server ID, IP, gateway IP, subnet mask, DNS server
@@ -234,6 +156,103 @@ impl DhcpStateMachine {
     /// Handle DHCPNAK event: transaction ID, server ID
     pub fn handle_nak(&mut self, xid: u32, sid: u32) {
         logln!(LL::Debug, "DHCNAK  xid: {:08X}  sid: {:08X}", xid, sid);
+    }
+
+    /// Build a DHCP discover packet by filling in a template of byte arrays.
+    /// Returns Ok(data_length), where data_length is the number of bytes of pbuf.len()
+    /// that were used to hold the packet data
+    pub fn build_discover_frame<'a>(
+        &mut self,
+        mut pbuf: &'a mut [u8],
+        src_mac: &[u8; 6],
+        ip_id: u16,
+    ) -> Result<u32, u8> {
+        if pbuf.len() < DHCP_FRAME_LEN {
+            return Err(0x03);
+        }
+        let xid = match self.xid {
+            Some(x) => x,
+            None => return Err(0x04), // This means state machine was not initialized properly
+        };
+        // Buffer might be a full MTU, so only use what we need. (this determines number of loop iterations below)
+        pbuf = &mut pbuf[..DHCP_FRAME_LEN];
+        // Ethernet MAC header
+        let dst_mac = [255u8, 255, 255, 255, 255, 255];
+        let ethertype = [8u8, 0];
+        let mac_it = dst_mac.iter().chain(src_mac.iter()).chain(ethertype.iter());
+        // IP header (checksum starts 0x0000 and gets updated later)
+        let ip_vihl_tos_len = [0x45 as u8, 0x00, 0x01, 0x48];
+        let ip_id_flagfrag = [(ip_id >> 8) as u8, ip_id as u8, 0x00, 0x00];
+        let ip_ttl_proto_csum = [255u8, 17, 0, 0];
+        let ip_src_dst = [0u8, 0, 0, 0, 255, 255, 255, 255];
+        // UDP header
+        let udp_srcp_dstp_len_csum = [0, 68, 0, 67, 0x01, 0x34, 0, 0];
+        let ip_udp_it = ip_vihl_tos_len
+            .iter()
+            .chain(ip_id_flagfrag.iter())
+            .chain(ip_ttl_proto_csum.iter())
+            .chain(ip_src_dst.iter())
+            .chain(udp_srcp_dstp_len_csum.iter());
+        // DHCP
+        let zero = [0u8];
+        let xid_bytes = xid.to_be_bytes();
+        let dhcp_op_ht_hl_hop_s = [1u8, 1, 6, 0];
+        let dhcp_secs_flags = [(self.secs >> 8) as u8, self.secs as u8, 0, 0];
+        let dhcp_ci_yi_si_gi = zero.iter().cycle().take(16);
+        let dhcp_chaddr = src_mac.iter().chain(zero.iter().cycle().take(10));
+        let dhcp_sname_file = zero.iter().cycle().take(64 + 128);
+        let dhcp_it = dhcp_op_ht_hl_hop_s
+            .iter()
+            .chain(xid_bytes.iter())
+            .chain(dhcp_secs_flags.iter())
+            .chain(dhcp_ci_yi_si_gi)
+            .chain(dhcp_chaddr)
+            .chain(dhcp_sname_file);
+        // DHCP options part 1: magic cookie, 53_type, 55_paramRequestList, 57_maxMsgSize, 61_clientId
+        let dopt1 = [
+            0x63 as u8, 0x82, 0x53, 0x63, 53, 1, 1, 55, 7, 1, 121, 3, 6, 15, 119, 252, 57, 2, 0x05,
+            0xdc, 61, 7, 1,
+        ];
+        // Part 2: chain source MAC as Client ID to finish option 61
+        let dopt2 = src_mac.iter();
+        // Part 3: 51_IpLeaseTime, 12_hostname
+        let dopt3 = [
+            51u8,
+            4,
+            0x00,
+            0x76,
+            0xa7,
+            0x00,
+            12,
+            self.hostname.len() as u8,
+        ];
+        // Part 4: chain hostname to finish option 12
+        let dopt4 = self.hostname.as_bytes().iter();
+        // Part 5: 255_end
+        let dopt5 = [255u8];
+        let pad = zero.iter().cycle();
+        let dhcp_opts_it = dopt1
+            .iter()
+            .chain(dopt2)
+            .chain(dopt3.iter())
+            .chain(dopt4)
+            .chain(dopt5.iter())
+            .chain(pad);
+        let src_it = mac_it.chain(ip_udp_it).chain(dhcp_it).chain(dhcp_opts_it);
+        for (dst, src) in pbuf.iter_mut().zip(src_it) {
+            *dst = *src;
+        }
+        // Do the checksum fixup. Note how these checksum offsets assume the minimum MAC and
+        // IP header size. On some networks (VLAN?), that assumption might cause problems.
+        let ip_csum: u16 = crate::ipv4_checksum(&pbuf);
+        for (dst, src) in pbuf[24..26].iter_mut().zip(ip_csum.to_be_bytes().iter()) {
+            *dst = *src;
+        }
+        let udp_csum: u16 = crate::ipv4_udp_checksum(&pbuf);
+        for (dst, src) in pbuf[40..42].iter_mut().zip(udp_csum.to_be_bytes().iter()) {
+            *dst = *src;
+        }
+        return Ok(pbuf.len() as u32);
     }
 }
 
