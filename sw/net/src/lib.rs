@@ -116,12 +116,10 @@ impl NetState {
     pub fn log_state(&self) {
         log!(LL::Debug, "MAC ");
         log_hex(&self.mac);
-        logln!(
-            LL::Debug,
-            "\r\nDropNoise {:X}",
-            self.filter_stats.drop_noise
-        );
+        logln!(LL::Debug, "");
+        logln!(LL::Debug, "DropNoise {:X}", self.filter_stats.drop_noise);
         logln!(LL::Debug, "DropEType {:X}", self.filter_stats.drop_etype);
+        logln!(LL::Debug, "DropDhcp {:X}", self.filter_stats.drop_dhcp);
         logln!(LL::Debug, "DropMulti {:X}", self.filter_stats.drop_multi);
         logln!(LL::Debug, "DropProto {:X}", self.filter_stats.drop_proto);
         logln!(LL::Debug, "DropFrag {:X}", self.filter_stats.drop_frag);
@@ -340,7 +338,7 @@ fn handle_icmp_frame(data: &[u8]) -> FilterBin {
     return FilterBin::Icmp;
 }
 
-fn handle_udp_frame(mut net_state: &mut NetState, data: &[u8]) -> FilterBin {
+fn handle_udp_frame(net_state: &mut NetState, data: &[u8]) -> FilterBin {
     if data.len() < MIN_UDP_FRAME_LEN {
         // Drop if frame is too short for a minimal well formed UDP datagram
         return FilterBin::DropNoise;
@@ -355,7 +353,7 @@ fn handle_udp_frame(mut net_state: &mut NetState, data: &[u8]) -> FilterBin {
     let payload = &udp[8..];
     const DHCP_CLIENT: u16 = 68;
     match dst_port {
-        DHCP_CLIENT => return dhcp::handle_dhcp_frame(&mut net_state, data),
+        DHCP_CLIENT => return net_state.dhcp.handle_frame(data),
         _ => {
             log!(LL::Debug, "RxUDP ");
             log_mac_header(data);

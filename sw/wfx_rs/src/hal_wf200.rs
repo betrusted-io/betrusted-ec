@@ -4,6 +4,7 @@ use crate::betrusted_hal::hal_time::get_time_ms;
 use crate::wfx_bindings;
 use core::slice;
 use core::str;
+use net::dhcp::PacketNeeded;
 use utralib::generated::{utra, CSR, HW_WIFI_BASE};
 
 mod bt_wf200_pds;
@@ -87,7 +88,7 @@ static mut SSID_ARRAY: [[u8; 32]; SSID_ARRAY_SIZE] = [[0; 32]; SSID_ARRAY_SIZE];
 static mut SSID_INDEX: usize = 0;
 
 /// Possible link layer connection states
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 pub enum State {
     Unknown,
     ResetHold,
@@ -162,6 +163,10 @@ pub fn dhcp_reset() -> Result<(), u8> {
 
 /// Send a DHCP request
 pub fn dhcp_do_next() -> Result<(), u8> {
+    // Make sure the link is active before we try to use it
+    if unsafe { CURRENT_STATUS != State::Connected } {
+        return Err(0x20);
+    }
     // DANGER! DANGER! DANGER!
     //
     // The wfx driver API for sending frames takes an argument of a C struct with a zero
@@ -173,23 +178,37 @@ pub fn dhcp_do_next() -> Result<(), u8> {
     // into a sl_wfx_send_frame_req_t reference.
     //
     // The following code does those things. Be wary of this stuff. It is dangerous.
-    const DHCP_DATA_SIZE: usize = 342;
+    //
     // TODO: implement a proper state machine for the DHCP Discover flow
     let src_mac: [u8; 6] = unsafe { NET_STATE.mac.clone() };
     let ip_id: u16 = unsafe { NET_STATE.prng.next() } as u16;
     // Update the packet buffer with bytes for an outbound frame
-    let frame_start = PBUF_HEADER_SIZE;
-    let frame_end = PBUF_HEADER_SIZE + DHCP_DATA_SIZE;
     unsafe {
-        // CAUTION! PBUF is not zeroed between outbound packets, so old packet data may be
+        // CAUTION: PBUF is not zeroed between outbound packets, so old packet data may be
         // present in PBUF[data_length..PBUF_SIZE]. As long as the math for data_length
         // correctly specifies the length of the newly generated frame data, all should be
         // well when sl_wfx_send_ethernet_frame(..., data_length, ...) is called.
-        let data_length = NET_STATE.dhcp.build_discover_frame(
-            &mut PBUF[frame_start..frame_end],
-            &src_mac,
-            ip_id,
-        )?;
+        let data_length: u32;
+        match NET_STATE.dhcp.cycle_clock() {
+            PacketNeeded::Discover => {
+                data_length = NET_STATE.dhcp.build_discover_frame(
+                    &mut PBUF[PBUF_HEADER_SIZE..],
+                    &src_mac,
+                    ip_id,
+                )?;
+            }
+            PacketNeeded::Request | PacketNeeded::Rebind | PacketNeeded::Renew => {
+                data_length = NET_STATE.dhcp.build_request_frame(
+                    &mut PBUF[PBUF_HEADER_SIZE..],
+                    &src_mac,
+                    ip_id,
+                )?;
+            }
+            PacketNeeded::None => {
+                logln!(LL::Debug, "DhcpNop");
+                return Ok(());
+            }
+        }
         // Convert the byte buffer to a struct pointer for the sl_wfx API
         let frame_req_ptr: *mut sl_wfx_send_frame_req_t =
             PBUF.as_mut_ptr() as *mut _ as *mut sl_wfx_send_frame_req_t;
@@ -204,7 +223,7 @@ pub fn dhcp_do_next() -> Result<(), u8> {
             SL_STATUS_OK => Ok(()),
             e => {
                 logln!(LL::Debug, "SendFrameErr {:X}", e);
-                Err(0x10)
+                Err(0x21)
             }
         }
     }

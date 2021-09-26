@@ -3,10 +3,11 @@
 pub enum FilterBin {
     DropNoise, // Malformed packet
     DropEType, // Unsupported Ethernet protocol (perhaps IPv6, 802.1Q VLAN, etc)
+    DropDhcp, // DHCP noise (perhaps malformed options or server response out of sync with client state machine)
     DropMulti, // Multicast (likely mDNS)
     DropProto, // Unsupported IP layer protocol (perhaps TCP)
-    DropFrag,  // Unsupported packet fragment
-    DropIpCk,  // Bad IP header checksum
+    DropFrag, // Unsupported packet fragment
+    DropIpCk, // Bad IP header checksum
     DropUdpCk, // Bad UDP header checksum
     ArpReq,
     ArpReply,
@@ -19,6 +20,7 @@ pub enum FilterBin {
 pub struct FilterStats {
     pub drop_noise: u16,
     pub drop_etype: u16,
+    pub drop_dhcp: u16,
     pub drop_multi: u16,
     pub drop_proto: u16,
     pub drop_frag: u16,
@@ -36,6 +38,7 @@ impl FilterStats {
         FilterStats {
             drop_noise: 0,
             drop_etype: 0,
+            drop_dhcp: 0,
             drop_multi: 0,
             drop_proto: 0,
             drop_frag: 0,
@@ -59,6 +62,7 @@ impl FilterStats {
         match filter_bin {
             FilterBin::DropNoise => self.drop_noise = self.drop_noise.saturating_add(1),
             FilterBin::DropEType => self.drop_etype = self.drop_etype.saturating_add(1),
+            FilterBin::DropDhcp => self.drop_dhcp = self.drop_dhcp.saturating_add(1),
             FilterBin::DropMulti => self.drop_multi = self.drop_multi.saturating_add(1),
             FilterBin::DropProto => self.drop_proto = self.drop_proto.saturating_add(1),
             FilterBin::DropFrag => self.drop_frag = self.drop_frag.saturating_add(1),
