@@ -64,7 +64,7 @@
 //! - [ ] TCP sockets with COM bus API (maybe pass TCP frames to Xous + smoltcp?)
 //!
 use debug;
-use debug::{log, logln, sprint, sprintln, LL};
+use debug::{log, loghexln, logln, LL};
 
 pub mod dhcp;
 pub mod filter;
@@ -117,19 +117,19 @@ impl NetState {
         log!(LL::Debug, "MAC ");
         log_hex(&self.mac);
         logln!(LL::Debug, "");
-        logln!(LL::Debug, "DropNoise {:X}", self.filter_stats.drop_noise);
-        logln!(LL::Debug, "DropEType {:X}", self.filter_stats.drop_etype);
-        logln!(LL::Debug, "DropDhcp {:X}", self.filter_stats.drop_dhcp);
-        logln!(LL::Debug, "DropMulti {:X}", self.filter_stats.drop_multi);
-        logln!(LL::Debug, "DropProto {:X}", self.filter_stats.drop_proto);
-        logln!(LL::Debug, "DropFrag {:X}", self.filter_stats.drop_frag);
-        logln!(LL::Debug, "DropIpCk {:X}", self.filter_stats.drop_ipck);
-        logln!(LL::Debug, "DropUdpCk {:X}", self.filter_stats.drop_udpck);
-        logln!(LL::Debug, "ArpReq {:X}", self.filter_stats.arp_req);
-        logln!(LL::Debug, "ArpReply {:X}", self.filter_stats.arp_reply);
-        logln!(LL::Debug, "Icmp {:X}", self.filter_stats.icmp);
-        logln!(LL::Debug, "Dhcp {:X}", self.filter_stats.dhcp);
-        logln!(LL::Debug, "Udp {:X}", self.filter_stats.udp);
+        loghexln!(LL::Debug, "DropNoise ", self.filter_stats.drop_noise);
+        loghexln!(LL::Debug, "DropEType ", self.filter_stats.drop_etype);
+        loghexln!(LL::Debug, "DropDhcp ", self.filter_stats.drop_dhcp);
+        loghexln!(LL::Debug, "DropMulti ", self.filter_stats.drop_multi);
+        loghexln!(LL::Debug, "DropProto ", self.filter_stats.drop_proto);
+        loghexln!(LL::Debug, "DropFrag ", self.filter_stats.drop_frag);
+        loghexln!(LL::Debug, "DropIpCk ", self.filter_stats.drop_ipck);
+        loghexln!(LL::Debug, "DropUdpCk ", self.filter_stats.drop_udpck);
+        loghexln!(LL::Debug, "ArpReq ", self.filter_stats.arp_req);
+        loghexln!(LL::Debug, "ArpReply ", self.filter_stats.arp_reply);
+        loghexln!(LL::Debug, "Icmp ", self.filter_stats.icmp);
+        loghexln!(LL::Debug, "Dhcp ", self.filter_stats.dhcp);
+        loghexln!(LL::Debug, "Udp ", self.filter_stats.udp);
     }
 }
 

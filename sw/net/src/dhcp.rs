@@ -11,7 +11,7 @@
 //! header size (VLAN tags) would require modifications.
 //!
 use crate::{hostname::Hostname, FilterBin, MIN_UDP_FRAME_LEN};
-use debug::{logln, sprint, sprintln, LL};
+use debug::{loghexln, logln, LL};
 
 // Configure Log Level (used in macro expansions)
 const LOG_LEVEL: LL = LL::Debug;
@@ -566,7 +566,7 @@ impl DhcpClient {
                 }
             }
             Err(err_code) => {
-                logln!(LL::Debug, "RxDHCP optsErr {:}", err_code);
+                loghexln!(LL::Debug, "RXDHCP optsErr ", err_code);
                 return FilterBin::DropDhcp;
             }
         }

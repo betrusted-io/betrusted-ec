@@ -11,7 +11,7 @@ mod bt_wf200_pds;
 
 use bt_wf200_pds::PDS_DATA;
 use debug;
-use debug::{log, logln, sprint, sprintln, LL};
+use debug::{log, loghex, loghexln, logln, LL};
 use net;
 
 // The mixed case constants here are the reason for the `allow(non_upper_case_globals)` above
@@ -222,7 +222,7 @@ pub fn dhcp_do_next() -> Result<(), u8> {
         match result {
             SL_STATUS_OK => Ok(()),
             e => {
-                logln!(LL::Debug, "SendFrameErr {:X}", e);
+                loghexln!(LL::Debug, "SendFrameErr ", e);
                 Err(0x21)
             }
         }
@@ -799,7 +799,7 @@ fn sl_wfx_connect_callback(_mac: [u8; 6usize], status: u32) {
             logln!(LL::Debug, "ConnAuthFail");
         }
         _ => {
-            logln!(LL::Debug, "ConnErr {:X}", status);
+            loghexln!(LL::Debug, "ConnErr ", status);
         }
     }
     unsafe {
@@ -847,7 +847,7 @@ unsafe fn sl_wfx_scan_result_callback(scan_result: *const sl_wfx_scan_result_ind
     let dbm = 32768 - ((sr.rcpi - 220) / 2);
     log!(LL::Debug, "ssid {:X} -{:X}", channel, dbm);
     for i in sr.mac.iter() {
-        log!(LL::Debug, " {:X}", *i);
+        loghex!(LL::Debug, " ", *i);
     }
     logln!(LL::Debug, " {}", ssid);
     // Update the scan result log
@@ -969,13 +969,13 @@ pub unsafe extern "C" fn sl_wfx_host_post_event(
             let generic_ind: *const sl_wfx_generic_ind_t =
                 event_payload as *const sl_wfx_generic_ind_t;
             let ind_type = (*generic_ind).body.indication_type;
-            logln!(LL::Debug, "WfxGeneric {:X}", ind_type);
+            loghexln!(LL::Debug, "WfxGeneric ", ind_type);
         }
         sl_wfx_general_indications_ids_e_SL_WFX_EXCEPTION_IND_ID => {
             let exception_ind: *const sl_wfx_exception_ind_t =
                 event_payload as *const sl_wfx_exception_ind_t;
             let reason = core::ptr::addr_of!((*exception_ind).body.reason).read_unaligned();
-            logln!(LL::Warn, "WfxException {:X}", reason);
+            loghexln!(LL::Warn, "WfxException ", reason);
         }
         sl_wfx_general_indications_ids_e_SL_WFX_ERROR_IND_ID => {
             let firmware_error: *const sl_wfx_error_ind_t =
@@ -989,7 +989,7 @@ pub unsafe extern "C" fn sl_wfx_host_post_event(
             log!(LL::Debug, "WfxError: ");
             match error {
                 SL_WFX_HIF_BUS_ERROR => logln!(LL::Debug, "WfxHifBusErr"),
-                _ => logln!(LL::Debug, "{:X}", error),
+                _ => loghexln!(LL::Debug, "", error),
             }
         }
         sl_wfx_general_indications_ids_e_SL_WFX_STARTUP_IND_ID => {
@@ -1021,7 +1021,7 @@ pub unsafe extern "C" fn sl_wfx_host_post_event(
             // That happens a lot if the control loop polls, so ignore this
         }
         _ => {
-            logln!(LL::Warn, "WfxUnhandled {:X}", msg_type);
+            loghexln!(LL::Warn, "WfxUnhandled ", msg_type);
         }
     }
 

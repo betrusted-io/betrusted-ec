@@ -27,7 +27,7 @@ use com_rs::serdes::{StringSer, STR_64_U8_SIZE, STR_64_WORDS};
 use com_rs::ComState;
 use core::panic::PanicInfo;
 use debug;
-use debug::{log, logln, sprint, sprintln, LL};
+use debug::{log, loghex, loghexln, logln, LL};
 use riscv_rt::entry;
 use utralib::generated::{
     utra, CSR, HW_COM_BASE, HW_CRG_BASE, HW_GIT_BASE, HW_POWER_BASE, HW_TICKTIMER_BASE,
@@ -115,7 +115,9 @@ fn shift_speed_test() {
     let x = (a ^ b) & 15;
     let y = t1 - t0; // Time for short shifts (distance 8 left)
     let z = t2 - t1; // Time for long shifts (distance 53 left)
-    logln!(LL::Debug, "ShiftSpeed _:{:X}, 8L:{:X}, 53L:{:X}", x, y, z);
+    loghex!(LL::Debug, "ShiftSpeed _:", x);
+    loghex!(LL::Debug, ", 8L:", y);
+    loghexln!(LL::Debug, ", 53L:", z);
 }
 
 #[entry]
@@ -178,12 +180,12 @@ fn main() -> ! {
     hw.charger.chg_set_autoparams(&mut i2c);
     hw.charger.chg_start(&mut i2c);
     let tusb320_rev = hw.usb_cc.init(&mut i2c);
-    logln!(LL::Debug, "tusb320_rev {:X}", tusb320_rev);
+    loghexln!(LL::Debug, "tusb320_rev ", tusb320_rev);
     // Initialize the IMU, note special handling for debug logging of init result
     let mut tap_check_phase: u32 = 0;
     match Imu::init(&mut i2c) {
-        Ok(who_am_i_reg) => logln!(LL::Debug, "ImuInitOk {:X}", who_am_i_reg), // Should be 0x6A
-        Err(n) => logln!(LL::Debug, "ImuInitErr {:X}", n),
+        Ok(who_am_i_reg) => loghexln!(LL::Debug, "ImuInitOk ", who_am_i_reg), // Should be 0x6A
+        Err(n) => loghexln!(LL::Debug, "ImuInitErr ", n),
     }
     // make sure the backlight is off on boot
     hw.backlight.set_brightness(&mut i2c, 0, 0);
@@ -281,12 +283,12 @@ fn main() -> ! {
                     b'1' => logln!(LL::Debug, "TODO: Send ARP request"),
                     b'2' => {
                         if let Err(e) = wfx_rs::hal_wf200::dhcp_reset() {
-                            logln!(LL::Debug, "DhcpResetErr {:X}", e);
+                            loghexln!(LL::Debug, "DhcpResetErr ", e);
                         }
                     }
                     b'3' => {
                         if let Err(e) = wfx_rs::hal_wf200::dhcp_do_next() {
-                            logln!(LL::Debug, "DhcpNextErr {:X}", e);
+                            loghexln!(LL::Debug, "DhcpNextErr ", e);
                         }
                     }
                     b'4' => wfx_rs::hal_wf200::log_net_state(),
@@ -323,7 +325,7 @@ fn main() -> ! {
             unsafe {
                 rx = (*com_rd).read() as u16;
             }
-            logln!(LL::Trace, "rx: {:x}", rx);
+            loghexln!(LL::Trace, "rx: ", rx);
 
             if rx == ComState::SSID_CHECK.verb {
                 logln!(LL::Debug, "CSsidChk");
@@ -716,7 +718,7 @@ fn main() -> ! {
                     }
                 }
             } else {
-                logln!(LL::Debug, "ComError {:X}", rx);
+                loghexln!(LL::Debug, "ComError ", rx);
                 com_tx(ComState::ERROR.verb);
             }
         }
