@@ -55,20 +55,39 @@ pub fn delay_ms(ms: u32) {
     // DANGER! DANGER! DANGER!
     //
     // This code is designed with the intent to never, no matter what, panic nor block the
-    // main event loop. In the pursuit of that ideal, surprising things may happen.
-    //
-    // The delay time is capped at 238 ms, which is (2^32)/18MHz. There might be good
-    // reasons for calling code to want longer delays. But, code which blocks the event
-    // loop for more than perhaps 10-20ms will mess up network latency. The right solution
-    // is to use a state machine to track long intervals.
+    // main event loop. In the pursuit of that ideal, surprising things may happen. In
+    // particular, there is a cap on the maximum delay time that is silently enforced.
     //
     // Logging a warning here about requests for long delays is impractical, because the
     // logging code calls delay_ms(). So, my awkward compromise is to silently limit the
     // requested delay inteval. This is a big dangerous footgun. Consider yourself warned.
     //
-    const MAX_MS: usize = 238;
-    const CLOCK_HZ: usize = 18_000_000;
-    const MAX_LOOP_ITERATIONS: usize = MAX_MS * CLOCK_HZ;
+    // Not blocking the main event loop means this function is careful to impose upper
+    // bounds on how long it can take to return. Those limits are:
+    //
+    // 1. The delay is capped at a max of 500 ms, which is chosen to be an order of
+    //    magnitude larger than reasonable maximum delays of about 10-20ms of per
+    //    iteration of the main event loop. Long intervals should be managed with a state
+    //    machine to avoid negative effects on network responsiveness.
+    //
+    // 2. The for loop is limited by a counter to prevent runaway code in the event of an
+    //    IO problem with the timer or an error in the delay calculations. The loop
+    //    counter estimates 1 clock cycle per iteration because it makes the math easy.
+    //    The actual iterations will be slower, but estimating how much slower is
+    //    difficult. It doesn't matter. The point is that the counter is large enough not
+    //    to truncate the delay and small enough to force the loop to end within seconds
+    //    rather than minutes, weeks, or not at all.
+    //
+    // Loop counter math:
+    // 1. Each iteration of the for loop is definitely going to take at least 1 cycle of
+    //    the 18MHz CPU clock to finish
+    // 2. The hardware timer resolution is 1ms
+    // 3. There are 0.001(s/ms) * 18e+6(Hz) = 18000 CPU clock cycles per ms
+    // 4. A 500ms delay should finish within 500 * 18000 = 9e+6 clock cycles
+    // 5. Maximum value for u32 loop counter is 4e+9, so 9e+6 will fit fine
+    //
+    const MAX_MS: usize = 500;
+    const MAX_LOOP_ITERATIONS: usize = MAX_MS * 18_000;
     let capped_ms = match ms < MAX_MS as u32 {
         true => ms,
         false => MAX_MS as u32,
