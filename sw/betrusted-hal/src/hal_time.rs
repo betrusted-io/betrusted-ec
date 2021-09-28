@@ -1,25 +1,19 @@
 use utralib::generated::*;
 
-const TICKS_PER_MS: u64 = 1;
-
 pub fn time_init() {
     let mut ticktimer_csr = CSR::new(HW_TICKTIMER_BASE as *mut u32);
 
     ticktimer_csr.wfo(utra::ticktimer::CONTROL_RESET, 1);
 }
 
-// time APIs needed (ideally)
-// get current time - in milliseconds, as u32
-// delay for milliseconds
+/// Return the low word from the 64-bit hardware millisecond timer.
+///
+/// Note: High word is available in ticktimer_csr.r(utra::ticktimer::TIME1)
+/// TODO: Consider how to deal with rollover at 49.7 days from power up
+///
 pub fn get_time_ms() -> u32 {
     let ticktimer_csr = CSR::new(HW_TICKTIMER_BASE as *mut u32);
-
-    let mut time: u64;
-
-    time = ticktimer_csr.r(utra::ticktimer::TIME0) as u64;
-    time |= (ticktimer_csr.r(utra::ticktimer::TIME1) as u64) << 32;
-
-    (time / TICKS_PER_MS) as u32
+    ticktimer_csr.r(utra::ticktimer::TIME0)
 }
 
 pub fn get_time_ticks() -> u64 {
