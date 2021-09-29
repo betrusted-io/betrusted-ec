@@ -5,3 +5,4 @@ edition = "2018"
 
 [dependencies]
 debug = { path = "../debug" }
+betrusted-hal = { path = "../betrusted-hal" }

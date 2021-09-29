@@ -281,16 +281,14 @@ fn main() -> ! {
                         )
                     ),
                     b'1' => logln!(LL::Debug, "TODO: Send ARP request"),
-                    b'2' => {
-                        if let Err(e) = wfx_rs::hal_wf200::dhcp_reset() {
-                            loghexln!(LL::Debug, "DhcpResetErr ", e);
-                        }
-                    }
-                    b'3' => {
-                        if let Err(e) = wfx_rs::hal_wf200::dhcp_do_next() {
-                            loghexln!(LL::Debug, "DhcpNextErr ", e);
-                        }
-                    }
+                    b'2' => match wfx_rs::hal_wf200::dhcp_reset() {
+                        Ok(_) => (),
+                        Err(e) => loghexln!(LL::Debug, "DhcpResetErr ", e),
+                    },
+                    b'3' => match wfx_rs::hal_wf200::dhcp_do_next() {
+                        Ok(_) => (),
+                        Err(e) => loghexln!(LL::Debug, "DhcpNextErr ", e),
+                    },
                     b'4' => wfx_rs::hal_wf200::log_net_state(),
                     b'5' => shift_speed_test(),
                     _ => (),

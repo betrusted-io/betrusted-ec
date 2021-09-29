@@ -11,7 +11,7 @@ pub fn time_init() {
 /// 40-bit overflow would take 34 years of uptime, so no need to worry about it.
 /// 32-bit overflow would take 49.7 days of uptime, so need to consider it.
 #[derive(Copy, Clone, PartialEq)]
-struct TimeMs {
+pub struct TimeMs {
     time0: u32, // Low 32-bits from hardware timer
     time1: u32, // High 8-bits from hardware timer
 }

@@ -146,7 +146,7 @@ pub fn net_prng_rand() -> u32 {
 
 /// Reset DHCP client state machine to start at INIT state with new random hostname
 pub fn dhcp_reset() -> Result<(), u8> {
-    let mut entropy = [0u32; 3];
+    let mut entropy = [0u32; 5];
     for dst in entropy.iter_mut() {
         *dst = unsafe { NET_STATE.prng.next() };
     }
@@ -179,16 +179,15 @@ pub fn dhcp_do_next() -> Result<(), u8> {
     //
     // The following code does those things. Be wary of this stuff. It is dangerous.
     //
-    // TODO: implement a proper state machine for the DHCP Discover flow
     let src_mac: [u8; 6] = unsafe { NET_STATE.mac.clone() };
     let ip_id: u16 = unsafe { NET_STATE.prng.next() } as u16;
-    // Update the packet buffer with bytes for an outbound frame
     unsafe {
         // CAUTION: PBUF is not zeroed between outbound packets, so old packet data may be
         // present in PBUF[data_length..PBUF_SIZE]. As long as the math for data_length
         // correctly specifies the length of the newly generated frame data, all should be
         // well when sl_wfx_send_ethernet_frame(..., data_length, ...) is called.
         let data_length: u32;
+        // Clock the DHCP state machine and, depending on what it returns, maybe send a packet
         match NET_STATE.dhcp.cycle_clock() {
             PacketNeeded::Discover => {
                 data_length = NET_STATE.dhcp.build_discover_frame(
