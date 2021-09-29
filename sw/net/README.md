@@ -68,7 +68,7 @@ The key idea is that errors will show up on the serial log as a string like,
 code of this repo.
 
 Searching for `UniqueStr` will lead to the arm of a match expression in a high
-level function, such as `Err(e) => logln!(... "UniqueStr {:X}", e),`. The match
+level function, such as `Err(e) => loghexln!(... "UniqueStr ", e),`. The match
 will be on a `Result` from calling an intermediate level function. Searching
 that intermediate function for the `5A` hex literal from the debug log should
 lead to a unique match, like `return Err(0x5A);` or `foo(..., 0x5a)?;`, that
@@ -100,7 +100,7 @@ In practice, the error handling mostly looks like this:
    fn high_level_func(...) {
        match intermediate_func(...) {
            Ok(...) => ...,
-           Err(e) => logln!(LL::Debug, "UniqueStr {:X}", e),
+           Err(e) => loghexln!(LL::Debug, "UniqueStr ", e),
        };
    }
    ```
@@ -140,6 +140,39 @@ In practice, the error handling mostly looks like this:
    ```
 
 
+## On Quotas and Bounded Loops
+
+This section is an attempt to explain the philosophical basis for some unusual
+code patterns used in this crate (at least compared to web apps and such).
+
+This crate is written with the goals of being robust and including built in
+diagnostics. Ideally, it should not panic, it should not fail under heavy load,
+and it should degrade gracefully in the presence of hardware faults.
+
+Degrading gracefully includes things like diagnosing assembly faults during
+factory tests, or logging missing peripherals when bringing up a hardware
+simulation environment. Toward that end, the primary techniques are avoiding
+blocking the main event loop and being sure to return error codes. Not blocking
+the event loop means avoiding panics and avoiding getting stuck in infinite
+loops. As long as functions return promptly to return control flow to the event
+loop, then there will be an opportunity to log and report any error codes they
+return.
+
+One of the ways this crate attempts to pursue that goal is by making sure that
+loops are always bounded. In practice, that means estimating the maximum
+resonable number of possible loop iterations, then using `for` rather than
+`while` or `loop`. To learn more about the rationale for using bounded loops,
+try searching for "The Power of 10: Rules for Developing Safety-Critical Code".
+
+Another method to make things robust is to plan for always having an upper
+limit on numeric quantities. Memory allocations are bounded. Retry timeouts are
+bounded. Integer math is bounded (using saturate or wrap instead of panic on
+overflow). The method of picking limits can use calculations, tests and
+measurements, rough estimating, wild guessing, or whatever. The important thing
+is that the code checks for limits in controlled ways that can detect and
+report errors without interrupting the control flow of the main event loop.
+
+
 ## On Using Wireshark
 
 If you want to modify this crate, or understand it well, you probably should
@@ -173,11 +206,11 @@ Procedure:
    computer into the managed switch.
 
 4. Configure the managed switch's port mirroring feature to mirror packets
-   *from* the ports for the wifi routers *to* the port for your Wireshark
-   computer. With port mirroring configured, all the packets passing between the
-   routers should be visible to Wireshark. With Precursor on one router and the
-   device it's talking to on the other router, Wireshark should see the
-   conversation.
+   *from* the port for the bridge mode wifi router *to* the port for your
+   Wireshark computer. With port mirroring configured, all the packets passing
+   to and from your bridge mode router should be visible to Wireshark. With
+   Precursor on one router and the device it's talking to on the other router,
+   Wireshark should see the conversation.
 
 5. Use Wireshark in the normal way. You might find it helpful to use a display
    filter like "not arp and not mdns and not dns".
