@@ -70,6 +70,7 @@ pub mod dhcp;
 pub mod filter;
 pub mod hostname;
 pub mod prng;
+pub mod timers;
 use dhcp::DhcpClient;
 use filter::{FilterBin, FilterStats};
 use prng::NetPrng;
