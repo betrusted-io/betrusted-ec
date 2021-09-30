@@ -13,7 +13,7 @@ pub enum StopwatchErr {
 }
 impl Stopwatch {
     /// Initialize a new stopwatch timer in halted state
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self { start_time: None }
     }
 
@@ -21,6 +21,11 @@ impl Stopwatch {
     /// You can reset the timer by calling this again to start over at 0s.
     pub fn start(&mut self) {
         self.start_time = Some(TimeMs::now());
+    }
+
+    /// Reset timer to its newly initialized state (halted)
+    pub fn reset(&mut self) {
+        self.start_time = None;
     }
 
     /// Return elapsed ms since stopwatch was started

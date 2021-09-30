@@ -11,7 +11,7 @@
 //! header size (VLAN tags) would require modifications.
 //!
 extern crate betrusted_hal;
-use crate::timers::{RetryStatus, RetryTimer};
+use crate::timers::{RetryStatus, RetryTimer, Stopwatch, StopwatchErr};
 use crate::{hostname::Hostname, FilterBin, MIN_UDP_FRAME_LEN};
 use debug::{loghexln, logln, LL};
 
@@ -53,7 +53,7 @@ pub struct DhcpClient {
     entropy: [u32; 2],
     pub hostname: Hostname,
     pub state: State,
-    pub secs: u16,
+    pub secs: Stopwatch,
     pub retry: RetryTimer,
     pub xid: Option<u32>,
     pub sid: Option<u32>,
@@ -68,7 +68,7 @@ impl DhcpClient {
             entropy: [0; 2],
             hostname: Hostname::new_blank(),
             state: State::Halted,
-            secs: 0,
+            secs: Stopwatch::new(),
             retry: RetryTimer::new_halted(),
             xid: None,
             sid: None,
@@ -88,7 +88,13 @@ impl DhcpClient {
         self.dns = None;
     }
 
-    /// Randomize a retry
+    /// Reset to refelct a state transition to halted (this means something went wrong)
+    fn halt_and_reset(&mut self) {
+        self.state = State::Halted;
+        self.secs.reset();
+        self.reset_bindings();
+        logln!(LL::Debug, "DhcpHalt");
+    }
 
     /// Feed the state machine some entropy so it can start at INIT with new random hostname and xid.
     /// Also, save some entropy for generating randomized exponential backoff delays for retries.
@@ -96,7 +102,7 @@ impl DhcpClient {
         self.entropy = [entropy[0], entropy[1]];
         self.hostname.randomize(entropy[2], entropy[3]);
         self.state = State::Init;
-        self.secs = 0;
+        self.secs.reset();
         self.retry = RetryTimer::new_halted();
         self.xid = Some(entropy[4]);
         self.reset_bindings();
@@ -126,15 +132,13 @@ impl DhcpClient {
     ///     of C struct and call the sl_wfx FFI code to send the frame
     ///
     pub fn cycle_clock(&mut self) -> PacketNeeded {
-        // TODO: update self.secs
-
         // See state transition diagram at RFC 2131 § 4.4 DHCP client behavior
         // InitRebooting and Rebooting are intentionally omitted.
         // Halted is power-up state or result of DHCPNAK from Renewing or Rebinding
         match self.state {
             State::Halted => PacketNeeded::None,
             State::Init => {
-                self.secs = 0;
+                self.secs.start();
                 self.retry = RetryTimer::new_first_random(self.entropy[0]);
                 self.state = State::Selecting;
                 PacketNeeded::Discover
@@ -150,7 +154,7 @@ impl DhcpClient {
                     _ => {
                         match self.retry.status() {
                             RetryStatus::Halted => {
-                                self.state = State::Halted;
+                                self.halt_and_reset();
                                 // TODO: notify main event loop of DHCP connection problem
                                 PacketNeeded::None
                             }
@@ -166,7 +170,7 @@ impl DhcpClient {
             State::Requesting => {
                 match self.retry.status() {
                     RetryStatus::Halted => {
-                        self.state = State::Halted;
+                        self.halt_and_reset();
                         // TODO: notify main event loop of DHCP connection problem
                         PacketNeeded::None
                     }
@@ -343,7 +347,13 @@ impl DhcpClient {
         let zero = [0u8];
         let xid_bytes = xid.to_be_bytes();
         let dhcp_op_ht_hl_hop_s = [1u8, 1, 6, 0];
-        let dhcp_secs_flags = [(self.secs >> 8) as u8, self.secs as u8, 0, 0];
+        let secs = match self.secs.elapsed_s() {
+            Ok(s) => s as u16,
+            Err(StopwatchErr::Overflow) => return Err(0x05),
+            Err(StopwatchErr::Underflow) => return Err(0x06),
+            Err(StopwatchErr::NotStarted) => return Err(0x07),
+        };
+        let dhcp_secs_flags = [(secs >> 8) as u8, secs as u8, 0, 0];
         let dhcp_ci_yi_si_gi = zero.iter().cycle().take(16);
         let dhcp_chaddr = src_mac.iter().chain(zero.iter().cycle().take(10));
         let dhcp_sname_file = zero.iter().cycle().take(64 + 128);
@@ -440,7 +450,13 @@ impl DhcpClient {
         let zero = [0u8];
         let xid_bytes = xid.to_be_bytes();
         let dhcp_op_ht_hl_hop_s = [1u8, 1, 6, 0];
-        let dhcp_secs_flags = [(self.secs >> 8) as u8, self.secs as u8, 0, 0];
+        let secs = match self.secs.elapsed_s() {
+            Ok(s) => s as u16,
+            Err(StopwatchErr::Overflow) => return Err(0x05),
+            Err(StopwatchErr::Underflow) => return Err(0x06),
+            Err(StopwatchErr::NotStarted) => return Err(0x07),
+        };
+        let dhcp_secs_flags = [(secs >> 8) as u8, secs as u8, 0, 0];
         let dhcp_ci_yi_si_gi = zero.iter().cycle().take(16);
         let dhcp_chaddr = src_mac.iter().chain(zero.iter().cycle().take(10));
         let dhcp_sname_file = zero.iter().cycle().take(64 + 128);
