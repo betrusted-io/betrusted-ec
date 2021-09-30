@@ -1,4 +1,49 @@
-use betrusted_hal::hal_time::TimeMs;
+use betrusted_hal::hal_time::{TimeMs, TimeMsErr};
+
+/// Stopwatch tracks elapsed time relative to a starting timestamp.
+#[derive(Copy, Clone)]
+pub struct Stopwatch {
+    start_time: Option<TimeMs>,
+}
+#[derive(Copy, Clone)]
+pub enum StopwatchErr {
+    Overflow,
+    Underflow,
+    NotStarted,
+}
+impl Stopwatch {
+    /// Initialize a new stopwatch timer in halted state
+    pub fn new() -> Self {
+        Self { start_time: None }
+    }
+
+    /// Start the timer by recording a reference timestamp.
+    /// You can reset the timer by calling this again to start over at 0s.
+    pub fn start(&mut self) {
+        self.start_time = Some(TimeMs::now());
+    }
+
+    /// Return elapsed ms since stopwatch was started
+    pub fn elapsed_ms(&self) -> Result<u32, StopwatchErr> {
+        match self.start_time {
+            Some(t) => match TimeMs::now().sub_u32(&t) {
+                Ok(ms) => Ok(ms),
+                Err(TimeMsErr::Underflow) => Err(StopwatchErr::Underflow),
+                Err(TimeMsErr::Overflow) => Err(StopwatchErr::Overflow),
+            },
+            None => Err(StopwatchErr::NotStarted),
+        }
+    }
+
+    /// Return elapsed seconds since stopwatch was started
+    pub fn elapsed_s(&self) -> Result<u32, StopwatchErr> {
+        let ms = self.elapsed_ms()?;
+        // Adding 500ms before the integer division is meant to act like a floating point
+        // round(). Without the +500, the integer division would act like a floor().
+        let seconds = (ms + 500) / 1000;
+        Ok(seconds)
+    }
+}
 
 /// RetryTimer helps track retry sequences with scheduler timestamps.
 ///
@@ -21,11 +66,11 @@ use betrusted_hal::hal_time::TimeMs;
 ///
 #[derive(Copy, Clone)]
 pub struct RetryTimer {
-    pub retry: Retry,
-    pub time: Option<TimeMs>,
+    retry: Retry,
+    time: Option<TimeMs>,
 }
 #[derive(Copy, Clone, PartialEq)]
-pub enum Retry {
+enum Retry {
     R2s,
     R4s,
     R8s,

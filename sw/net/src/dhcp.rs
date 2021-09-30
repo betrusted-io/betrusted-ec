@@ -11,9 +11,9 @@
 //! header size (VLAN tags) would require modifications.
 //!
 extern crate betrusted_hal;
+use crate::timers::{RetryStatus, RetryTimer};
 use crate::{hostname::Hostname, FilterBin, MIN_UDP_FRAME_LEN};
 use debug::{loghexln, logln, LL};
-use crate::timers::{RetryStatus, RetryTimer};
 
 // Configure Log Level (used in macro expansions)
 const LOG_LEVEL: LL = LL::Debug;

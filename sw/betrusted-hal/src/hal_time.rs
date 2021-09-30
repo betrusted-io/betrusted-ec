@@ -15,14 +15,32 @@ pub struct TimeMs {
     time0: u32, // Low 32-bits from hardware timer
     time1: u32, // High 8-bits from hardware timer
 }
+#[derive(Copy, Clone)]
+pub enum TimeMsErr {
+    Overflow,
+    Underflow,
+}
 impl TimeMs {
     /// Return timestamp for current timer value
     pub fn now() -> Self {
         let ticktimer_csr = CSR::new(HW_TICKTIMER_BASE as *mut u32);
-        Self {
+        let now = Self {
             time0: ticktimer_csr.r(utra::ticktimer::TIME0),
             time1: ticktimer_csr.r(utra::ticktimer::TIME1),
+        };
+
+        // ============================================================
+        // DANGER! This is for testing overflow logic by by forcing a
+        // u32 overflow at 20 seconds after boot... leave it turned off
+        // ============================================================
+        if false {
+            let twenty_seconds_before_u32_overflow: u32 = 0xffff_b1df;
+            return now.add_ms(twenty_seconds_before_u32_overflow);
         }
+        // ============================================================
+
+        // This is the right one to use normally
+        return now;
     }
 
     /// Calculate a timestamp for interval ms after &self.
@@ -39,6 +57,33 @@ impl TimeMs {
                 time1: 0x0000_00ff & self.time1.wrapping_add(1),
             },
         }
+    }
+
+    /// Return the milliseconds elapsed from earlier to self.
+    ///
+    /// CAUTION: I think this math is right, but maybe I'm wrong? Don't blindly trust this.
+    ///
+    pub fn sub_u32(&self, earlier: &Self) -> Result<u32, TimeMsErr> {
+        if self < earlier {
+            return Err(TimeMsErr::Underflow);
+        }
+        match self.time1.wrapping_sub(earlier.time1) {
+            // Subtle math things happening here... in the 1 case, this relies on wrapping
+            // being equivalent to borrowing a bit from the high word
+            0 | 1 => Ok(self.time0.wrapping_sub(earlier.time0)),
+            // If high words differ by more than 1 LSB, time diff is greater than 2^32 ms
+            _ => Err(TimeMsErr::Overflow),
+        }
+    }
+
+    /// Return high word of timestamp
+    pub fn ms_high_word(&self) -> u32 {
+        self.time1
+    }
+
+    /// Return low word of timestamp
+    pub fn ms_low_word(&self) -> u32 {
+        self.time0
     }
 }
 impl PartialOrd for TimeMs {

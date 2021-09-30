@@ -22,12 +22,15 @@ use betrusted_hal::api_lsm6ds3::Imu;
 use betrusted_hal::api_tusb320::BtUsbCc;
 //use betrusted_hal::hal_hardi2c::Hardi2c;
 use betrusted_hal::hal_i2c::Hardi2c;
-use betrusted_hal::hal_time::{get_time_ms, get_time_ticks, set_msleep_target_ticks, time_init};
+use betrusted_hal::hal_time::{
+    get_time_ms, get_time_ticks, set_msleep_target_ticks, time_init, TimeMs,
+};
 use com_rs::serdes::{StringSer, STR_64_U8_SIZE, STR_64_WORDS};
 use com_rs::ComState;
 use core::panic::PanicInfo;
 use debug;
 use debug::{log, loghex, loghexln, logln, LL};
+use net::timers::Stopwatch;
 use riscv_rt::entry;
 use utralib::generated::{
     utra, CSR, HW_COM_BASE, HW_CRG_BASE, HW_GIT_BASE, HW_POWER_BASE, HW_TICKTIMER_BASE,
@@ -103,21 +106,23 @@ fn shift_speed_test() {
     let count = 50_000;
     let mut a: u32 = wfx_rs::hal_wf200::net_prng_rand();
     let mut b: u32 = a;
-    let t0 = get_time_ms();
+    let mut sw = Stopwatch::new();
+    sw.start();
     for _ in 0..count {
         a = (a >> 1) ^ (a << 3) ^ (a << 5);
     }
-    let t1 = get_time_ms();
+    // Time for short shifts (distance 8 left)
+    let short_shift_ms = sw.elapsed_ms().unwrap_or(0);
+    sw.start();
     for _ in 0..count {
         b = (b >> 1) ^ (b << 30) ^ (b << 23);
     }
-    let t2 = get_time_ms();
+    // Time for long shifts (distance 53 left)
+    let long_shift_ms = sw.elapsed_ms().unwrap_or(0);
     let x = (a ^ b) & 15;
-    let y = t1 - t0; // Time for short shifts (distance 8 left)
-    let z = t2 - t1; // Time for long shifts (distance 53 left)
     loghex!(LL::Debug, "ShiftSpeed _:", x);
-    loghex!(LL::Debug, ", 8L:", y);
-    loghexln!(LL::Debug, ", 53L:", z);
+    loghex!(LL::Debug, ", short_shift:", short_shift_ms);
+    loghexln!(LL::Debug, ", long_shift:", long_shift_ms);
 }
 
 #[entry]
@@ -170,6 +175,8 @@ fn main() -> ! {
 
     time_init();
     logln!(LL::Debug, "time");
+    let mut uptime = Stopwatch::new();
+    uptime.start();
     last_run_time = get_time_ms();
 
     logln!(LL::Debug, "i2c...");
@@ -269,7 +276,7 @@ fn main() -> ! {
                         uart_state = uart::RxState::BypassOnAwaitA;
                         logln!(LL::Debug, "UartRx ESC -> BypassOn");
                     }
-                    b'h' | b'H' | b'?' => logln!(
+                    b'h' | b'H' | b'?' => log!(
                         LL::Debug,
                         concat!(
                             "UartRx Help:\r\n",
@@ -277,7 +284,10 @@ fn main() -> ! {
                             " 2 => DHCP reset\r\n",
                             " 3 => DHCP next\r\n",
                             " 4 => Show net stats\r\n",
-                            " 5 => Shift speed test"
+                            " 5 => Shift speed test\r\n",
+                            " 6 => Uptime ms\r\n",
+                            " 7 => Uptime s\r\n",
+                            " 8 => Now ms\r\n",
                         )
                     ),
                     b'1' => logln!(LL::Debug, "TODO: Send ARP request"),
@@ -291,6 +301,19 @@ fn main() -> ! {
                     },
                     b'4' => wfx_rs::hal_wf200::log_net_state(),
                     b'5' => shift_speed_test(),
+                    b'6' => match uptime.elapsed_ms() {
+                        Ok(ms) => loghexln!(LL::Debug, "UptimeMs ", ms),
+                        Err(_) => logln!(LL::Debug, "UptimeMsErr"),
+                    },
+                    b'7' => match uptime.elapsed_s() {
+                        Ok(s) => loghexln!(LL::Debug, "UptimeS ", s),
+                        Err(_) => logln!(LL::Debug, "UptimeSErr"),
+                    },
+                    b'8' => {
+                        let now = TimeMs::now();
+                        loghex!(LL::Debug, "NowMs ", now.ms_high_word());
+                        loghexln!(LL::Debug, " ", now.ms_low_word());
+                    }
                     _ => (),
                 }
             } else if uart_state == uart::RxState::Waking {
