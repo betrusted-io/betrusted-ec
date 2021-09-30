@@ -1,5 +1,39 @@
 use betrusted_hal::hal_time::{TimeMs, TimeMsErr};
 
+/// Countdown tracks a one-shot countdown timer.
+#[derive(Copy, Clone)]
+pub struct Countdown {
+    done_time: Option<TimeMs>,
+}
+#[derive(Copy, Clone, PartialEq)]
+pub enum CountdownStatus {
+    NotStarted,
+    NotDone,
+    Done,
+}
+impl Countdown {
+    /// Initialize a new countdown timer in halted state
+    pub const fn new() -> Self {
+        Self { done_time: None }
+    }
+
+    /// Start countdown timer
+    pub fn start(&mut self, interval_ms: u32) {
+        self.done_time = Some(TimeMs::now().add_ms(interval_ms));
+    }
+
+    /// Return countdown timer status
+    pub fn status(&self) -> CountdownStatus {
+        match self.done_time {
+            Some(done_time) => match TimeMs::now() >= done_time {
+                true => CountdownStatus::Done,
+                _ => CountdownStatus::NotDone,
+            },
+            None => CountdownStatus::NotStarted,
+        }
+    }
+}
+
 /// Stopwatch tracks elapsed time relative to a starting timestamp.
 #[derive(Copy, Clone)]
 pub struct Stopwatch {

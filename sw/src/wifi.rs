@@ -1,23 +1,19 @@
 use crate::wlan::WlanState;
-#[allow(unused_imports)]
-use debug::{logln, sprint, sprintln, LL};
+use debug::{loghexln, logln, LL};
 use wfx_bindings::{
     sl_status_t, sl_wfx_host_hold_in_reset, sl_wfx_host_reset_chip,
     sl_wfx_security_mode_e_WFM_SECURITY_MODE_WPA2_PSK, sl_wfx_send_disconnect_command,
     sl_wfx_send_join_command, SL_STATUS_OK,
 };
+use wfx_rs::hal_wf200;
 use wfx_rs::hal_wf200::{
     get_status, wf200_fw_build, wf200_fw_major, wf200_fw_minor, wf200_send_pds,
     wf200_ssid_get_list, wfx_drain_event_queue, wfx_handle_event, wfx_init,
     wfx_ssid_scan_in_progress, wfx_start_scan, State,
 };
 
-// ==========================================================
-// ===== Configure Log Level (used in macro expansions) =====
-// ==========================================================
-#[allow(dead_code)]
+// Configure Log Level (used in macro expansions)
 const LOG_LEVEL: LL = LL::Debug;
-// ==========================================================
 
 pub const SSID_ARRAY_SIZE: usize = wfx_rs::hal_wf200::SSID_ARRAY_SIZE;
 
@@ -65,8 +61,29 @@ pub fn ap_join_wpa2(ws: &WlanState) {
         )
     };
     match result {
-        SL_STATUS_OK => logln!(LL::Debug, "joinOk"),
+        SL_STATUS_OK => {
+            logln!(LL::Debug, "joinOk");
+            dhcp_init();
+        }
         _ => logln!(LL::Debug, "joinFail"),
+    }
+}
+
+/// Initialize DHCP to INIT state (forget bindings, but be ready to DISCOVER on wifi connect)
+pub fn dhcp_init() {
+    match hal_wf200::dhcp_reset() {
+        Ok(_) => (),
+        Err(e) => loghexln!(LL::Debug, "DhcpResetErr ", e),
+    };
+}
+
+/// Clock the DHCP state machine
+pub fn dhcp_clock_state_machine() {
+    if hal_wf200::get_status() == hal_wf200::State::Connected {
+        match hal_wf200::dhcp_do_next() {
+            Ok(_) => (),
+            Err(e) => loghexln!(LL::Debug, "DhcpNextErr ", e),
+        };
     }
 }
 

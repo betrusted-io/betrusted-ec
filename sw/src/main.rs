@@ -30,7 +30,7 @@ use com_rs::ComState;
 use core::panic::PanicInfo;
 use debug;
 use debug::{log, loghex, loghexln, logln, LL};
-use net::timers::Stopwatch;
+use net::timers::{Countdown, CountdownStatus, Stopwatch};
 use riscv_rt::entry;
 use utralib::generated::{
     utra, CSR, HW_COM_BASE, HW_CRG_BASE, HW_GIT_BASE, HW_POWER_BASE, HW_TICKTIMER_BASE,
@@ -178,6 +178,8 @@ fn main() -> ! {
     let mut uptime = Stopwatch::new();
     uptime.start();
     last_run_time = get_time_ms();
+    const DHCP_POLL_MS: u32 = 101;
+    let mut dhcp_oneshot = Countdown::new();
 
     logln!(LL::Debug, "i2c...");
     i2c.i2c_init(CONFIG_CLOCK_FREQUENCY);
@@ -232,6 +234,16 @@ fn main() -> ! {
             //////////////////////// WIFI HANDLER BLOCK ---------
             if use_wifi && wifi_ready {
                 wifi::handle_event();
+                // Clock the DHCP state machine using its oneshot countdown
+                // timer for rate limiting
+                match dhcp_oneshot.status(){
+                    CountdownStatus::NotStarted => dhcp_oneshot.start(DHCP_POLL_MS),
+                    CountdownStatus::NotDone => (),
+                    CountdownStatus::Done => {
+                        wifi::dhcp_clock_state_machine();
+                        dhcp_oneshot.start(DHCP_POLL_MS);
+                    }
+                }
             }
             //////////////////////// ---------------------------
 

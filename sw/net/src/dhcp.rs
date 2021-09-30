@@ -100,7 +100,7 @@ impl DhcpClient {
     /// Also, save some entropy for generating randomized exponential backoff delays for retries.
     pub fn begin_at_init(&mut self, entropy: [u32; 5]) {
         self.entropy = [entropy[0], entropy[1]];
-        self.hostname.randomize(entropy[2], entropy[3]);
+        self.hostname.randomize_if_unset(entropy[2], entropy[3]);
         self.state = State::Init;
         self.secs.reset();
         self.retry = RetryTimer::new_halted();

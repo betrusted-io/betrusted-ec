@@ -3,18 +3,26 @@
 pub struct Hostname {
     pub length: usize,
     pub buffer: [u8; 63],
+    pub randomized: bool,
 }
 impl Hostname {
     pub const fn new_blank() -> Self {
         Hostname {
             length: 1,
             buffer: [0; 63],
+            randomized: false,
         }
     }
 
     /// Generate a new pseudorandom alphanumeric hostname of length 5 to 8 characters
     /// See RFC 952, RFC 1123 § 2.1, and RFC 2181 § 11
-    pub fn randomize(&mut self, entropy0: u32, entropy1: u32) {
+    pub fn randomize_if_unset(&mut self, entropy0: u32, entropy1: u32) {
+        if self.randomized {
+            // Avoid repeatedly changing the hostname every time DHCP re-binds
+            return;
+        } else {
+            self.randomized = true;
+        }
         // Select hostname length between 5 and 8 characters
         self.length = 8 - ((entropy0 & 0b011) as usize);
         // Prepare enough random bytes for up to 8 characters

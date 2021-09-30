@@ -203,10 +203,7 @@ pub fn dhcp_do_next() -> Result<(), u8> {
                     ip_id,
                 )?;
             }
-            PacketNeeded::None => {
-                logln!(LL::Debug, "DhcpNop");
-                return Ok(());
-            }
+            PacketNeeded::None => return Ok(()),
         }
         // Convert the byte buffer to a struct pointer for the sl_wfx API
         let frame_req_ptr: *mut sl_wfx_send_frame_req_t =
