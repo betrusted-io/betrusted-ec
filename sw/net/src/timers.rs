@@ -40,7 +40,7 @@ impl Stopwatch {
         let ms = self.elapsed_ms()?;
         // Adding 500ms before the integer division is meant to act like a floating point
         // round(). Without the +500, the integer division would act like a floor().
-        let seconds = (ms + 500) / 1000;
+        let seconds = ms.saturating_add(500) / 1000;
         Ok(seconds)
     }
 }
