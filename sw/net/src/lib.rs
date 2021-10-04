@@ -57,8 +57,9 @@
 //! - [ ] DHCP client: cache gateway MAC
 //! - [ ] ICMP echo to ping gateway
 //! - [ ] Connectivity check after DHCP ACK (15 pings to gateway)
-//! - [ ] Add SSID scan to check RSSI as first step of `wlan join`
-//! - [ ] Encode {RSSI, AP join, DHCP bind, gateway ping} results in WLAN_STATUS response
+//! - [x] Remember best RSSI from SSID scan
+//! - [x] Check RSSI from most recent packet (or SSID scan if link down) during wlan status
+//! - [-] Encode {RSSI, AP join, DHCP bind, gateway ping} results in WLAN_STATUS response
 //!
 //! Priority 2 Features:
 //! - [ ] Handle ICMP destination unreachable

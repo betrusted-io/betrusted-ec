@@ -87,6 +87,7 @@ static mut SSID_SCAN_IN_PROGRESS: bool = false;
 pub const SSID_ARRAY_SIZE: usize = 6;
 static mut SSID_ARRAY: [[u8; 32]; SSID_ARRAY_SIZE] = [[0; 32]; SSID_ARRAY_SIZE];
 static mut SSID_INDEX: usize = 0;
+static mut SSID_BEST_RSSI: Option<u8> = None;
 
 /// Possible link layer connection states
 #[derive(Copy, Clone, PartialEq)]
@@ -143,6 +144,11 @@ pub fn reseed_net_prng(seed: &[u16; 8]) {
 /// Export an API for access to the prng (because this one gets a TRNG seed from Xous at boot)
 pub fn net_prng_rand() -> u32 {
     unsafe { NET_STATE.prng.next() }
+}
+
+/// Return dBm (positive) of strongest RSSI seen during all previous SSID scans
+pub fn get_best_ssid_scan_rssi() -> Option<u8> {
+    unsafe { SSID_BEST_RSSI }
 }
 
 /// Return RSSI of last packet received.
@@ -867,7 +873,7 @@ unsafe fn sl_wfx_scan_result_callback(scan_result: *const sl_wfx_scan_result_ind
     // Debug print the SSID result
     let channel = core::ptr::addr_of!(sr.channel).read_unaligned();
     let dbm = 32768 - ((sr.rcpi - 220) / 2);
-    log!(LL::Debug, "ssid {:X} -{:X}", channel, dbm);
+    log!(LL::Debug, "ssid {:X} -{}", channel, dbm);
     for i in sr.mac.iter() {
         loghex!(LL::Debug, " ", *i);
     }
@@ -877,7 +883,12 @@ unsafe fn sl_wfx_scan_result_callback(scan_result: *const sl_wfx_scan_result_ind
         SSID_INDEX = 0;
     }
     let _mac = sr.mac;
-    let _dbm = dbm;
+    let dbm = dbm;
+    SSID_BEST_RSSI = match SSID_BEST_RSSI {
+        Some(best) if (dbm as u8) < best => Some(dbm as u8),
+        Some(best) => Some(best),
+        _ => Some(dbm as u8),
+    };
     let _chan = sr.channel as u8;
     for (dst_ssid, src_ssid) in SSID_ARRAY[SSID_INDEX]
         .iter_mut()

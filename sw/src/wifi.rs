@@ -199,27 +199,43 @@ pub fn handle_event() -> u32 {
 }
 
 /// Append string describing WF200 power and connection status to u8 buffer iterator
+///
+/// Format:
+///   rssi interface_updown_code
+///   ssid
+///
+/// The rssi value is in dBm from either the last packet recieved (if connected), or
+/// from the strongest scan result seen during ssid scan commands.
+///
 pub fn append_status_str(mut buf: &mut StrBuf<64>, ws: &WlanState) {
     let rssi_result: Result<u32, u8> = hal_wf200::get_rssi();
     match rssi_result {
         Ok(rssi) => {
-            logln!(LL::Debug, "RSSI -{}", rssi);
+            logln!(LL::Debug, "RxRssi -{}", rssi);
             let _ = write!(&mut buf, "-{} ", rssi);
         }
         Err(e) => {
-            loghexln!(LL::Debug, "RssiErr ", e);
-            let _ = write!(&mut buf, "-- ");
+            loghexln!(LL::Debug, "RxRssiErr ", e);
+            match hal_wf200::get_best_ssid_scan_rssi() {
+                Some(rssi) => {
+                    logln!(LL::Debug, "ScanRssi -{}", rssi);
+                    let _ = write!(&mut buf, "-{} ", rssi);
+                }
+                _ => {
+                    let _ = write!(&mut buf, "-- ");
+                }
+            }
         }
     };
     // Interface status; changes mainly in response to wlan {on,off,join,leave}
     let ifc_updn = match get_status() {
         State::Unknown => "E99",
         State::ResetHold => "off",
-        State::Uninitialized => "dn1",
-        State::Initializing => "dn2",
-        State::Disconnected => "dn3",
-        State::Connecting => "dn4",
-        State::Connected => "up1",
+        State::Uninitialized => "busy1",
+        State::Initializing => "busy2",
+        State::Disconnected => "down",
+        State::Connecting => "busy3",
+        State::Connected => "up",
         State::WFXError => "E98",
     };
     let _ = write!(buf, "{} ", ifc_updn);
