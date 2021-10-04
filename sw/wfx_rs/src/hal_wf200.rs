@@ -36,7 +36,7 @@ pub use wfx_bindings::{
     sl_wfx_general_indications_ids_e_SL_WFX_STARTUP_IND_ID, sl_wfx_generic_ind_t,
     sl_wfx_generic_indication_type_e_SL_WFX_GENERIC_INDICATION_TYPE_RX_STATS,
     sl_wfx_generic_indication_type_e_SL_WFX_GENERIC_INDICATION_TYPE_STRING,
-    sl_wfx_generic_message_t, sl_wfx_host_bus_transfer_type_t,
+    sl_wfx_generic_message_t, sl_wfx_get_signal_strength, sl_wfx_host_bus_transfer_type_t,
     sl_wfx_host_bus_transfer_type_t_SL_WFX_BUS_READ, sl_wfx_indication_data_u,
     sl_wfx_indications_ids_e_SL_WFX_CONNECT_IND_ID,
     sl_wfx_indications_ids_e_SL_WFX_DISCONNECT_IND_ID,
@@ -46,7 +46,8 @@ pub use wfx_bindings::{
     sl_wfx_interface_t_SL_WFX_STA_INTERFACE, sl_wfx_mac_address_t,
     sl_wfx_pm_mode_e_WFM_PM_MODE_ACTIVE, sl_wfx_pm_mode_e_WFM_PM_MODE_PS, sl_wfx_receive_frame,
     sl_wfx_received_ind_body_s, sl_wfx_received_ind_t, sl_wfx_register_address_t,
-    sl_wfx_rx_stats_s, sl_wfx_scan_complete_ind_t, sl_wfx_scan_mode_e_WFM_SCAN_MODE_ACTIVE,
+    sl_wfx_requests_ids_e_SL_WFX_GET_SIGNAL_STRENGTH_REQ_ID, sl_wfx_rx_stats_s,
+    sl_wfx_scan_complete_ind_t, sl_wfx_scan_mode_e_WFM_SCAN_MODE_ACTIVE,
     sl_wfx_scan_result_ind_body_t, sl_wfx_scan_result_ind_t, sl_wfx_send_configuration,
     sl_wfx_send_ethernet_frame, sl_wfx_send_frame_req_t, sl_wfx_send_scan_command,
     sl_wfx_set_power_mode, sl_wfx_ssid_def_t, sl_wfx_state_t_SL_WFX_STA_INTERFACE_CONNECTED,
@@ -142,6 +143,31 @@ pub fn reseed_net_prng(seed: &[u16; 8]) {
 /// Export an API for access to the prng (because this one gets a TRNG seed from Xous at boot)
 pub fn net_prng_rand() -> u32 {
     unsafe { NET_STATE.prng.next() }
+}
+
+/// Return RSSI of last packet received.
+///
+/// See Silicon Labs WFX API docs at:
+/// https://docs.silabs.com/wifi/wf200/rtos/latest/group-f-u-l-l-m-a-c-d-r-i-v-e-r-a-p-i#ga38f335d89c3af730ea08e8d82e873d39
+///
+pub fn get_rssi() -> Result<u32, u8> {
+    if unsafe { CURRENT_STATUS != State::Connected } {
+        return Err(0x20);
+    }
+    let mut rcpi: u32 = 0;
+    let status: sl_status_t;
+    status = unsafe { sl_wfx_get_signal_strength(&mut rcpi) };
+    match status {
+        SL_STATUS_OK => {
+            // API docs say rcp range is 0 to 220; 0 means -110 dBm; 220 means 0 dBm; increment is 0.5 dBm
+            let dbm = rcpi >> 1;
+            Ok(dbm)
+        }
+        e => {
+            loghexln!(LL::Debug, "GetRssiErr ", e);
+            Err(0x01)
+        }
+    }
 }
 
 /// Reset DHCP client state machine to start at INIT state with new random hostname
@@ -1006,6 +1032,9 @@ pub unsafe extern "C" fn sl_wfx_host_post_event(
         }
         sl_wfx_confirmations_ids_e_SL_WFX_DISCONNECT_CNF_ID => {
             logln!(LL::Debug, "WfxDisconCnf");
+        }
+        sl_wfx_requests_ids_e_SL_WFX_GET_SIGNAL_STRENGTH_REQ_ID => {
+            logln!(LL::Debug, "WfxGetSigStr");
         }
         sl_wfx_confirmations_ids_e_SL_WFX_SEND_FRAME_CNF_ID => {
             // This happens when a frame gets sent.

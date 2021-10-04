@@ -1,3 +1,6 @@
+use core::fmt::Write;
+
+use crate::str_buf::StrBuf;
 use crate::wlan::WlanState;
 use debug::{loghexln, logln, LL};
 use wfx_bindings::{
@@ -196,26 +199,36 @@ pub fn handle_event() -> u32 {
 }
 
 /// Append string describing WF200 power and connection status to u8 buffer iterator
-pub fn append_status_str(buf: &mut core::slice::IterMut<u8>, ws: &WlanState) {
-    let s = match get_status() {
-        State::Unknown => "???",
-        State::ResetHold => "Off",
-        State::Uninitialized => "OnUnInit",
-        State::Initializing => "OnInit",
-        State::Disconnected => "OnDiscon",
-        State::Connecting => "Joining",
-        State::Connected => "Joined",
-        State::WFXError => "WFXErr",
-    };
-    let status_it = "status: ".bytes().chain(s.bytes());
-    let ssid = match ws.ssid() {
-        Ok(ssid) => ssid,
-        _ => "",
-    };
-    let ssid_it = "\nssid: ".bytes().chain(ssid.bytes());
-    for c in status_it.chain(ssid_it) {
-        if let Some(dest) = buf.next() {
-            *dest = c;
+pub fn append_status_str(mut buf: &mut StrBuf<64>, ws: &WlanState) {
+    let rssi_result: Result<u32, u8> = hal_wf200::get_rssi();
+    match rssi_result {
+        Ok(rssi) => {
+            logln!(LL::Debug, "RSSI -{}", rssi);
+            let _ = write!(&mut buf, "-{} ", rssi);
         }
-    }
+        Err(e) => {
+            loghexln!(LL::Debug, "RssiErr ", e);
+            let _ = write!(&mut buf, "-- ");
+        }
+    };
+    // Interface status; changes mainly in response to wlan {on,off,join,leave}
+    let ifc_updn = match get_status() {
+        State::Unknown => "E99",
+        State::ResetHold => "off",
+        State::Uninitialized => "dn1",
+        State::Initializing => "dn2",
+        State::Disconnected => "dn3",
+        State::Connecting => "dn4",
+        State::Connected => "up1",
+        State::WFXError => "E98",
+    };
+    let _ = write!(buf, "{} ", ifc_updn);
+    match ws.ssid() {
+        Ok(ssid) => {
+            let _ = write!(buf, "\nssid:{}", ssid);
+        }
+        _ => {
+            let _ = write!(buf, "\nssid:");
+        }
+    };
 }

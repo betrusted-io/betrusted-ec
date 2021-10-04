@@ -41,12 +41,14 @@ use volatile::Volatile;
 mod com_bus;
 mod power_mgmt;
 mod spi;
+mod str_buf;
 mod uart;
 mod wifi;
 mod wlan;
 use com_bus::{com_rx, com_tx};
 use power_mgmt::charger_handler;
 use spi::{spi_erase_region, spi_program_page, spi_standby};
+use str_buf::StrBuf;
 use wlan::WlanState;
 
 // ==========================================================
@@ -236,7 +238,7 @@ fn main() -> ! {
                 wifi::handle_event();
                 // Clock the DHCP state machine using its oneshot countdown
                 // timer for rate limiting
-                match dhcp_oneshot.status(){
+                match dhcp_oneshot.status() {
                     CountdownStatus::NotStarted => dhcp_oneshot.start(DHCP_POLL_MS),
                     CountdownStatus::NotDone => (),
                     CountdownStatus::Done => {
@@ -727,13 +729,10 @@ fn main() -> ! {
                 wifi::ap_leave();
             } else if rx == ComState::WLAN_STATUS.verb {
                 logln!(LL::Debug, "CWStatus");
-                const SIZE: usize = STR_64_U8_SIZE;
-                let mut buf: [u8; SIZE] = [0; SIZE];
-                let mut buf_it = buf.iter_mut();
-                wifi::append_status_str(&mut buf_it, &wlan_state);
-                let end = SIZE - buf_it.count();
+                let mut buf = StrBuf::<STR_64_U8_SIZE>::new();
+                wifi::append_status_str(&mut buf, &wlan_state);
                 let mut error = true;
-                if let Ok(status) = core::str::from_utf8(&buf[..end]) {
+                if let Ok(status) = buf.as_str() {
                     let mut str_ser = StringSer::<STR_64_WORDS>::new();
                     if let Ok(tx) = str_ser.encode(&status) {
                         for w in tx.iter() {
