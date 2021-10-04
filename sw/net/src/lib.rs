@@ -49,17 +49,24 @@
 //! Priority 1 Features to Support Factory Test ([x]=works, [-]=partial, [ ]=todo):
 //! - [x] Ethernet frame RX and protocol handler dispatch
 //! - [x] Packet filter: drop multicast, unsuported protocol, failed checksum, etc.
-//! - [-] Diagnostic stats event counters with COM bus API
-//! - [-] Ethernet frame TX
-//! - [-] DHCP client
+//! - [x] Diagnostic stats event counters with UP5K UART debug command API
+//! - [x] Ethernet frame TX
+//! - [x] DHCP client Discover/Offer/Request/Ack binding flow
 //! - [ ] ARP Responder
-//! - [ ] ARP cache
-//! - [ ] TX Packet routing to local MAC or gateway using ARP cache and IP/netmask
-//! - [ ] ICMP echo responder and COM bus ping API
-//! - [ ] Connectivity check after DHCP ACK (ping gateway)
-//! - [ ] Handle ICMP destination unreachable
+//! - [ ] ICMP echo responder
+//! - [ ] DHCP client: cache gateway MAC
+//! - [ ] ICMP echo to ping gateway
+//! - [ ] Connectivity check after DHCP ACK (15 pings to gateway)
+//! - [ ] Add SSID scan to check RSSI as first step of `wlan join`
+//! - [ ] Encode {RSSI, AP join, DHCP bind, gateway ping} results in WLAN_STATUS response
 //!
 //! Priority 2 Features:
+//! - [ ] Handle ICMP destination unreachable
+//! - [ ] ARP cache
+//! - [ ] ARP resolver
+//! - [ ] TX Packet routing to local MAC or gateway using ARP cache and IP/netmask
+//! - [ ] DHCP Request/(Ack|Nack) flow for Renew and Rebind
+//! - [ ] Diagnostic event counter COM bus API
 //! - [ ] UDP sockets with COM bus API
 //! - [ ] TCP sockets with COM bus API (maybe pass TCP frames to Xous + smoltcp?)
 //!
