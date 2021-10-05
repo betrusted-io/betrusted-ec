@@ -176,7 +176,7 @@ pub fn handle_frame(mut net_state: &mut NetState, data: &[u8]) -> FilterBin {
     let ethertype = &data[12..14]; // ipv4=0x0800, ipv6=0x86DD, arp=0x0806, vlan=0x8100
     let filter_bin = match ethertype {
         ETHERTYPE_IPV4 => handle_ipv4_frame(&mut net_state, data),
-        ETHERTYPE_ARP => handle_arp_frame(data),
+        ETHERTYPE_ARP => handle_arp_frame(&net_state, data),
         _ => FilterBin::DropEType,
     };
     net_state.filter_stats.inc_count_for(filter_bin);
@@ -385,16 +385,19 @@ fn handle_udp_frame(net_state: &mut NetState, data: &[u8]) -> FilterBin {
 /// | FFFFFFFFFFFF ------------ 0806      | 0001  0800  06   04   0001 ------------ 0A000101 000000000000 0A000102 |
 /// | ------------ ------------ 0806      | 0001  0800  06   04   0002 ------------ 0A000102 ------------ 0A000101 |
 ///
-fn handle_arp_frame(data: &[u8]) -> FilterBin {
+fn handle_arp_frame(net_state: &NetState, data: &[u8]) -> FilterBin {
     if data.len() < ARP_FRAME_LEN {
         // Drop malformed (too short) ARP packet
         return FilterBin::DropNoise;
     }
-    let dest_mac = &data[..6];
-    let src_mac = &data[6..12];
-    log!(LL::Debug, "RxARP ");
-    log_hex(dest_mac);
-    log_hex(src_mac);
+    // Determine whether an IP address is bound to our network interface (if not, this ARP is not for us)
+    if net_state.dhcp.get_state() != dhcp::State::Bound {
+        return FilterBin::DropNoise;
+    }
+    let my_ip4: u32 = match net_state.dhcp.ip {
+        Some(ip4) => ip4,
+        _ => return FilterBin::DropNoise,
+    };
     // ARP header for Ethernet + IPv4:
     //  {htype=0x0001 (Ethernet), ptype=0x0800 (IPv4), hlen=0x06 (6 bytes), plen=0x04 (4 bytes)}
     const ARP_FOR_ETHERNET_IPV4: &[u8] = &[0, 1, 8, 0, 6, 4];
@@ -403,36 +406,23 @@ fn handle_arp_frame(data: &[u8]) -> FilterBin {
         // Drop ARP packets that do not match the format for IPv4 over Ethernet
         return FilterBin::DropNoise;
     }
-    let arp_oper = &data[20..22];
-    let arp_sha = &data[22..28];
-    let arp_spa = &data[28..32];
-    let arp_tha = &data[32..38];
-    let arp_tpa = &data[38..42];
-    let mut filter_bin = FilterBin::DropNoise;
-    if arp_oper == &[0, 1] {
+    // Handle replies, and requests that are addressed to us
+    let oper = u16::from_be_bytes([data[20], data[21]]);
+    let sha = &data[22..28];
+    let spa = u32::from_be_bytes([data[28], data[29], data[30], data[31]]);
+    let tpa = u32::from_be_bytes([data[38], data[39], data[40], data[41]]);
+    if (oper == 1) && (tpa == my_ip4) {
         // ARP Request
-        filter_bin = FilterBin::ArpReq;
-        log!(LL::Debug, "who has ");
-        log_hex(arp_tpa);
-        log!(LL::Debug, "tell ");
-        log_hex(arp_sha);
-        log_hex(arp_spa);
-    } else if arp_oper == &[0, 2] {
+        log!(LL::Debug, "ArpReq ");
+        log_hex(sha);
+        logln!(LL::Debug, "{:08X}", spa);
+        return FilterBin::ArpReq;
+    } else if oper == 2 {
         // ARP Reply
-        filter_bin = FilterBin::ArpReply;
-        log_hex(arp_spa);
-        log!(LL::Debug, "is at ");
-        log_hex(arp_sha);
-        log!(LL::Debug, "-> ");
-        log_hex(arp_tha);
-        log_hex(arp_tpa);
+        log!(LL::Debug, "ArpReply {:08X} is ", spa);
+        log_hex(sha);
+        logln!(LL::Debug, "");
+        return FilterBin::ArpReply;
     }
-    if arp_sha != src_mac {
-        // If Ethernet source MAC does not match the ARP sender hardware
-        // address, something weird is happening. Possible that the sending
-        // host has two network interfaces attached to the same LAN?
-        log!(LL::Debug, "WeirdSender");
-    }
-    logln!(LL::Debug, "");
-    return filter_bin;
+    return FilterBin::DropNoise;
 }
