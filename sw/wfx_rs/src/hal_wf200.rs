@@ -4,7 +4,7 @@ use crate::betrusted_hal::hal_time::get_time_ms;
 use crate::wfx_bindings;
 use core::slice;
 use core::str;
-use net::dhcp::PacketNeeded;
+use net::dhcp::{self, PacketNeeded};
 use utralib::generated::{utra, CSR, HW_WIFI_BASE};
 
 mod bt_wf200_pds;
@@ -174,6 +174,10 @@ pub fn get_rssi() -> Result<u32, u8> {
             Err(0x01)
         }
     }
+}
+
+pub fn dhcp_get_state() -> dhcp::State {
+    unsafe { NET_STATE.dhcp.get_state() }
 }
 
 /// Reset DHCP client state machine to start at INIT state with new random hostname

@@ -3,6 +3,7 @@ use core::fmt::Write;
 use crate::str_buf::StrBuf;
 use crate::wlan::WlanState;
 use debug::{loghexln, logln, LL};
+use net::dhcp;
 use wfx_bindings::{
     sl_status_t, sl_wfx_host_hold_in_reset, sl_wfx_host_reset_chip,
     sl_wfx_security_mode_e_WFM_SECURITY_MODE_WPA2_PSK, sl_wfx_send_disconnect_command,
@@ -208,6 +209,7 @@ pub fn handle_event() -> u32 {
 /// from the strongest scan result seen during ssid scan commands.
 ///
 pub fn append_status_str(mut buf: &mut StrBuf<64>, ws: &WlanState) {
+    // RSSI
     let rssi_result: Result<u32, u8> = hal_wf200::get_rssi();
     match rssi_result {
         Ok(rssi) => {
@@ -239,6 +241,21 @@ pub fn append_status_str(mut buf: &mut StrBuf<64>, ws: &WlanState) {
         State::WFXError => "E98",
     };
     let _ = write!(buf, "{} ", ifc_updn);
+    // DHCP
+    let dhcp_tag = match hal_wf200::dhcp_get_state() {
+        dhcp::State::Halted => "Halt",
+        dhcp::State::Init => "Init",
+        dhcp::State::Selecting => "Select",
+        dhcp::State::Requesting => "Request",
+        dhcp::State::Bound => "Bound",
+        dhcp::State::Renewing => "Renew",
+        dhcp::State::Rebinding => "Rebind",
+    };
+    let _ = write!(buf, "dhcp{} ", dhcp_tag);
+    // Gateway Ping
+    // TODO: implement this
+    let _ = write!(buf, "--");
+    // SSID
     match ws.ssid() {
         Ok(ssid) => {
             let _ = write!(buf, "\nssid:{}", ssid);

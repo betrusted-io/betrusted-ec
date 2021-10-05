@@ -79,6 +79,11 @@ impl DhcpClient {
         }
     }
 
+    /// Return current state machine state
+    pub fn get_state(&self) -> State {
+        self.state
+    }
+
     /// Clear all bindings that get populated from a DHCPOFFER
     fn reset_bindings(&mut self) {
         self.sid = None;
