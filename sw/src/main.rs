@@ -22,12 +22,15 @@ use betrusted_hal::api_lsm6ds3::Imu;
 use betrusted_hal::api_tusb320::BtUsbCc;
 //use betrusted_hal::hal_hardi2c::Hardi2c;
 use betrusted_hal::hal_i2c::Hardi2c;
-use betrusted_hal::hal_time::{get_time_ms, set_msleep_target_ticks, time_init, get_time_ticks};
+use betrusted_hal::hal_time::{
+    get_time_ms, get_time_ticks, set_msleep_target_ticks, time_init, TimeMs,
+};
 use com_rs::serdes::{StringSer, STR_64_U8_SIZE, STR_64_WORDS};
 use com_rs::ComState;
 use core::panic::PanicInfo;
 use debug;
-use debug::{log, logln, sprint, sprintln, LL};
+use debug::{log, loghex, loghexln, logln, LL};
+use net::timers::{Countdown, CountdownStatus, Stopwatch};
 use riscv_rt::entry;
 use utralib::generated::{
     utra, CSR, HW_COM_BASE, HW_CRG_BASE, HW_GIT_BASE, HW_POWER_BASE, HW_TICKTIMER_BASE,
@@ -38,18 +41,18 @@ use volatile::Volatile;
 mod com_bus;
 mod power_mgmt;
 mod spi;
+mod str_buf;
+mod uart;
 mod wifi;
 mod wlan;
 use com_bus::{com_rx, com_tx};
 use power_mgmt::charger_handler;
 use spi::{spi_erase_region, spi_program_page, spi_standby};
+use str_buf::StrBuf;
 use wlan::WlanState;
 
-// ==========================================================
-// ===== Configure Log Level (used in macro expansions) =====
-// ==========================================================
+// Configure Log Level (used in macro expansions)
 const LOG_LEVEL: LL = LL::Debug;
-// ==========================================================
 
 // Constants
 const CONFIG_CLOCK_FREQUENCY: u32 = 18_000_000;
@@ -74,8 +77,8 @@ fn ticktimer_int_handler(_irq_no: usize) {
         && (power_csr.rf(utra::power::STATS_STATE) == 0)
     {
         // drive sense for keyboard
-        let power = power_csr.ms(utra::power::POWER_SELF, 1)
-            | power_csr.ms(utra::power::POWER_KBDDRIVE, 1);
+        let power =
+            power_csr.ms(utra::power::POWER_SELF, 1) | power_csr.ms(utra::power::POWER_KBDDRIVE, 1);
         power_csr.wo(utra::power::POWER, power);
 
         if power_csr.rf(utra::power::STATS_MONKEY) == 3 {
@@ -96,14 +99,39 @@ fn ticktimer_int_handler(_irq_no: usize) {
     ticktimer_csr.wfo(utra::ticktimer::EV_PENDING_ALARM, 1);
 }
 
+/// This logs a time comparison of many short shifts vs same number of long shifts.
+/// The point is to verify that the CPU is using single cycle shifts.
+fn shift_speed_test() {
+    let count = 50_000;
+    let mut a: u32 = wfx_rs::hal_wf200::net_prng_rand();
+    let mut b: u32 = a;
+    let mut sw = Stopwatch::new();
+    sw.start();
+    for _ in 0..count {
+        a = (a >> 1) ^ (a << 3) ^ (a << 5);
+    }
+    // Time for short shifts (distance 8 left)
+    let short_shift_ms = sw.elapsed_ms().unwrap_or(0);
+    sw.start();
+    for _ in 0..count {
+        b = (b >> 1) ^ (b << 30) ^ (b << 23);
+    }
+    // Time for long shifts (distance 53 left)
+    let long_shift_ms = sw.elapsed_ms().unwrap_or(0);
+    let x = (a ^ b) & 15;
+    loghex!(LL::Debug, "ShiftSpeed _:", x);
+    loghex!(LL::Debug, ", short_shift:", short_shift_ms);
+    loghexln!(LL::Debug, ", long_shift:", long_shift_ms);
+}
+
 #[entry]
 fn main() -> ! {
-    logln!(LL::Info, "\r\n====UP5K==09");
+    logln!(LL::Info, "\r\n====UP5K==0A");
     let mut com_csr = CSR::new(HW_COM_BASE as *mut u32);
     let mut crg_csr = CSR::new(HW_CRG_BASE as *mut u32);
     let mut ticktimer_csr = CSR::new(HW_TICKTIMER_BASE as *mut u32);
     let git_csr = CSR::new(HW_GIT_BASE as *mut u32);
-    let mut entropy_seed: Option<[u16; 8]> = None;
+    let mut uart_state: uart::RxState = uart::RxState::BypassOnAwaitA;
 
     let com_rd_ptr: *mut u32 = utralib::HW_COM_MEM as *mut u32;
     let com_rd = com_rd_ptr as *mut Volatile<u32>;
@@ -146,7 +174,11 @@ fn main() -> ! {
 
     time_init();
     logln!(LL::Debug, "time");
+    let mut uptime = Stopwatch::new();
+    uptime.start();
     last_run_time = get_time_ms();
+    const DHCP_POLL_MS: u32 = 101;
+    let mut dhcp_oneshot = Countdown::new();
 
     logln!(LL::Debug, "i2c...");
     i2c.i2c_init(CONFIG_CLOCK_FREQUENCY);
@@ -156,12 +188,12 @@ fn main() -> ! {
     hw.charger.chg_set_autoparams(&mut i2c);
     hw.charger.chg_start(&mut i2c);
     let tusb320_rev = hw.usb_cc.init(&mut i2c);
-    logln!(LL::Debug, "tusb320_rev {:X}", tusb320_rev);
+    loghexln!(LL::Debug, "tusb320_rev ", tusb320_rev);
     // Initialize the IMU, note special handling for debug logging of init result
     let mut tap_check_phase: u32 = 0;
     match Imu::init(&mut i2c) {
-        Ok(who_am_i_reg) => logln!(LL::Debug, "ImuInitOk {:X}", who_am_i_reg), // Should be 0x6A
-        Err(n) => logln!(LL::Debug, "ImuInitErr {:X}", n),
+        Ok(who_am_i_reg) => loghexln!(LL::Debug, "ImuInitOk ", who_am_i_reg), // Should be 0x6A
+        Err(n) => loghexln!(LL::Debug, "ImuInitErr ", n),
     }
     // make sure the backlight is off on boot
     hw.backlight.set_brightness(&mut i2c, 0, 0);
@@ -181,6 +213,9 @@ fn main() -> ! {
     logln!(LL::Warn, "**WATCHDOG ON**");
     crg_csr.wfo(utra::crg::WATCHDOG_ENABLE, 1); // 1 = enable the watchdog reset
 
+    // Drain the UART RX buffer
+    uart::drain_rx_buf();
+
     // Reset & Init WF200 before starting the main loop
     if use_wifi {
         logln!(LL::Info, "wifi...");
@@ -198,6 +233,16 @@ fn main() -> ! {
             //////////////////////// WIFI HANDLER BLOCK ---------
             if use_wifi && wifi_ready {
                 wifi::handle_event();
+                // Clock the DHCP state machine using its oneshot countdown
+                // timer for rate limiting
+                match dhcp_oneshot.status() {
+                    CountdownStatus::NotStarted => dhcp_oneshot.start(DHCP_POLL_MS),
+                    CountdownStatus::NotDone => (),
+                    CountdownStatus::Done => {
+                        wifi::dhcp_clock_state_machine();
+                        dhcp_oneshot.start(DHCP_POLL_MS);
+                    }
+                }
             }
             //////////////////////// ---------------------------
 
@@ -211,23 +256,77 @@ fn main() -> ! {
                 &mut pow,
             );
             //////////////////////// ---------------------------
-        }
 
-        //////////////////////// IMU TAP HANDLER BLOCK --------
-        if tap_check_phase == 1 {
-            // Clear any pending out of phase latched tap interrupt
-            // TODO: Tune the tap timing parameters or otherwise find a better way to debounce this
-            let _ = Imu::get_single_tap(&mut i2c);
-        }
-        if tap_check_phase == 0 {
-            if Ok(true) == Imu::get_single_tap(&mut i2c) {
-                logln!(LL::Debug, "SingleTap");
-                tap_check_phase = 1000;
+            //////////////////////// IMU TAP HANDLER BLOCK --------
+            if tap_check_phase == 1 {
+                // Clear any pending out of phase latched tap interrupt
+                // TODO: Tune the tap timing parameters or otherwise find a better way to debounce this
+                let _ = Imu::get_single_tap(&mut i2c);
             }
-        } else {
-            tap_check_phase = tap_check_phase.saturating_sub(1);
+            if tap_check_phase == 0 {
+                if Ok(true) == Imu::get_single_tap(&mut i2c) {
+                    logln!(LL::Debug, "ImuTap");
+                    tap_check_phase = 1000;
+                    // Log packet filter stats, etc. when tap is detected
+                    wfx_rs::hal_wf200::log_net_state();
+                }
+            } else {
+                tap_check_phase = tap_check_phase.saturating_sub(1);
+            }
+            //////////////////////// ------------------------------
+
+            ///////////////////////////// DEBUG UART RX HANDLER BLOCK ----------
+            // Uart starts in bypass mode, so this won't start returning bytes
+            // until after it sees the "AT\n" wake sequence (or "AT\r")
+            let mut show_help = false;
+            if let Some(b) = uart::rx_byte(&mut uart_state) {
+                match b {
+                    0x1B => {
+                        // In case of ANSI escape sequences (arrow keys, etc.) turn UART bypass mode
+                        // on to avoid the hassle of having to parse the escape sequences or deal
+                        // with whatever unintended commands they might accidentally trigger
+                        uart_state = uart::RxState::BypassOnAwaitA;
+                        logln!(LL::Debug, "UartRx off");
+                    }
+                    b'h' | b'H' | b'?' => show_help = true,
+                    b'1' => wfx_rs::hal_wf200::log_net_state(),
+                    b'2' => shift_speed_test(),
+                    b'3' => match uptime.elapsed_ms() {
+                        Ok(ms) => loghexln!(LL::Debug, "UptimeMs ", ms),
+                        Err(_) => logln!(LL::Debug, "UptimeMsErr"),
+                    },
+                    b'4' => match uptime.elapsed_s() {
+                        Ok(s) => loghexln!(LL::Debug, "UptimeS ", s),
+                        Err(_) => logln!(LL::Debug, "UptimeSErr"),
+                    },
+                    b'5' => {
+                        let now = TimeMs::now();
+                        loghex!(LL::Debug, "NowMs ", now.ms_high_word());
+                        loghexln!(LL::Debug, " ", now.ms_low_word());
+                    }
+                    _ => (),
+                }
+            } else if uart_state == uart::RxState::Waking {
+                logln!(LL::Debug, "UartRx on");
+                uart_state = uart::RxState::BypassOff;
+                show_help = true;
+            }
+            if show_help {
+                log!(
+                    LL::Debug,
+                    concat!(
+                        "UartRx Help:\r\n",
+                        " h => Help\r\n",
+                        " 1 => Network stats\r\n",
+                        " 2 => Shift speed test\r\n",
+                        " 3 => Uptime ms\r\n",
+                        " 4 => Uptime s\r\n",
+                        " 5 => Now ms\r\n",
+                    )
+                );
+            }
+            ///////////////////////////// --------------------------------------
         }
-        //////////////////////// ------------------------------
 
         //////////////////////// COM HANDLER BLOCK ---------
         if hw.power_csr.rf(utra::power::STATS_STATE) == 0 {
@@ -252,7 +351,7 @@ fn main() -> ! {
             unsafe {
                 rx = (*com_rd).read() as u16;
             }
-            logln!(LL::Trace, "rx: {:x}", rx);
+            loghexln!(LL::Trace, "rx: ", rx);
 
             if rx == ComState::SSID_CHECK.verb {
                 logln!(LL::Debug, "CSsidChk");
@@ -566,7 +665,7 @@ fn main() -> ! {
                     time >>= 16;
                 }
             } else if rx == ComState::TRNG_SEED.verb {
-                log!(LL::Debug, "CTrngSeed");
+                logln!(LL::Debug, "CTrngSeed");
                 let mut entropy: [u16; 8] = [0; 8];
                 let mut error = false;
                 for e in entropy.iter_mut() {
@@ -578,7 +677,9 @@ fn main() -> ! {
                     }
                 }
                 if !error {
-                    entropy_seed = Some(entropy);
+                    wfx_rs::hal_wf200::reseed_net_prng(&entropy);
+                } else {
+                    logln!(LL::Debug, "CTrngSeedErr");
                 }
             } else if rx == ComState::SSID_SCAN_ON.verb {
                 logln!(LL::Debug, "CSsidScan1");
@@ -619,13 +720,10 @@ fn main() -> ! {
                 wifi::ap_leave();
             } else if rx == ComState::WLAN_STATUS.verb {
                 logln!(LL::Debug, "CWStatus");
-                const SIZE: usize = STR_64_U8_SIZE;
-                let mut buf: [u8; SIZE] = [0; SIZE];
-                let mut buf_it = buf.iter_mut();
-                wifi::append_status_str(&mut buf_it, &wlan_state);
-                let end = SIZE - buf_it.count();
+                let mut buf = StrBuf::<STR_64_U8_SIZE>::new();
+                wifi::append_status_str(&mut buf, &wlan_state);
                 let mut error = true;
-                if let Ok(status) = core::str::from_utf8(&buf[..end]) {
+                if let Ok(status) = buf.as_str() {
                     let mut str_ser = StringSer::<STR_64_WORDS>::new();
                     if let Ok(tx) = str_ser.encode(&status) {
                         for w in tx.iter() {
@@ -643,7 +741,7 @@ fn main() -> ! {
                     }
                 }
             } else {
-                logln!(LL::Debug, "ComError {:X}", rx);
+                loghexln!(LL::Debug, "ComError ", rx);
                 com_tx(ComState::ERROR.verb);
             }
         }

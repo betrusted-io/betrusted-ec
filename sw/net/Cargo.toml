@@ -1,0 +1,8 @@
+[package]
+name = "net"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+debug = { path = "../debug" }
+betrusted-hal = { path = "../betrusted-hal" }

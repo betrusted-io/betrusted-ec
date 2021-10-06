@@ -647,7 +647,7 @@ class BaseSoC(SoCCore):
                 clk_freq=clk_freq,
                 baudrate=115200)
             self.submodules.uart = ResetInserter()(uart.UART(self.uart_phy,
-            tx_fifo_depth=16,
+            tx_fifo_depth=256,
             rx_fifo_depth=16))
             self.add_csr("uart_phy")
             self.add_csr("uart")
@@ -689,7 +689,7 @@ class BaseSoC(SoCCore):
                 clk_freq=clk_freq,
                 baudrate=115200)
             self.submodules.uart = ResetInserter()(uart.UART(self.uart_phy,
-                tx_fifo_depth=16,
+                tx_fifo_depth=256,
                 rx_fifo_depth=16))
             self.add_csr("uart_phy")
             self.add_csr("uart")

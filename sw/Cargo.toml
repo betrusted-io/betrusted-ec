@@ -20,6 +20,7 @@ xous-nommu = { path = "xous-nommu" }
 utralib = { path = "../utralib"}
 com_rs = { path = "com_rs" }
 debug = { path = "debug" }
+net = { path = "net" }
 
 # this lets you use `cargo fix`!
 [[bin]]

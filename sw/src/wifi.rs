@@ -1,23 +1,21 @@
+use core::fmt::Write;
+
+use crate::str_buf::StrBuf;
 use crate::wlan::WlanState;
-#[allow(unused_imports)]
-use debug::{logln, sprint, sprintln, LL};
+use debug::{loghexln, logln, LL};
 use wfx_bindings::{
     sl_status_t, sl_wfx_host_hold_in_reset, sl_wfx_host_reset_chip,
     sl_wfx_security_mode_e_WFM_SECURITY_MODE_WPA2_PSK, sl_wfx_send_disconnect_command,
     sl_wfx_send_join_command, SL_STATUS_OK,
 };
+use wfx_rs::hal_wf200;
 use wfx_rs::hal_wf200::{
-    get_status, wf200_fw_build, wf200_fw_major, wf200_fw_minor, wf200_send_pds,
-    wf200_ssid_get_list, wfx_drain_event_queue, wfx_handle_event, wfx_init,
-    wfx_ssid_scan_in_progress, wfx_start_scan, State,
+    wf200_fw_build, wf200_fw_major, wf200_fw_minor, wf200_send_pds, wf200_ssid_get_list,
+    wfx_drain_event_queue, wfx_handle_event, wfx_init, wfx_ssid_scan_in_progress, wfx_start_scan,
 };
 
-// ==========================================================
-// ===== Configure Log Level (used in macro expansions) =====
-// ==========================================================
-#[allow(dead_code)]
+// Configure Log Level (used in macro expansions)
 const LOG_LEVEL: LL = LL::Debug;
-// ==========================================================
 
 pub const SSID_ARRAY_SIZE: usize = wfx_rs::hal_wf200::SSID_ARRAY_SIZE;
 
@@ -65,8 +63,29 @@ pub fn ap_join_wpa2(ws: &WlanState) {
         )
     };
     match result {
-        SL_STATUS_OK => logln!(LL::Debug, "joinOk"),
+        SL_STATUS_OK => {
+            logln!(LL::Debug, "joinOk");
+            dhcp_init();
+        }
         _ => logln!(LL::Debug, "joinFail"),
+    }
+}
+
+/// Initialize DHCP to INIT state (forget bindings, but be ready to DISCOVER on wifi connect)
+pub fn dhcp_init() {
+    match hal_wf200::dhcp_reset() {
+        Ok(_) => (),
+        Err(e) => loghexln!(LL::Debug, "DhcpResetErr ", e),
+    };
+}
+
+/// Clock the DHCP state machine
+pub fn dhcp_clock_state_machine() {
+    if hal_wf200::get_status() == hal_wf200::State::Connected {
+        match hal_wf200::dhcp_do_next() {
+            Ok(_) => (),
+            Err(e) => loghexln!(LL::Debug, "DhcpNextErr ", e),
+        };
     }
 }
 
@@ -179,26 +198,43 @@ pub fn handle_event() -> u32 {
 }
 
 /// Append string describing WF200 power and connection status to u8 buffer iterator
-pub fn append_status_str(buf: &mut core::slice::IterMut<u8>, ws: &WlanState) {
-    let s = match get_status() {
-        State::Unknown => "???",
-        State::ResetHold => "Off",
-        State::Uninitialized => "OnUnInit",
-        State::Initializing => "OnInit",
-        State::Disconnected => "OnDiscon",
-        State::Connecting => "Joining",
-        State::Connected => "Joined",
-        State::WFXError => "WFXErr",
+///
+/// Format:
+///   line1: rssi interface_status dhcp_state
+///   line2: ssid
+///
+/// The rssi value is in dBm from either the last packet recieved (if connected), or
+/// from the strongest scan result seen during ssid scan commands.
+///
+pub fn append_status_str(mut buf: &mut StrBuf<64>, ws: &WlanState) {
+    // RSSI
+    let rssi_result: Result<u32, u8> = hal_wf200::get_rssi();
+    match rssi_result {
+        Ok(rssi) => {
+            logln!(LL::Debug, "RxRssi -{}", rssi);
+            let _ = write!(&mut buf, "-{} ", rssi);
+        }
+        Err(e) => {
+            loghexln!(LL::Debug, "RxRssiErr ", e);
+            match hal_wf200::get_best_ssid_scan_rssi() {
+                Some(rssi) => {
+                    logln!(LL::Debug, "ScanRssi -{}", rssi);
+                    let _ = write!(&mut buf, "-{} ", rssi);
+                }
+                _ => {
+                    let _ = write!(&mut buf, "-- ");
+                }
+            }
+        }
     };
-    let status_it = "status: ".bytes().chain(s.bytes());
+    // Interface status; changes mainly in response to wlan {on,off,join,leave}
+    let ifce_tag = hal_wf200::interface_status_tag();
+    // DHCP sate updates after a `wlan join`
+    let dhcp_tag = hal_wf200::dhcp_get_state_tag();
+    // SSID updates after a `wlan setssid ...`
     let ssid = match ws.ssid() {
         Ok(ssid) => ssid,
-        _ => "",
+        _ => " ",
     };
-    let ssid_it = "\nssid: ".bytes().chain(ssid.bytes());
-    for c in status_it.chain(ssid_it) {
-        if let Some(dest) = buf.next() {
-            *dest = c;
-        }
-    }
+    let _ = write!(buf, "{} {} \n{}", ifce_tag, dhcp_tag, ssid);
 }
