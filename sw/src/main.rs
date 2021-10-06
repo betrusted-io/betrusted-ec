@@ -51,11 +51,8 @@ use spi::{spi_erase_region, spi_program_page, spi_standby};
 use str_buf::StrBuf;
 use wlan::WlanState;
 
-// ==========================================================
-// ===== Configure Log Level (used in macro expansions) =====
-// ==========================================================
+// Configure Log Level (used in macro expansions)
 const LOG_LEVEL: LL = LL::Debug;
-// ==========================================================
 
 // Constants
 const CONFIG_CLOCK_FREQUENCY: u32 = 18_000_000;
@@ -129,7 +126,7 @@ fn shift_speed_test() {
 
 #[entry]
 fn main() -> ! {
-    logln!(LL::Info, "\r\n====UP5K==09");
+    logln!(LL::Info, "\r\n====UP5K==0A");
     let mut com_csr = CSR::new(HW_COM_BASE as *mut u32);
     let mut crg_csr = CSR::new(HW_CRG_BASE as *mut u32);
     let mut ticktimer_csr = CSR::new(HW_TICKTIMER_BASE as *mut u32);
@@ -280,50 +277,29 @@ fn main() -> ! {
 
             ///////////////////////////// DEBUG UART RX HANDLER BLOCK ----------
             // Uart starts in bypass mode, so this won't start returning bytes
-            // until after it sees the "at\r\n" wake sequence (or "AT\r\n")
+            // until after it sees the "AT\n" wake sequence (or "AT\r")
+            let mut show_help = false;
             if let Some(b) = uart::rx_byte(&mut uart_state) {
                 match b {
                     0x1B => {
                         // In case of ANSI escape sequences (arrow keys, etc.) turn UART bypass mode
                         // on to avoid the hassle of having to parse the escape sequences or deal
-                        // with whatever commands they might accidentally trigger
+                        // with whatever unintended commands they might accidentally trigger
                         uart_state = uart::RxState::BypassOnAwaitA;
-                        logln!(LL::Debug, "UartRx ESC -> BypassOn");
+                        logln!(LL::Debug, "UartRx off");
                     }
-                    b'h' | b'H' | b'?' => log!(
-                        LL::Debug,
-                        concat!(
-                            "UartRx Help:\r\n",
-                            " 1 => ARP req\r\n",
-                            " 2 => DHCP reset\r\n",
-                            " 3 => DHCP next\r\n",
-                            " 4 => Show net stats\r\n",
-                            " 5 => Shift speed test\r\n",
-                            " 6 => Uptime ms\r\n",
-                            " 7 => Uptime s\r\n",
-                            " 8 => Now ms\r\n",
-                        )
-                    ),
-                    b'1' => logln!(LL::Debug, "TODO: Send ARP request"),
-                    b'2' => match wfx_rs::hal_wf200::dhcp_reset() {
-                        Ok(_) => (),
-                        Err(e) => loghexln!(LL::Debug, "DhcpResetErr ", e),
-                    },
-                    b'3' => match wfx_rs::hal_wf200::dhcp_do_next() {
-                        Ok(_) => (),
-                        Err(e) => loghexln!(LL::Debug, "DhcpNextErr ", e),
-                    },
-                    b'4' => wfx_rs::hal_wf200::log_net_state(),
-                    b'5' => shift_speed_test(),
-                    b'6' => match uptime.elapsed_ms() {
+                    b'h' | b'H' | b'?' => show_help = true,
+                    b'1' => wfx_rs::hal_wf200::log_net_state(),
+                    b'2' => shift_speed_test(),
+                    b'3' => match uptime.elapsed_ms() {
                         Ok(ms) => loghexln!(LL::Debug, "UptimeMs ", ms),
                         Err(_) => logln!(LL::Debug, "UptimeMsErr"),
                     },
-                    b'7' => match uptime.elapsed_s() {
+                    b'4' => match uptime.elapsed_s() {
                         Ok(s) => loghexln!(LL::Debug, "UptimeS ", s),
                         Err(_) => logln!(LL::Debug, "UptimeSErr"),
                     },
-                    b'8' => {
+                    b'5' => {
                         let now = TimeMs::now();
                         loghex!(LL::Debug, "NowMs ", now.ms_high_word());
                         loghexln!(LL::Debug, " ", now.ms_low_word());
@@ -331,8 +307,23 @@ fn main() -> ! {
                     _ => (),
                 }
             } else if uart_state == uart::RxState::Waking {
-                logln!(LL::Debug, "UartRx OK");
+                logln!(LL::Debug, "UartRx on");
                 uart_state = uart::RxState::BypassOff;
+                show_help = true;
+            }
+            if show_help {
+                log!(
+                    LL::Debug,
+                    concat!(
+                        "UartRx Help:\r\n",
+                        " h => Help\r\n",
+                        " 1 => Network stats\r\n",
+                        " 2 => Shift speed test\r\n",
+                        " 3 => Uptime ms\r\n",
+                        " 4 => Uptime s\r\n",
+                        " 5 => Now ms\r\n",
+                    )
+                );
             }
             ///////////////////////////// --------------------------------------
         }

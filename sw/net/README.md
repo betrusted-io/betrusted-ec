@@ -140,6 +140,32 @@ In practice, the error handling mostly looks like this:
    ```
 
 
+## On Using Bitwise Operations Instead of Division Operations
+
+This crate sometimes uses bitwise operations (`>>`, `&`) instead of division or
+modulo division.
+
+If you are unfamiliar with equivalence between bitwise operations and division,
+the key idea to understand is that right-shifting a base-2 number is equivalent
+to taking the quotient from dividing that number by 2. If you shift right by
+more than one digit, that is equivalent to dividing by 2 raised to the power of
+however many digits you shift.
+
+For example, in base-2, seventeen is 0b10001. If you shift 3 digits off the
+right end of seventeen, you get 0b10, which is equivalent to 2 in base-10. So,
+`17 >> 3 = 2`. That result is the same as calculating the quotient of dividing
+17 by 8: `17 / (2**3) = 17 / 8 = 2`.
+
+If you want to calculate the remainder of an integer division using a divisor
+of `2**n`, you can do a bitwise AND against `(2**n)-1`.
+
+For example, the remainder of 17 divided by 8 is 1, which can be calculated as
+`17 % (2**3) = 17 % 8 = 1`. You can also get the same result using bitwise AND
+like this, `17 & ((2**3)-1) = 17 & 7 = 1`. So, doing `& 7` is equivalent to
+doing `% 8`. They both mean that you want to keep just the lowest three bits,
+which is equivalent to taking the remainder from an integer division by 8.
+
+
 ## On Quotas and Bounded Loops
 
 This section is an attempt to explain the philosophical basis for some unusual
@@ -147,7 +173,9 @@ code patterns used in this crate (at least compared to web apps and such).
 
 This crate is written with the goals of being robust and including built in
 diagnostics. Ideally, it should not panic, it should not fail under heavy load,
-and it should degrade gracefully in the presence of hardware faults.
+and it should degrade gracefully in the presence of hardware faults. Probably
+this code will fall short, because most code usually does. But, those are still
+the goals.
 
 Degrading gracefully includes things like diagnosing assembly faults during
 factory tests, or logging missing peripherals when bringing up a hardware
@@ -187,8 +215,10 @@ point for setting up a test network, something about like this will probably
 work:
 
 Equipment:
-- Small *managed* Ethernet switch with at least 3 ports and a "port mirroring" feature
-- 2 wifi routers with Ethernet LAN ports (one needs "bridge mode" or an option to disable its DHCP server)
+- Small *managed* Ethernet switch with at least 3 ports and a "port mirroring"
+  feature
+- 2 wifi routers with Ethernet LAN ports (one needs "bridge mode" or an option
+  to disable its DHCP server)
 - 3 Ethernet cables
 - Computer with a free Ethernet port and Wireshark
 

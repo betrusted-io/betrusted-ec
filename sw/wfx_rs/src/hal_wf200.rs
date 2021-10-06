@@ -55,8 +55,7 @@ pub use wfx_bindings::{
     SL_STATUS_WIFI_SLEEP_GRANTED, SL_WFX_CONT_NEXT_LEN_MASK, SL_WFX_EXCEPTION_DATA_SIZE_MAX,
 };
 
-// ===== Configure Log Level (used in macro expansions) =====
-#[allow(dead_code)]
+// Configure Log Level (used in macro expansions)
 const LOG_LEVEL: LL = LL::Debug;
 
 // This is defined in wfx-fullMAC-driver/wfx_fmac_driver/firmware/sl_wfx_general_error_api.h in the enum
@@ -131,8 +130,23 @@ const PBUF_SIZE: usize = PBUF_HEADER_SIZE + PBUF_DATA_SIZE;
 /// Packet buffer for building outbound Ethernet II frames
 static mut PBUF: [u8; PBUF_SIZE] = [0; PBUF_SIZE];
 
+/// Return string tag describing status of WF200
+pub fn interface_status_tag() -> &'static str {
+    match unsafe { CURRENT_STATUS } {
+        State::Unknown => "E1",
+        State::ResetHold => "off",
+        State::Uninitialized => "busy1",
+        State::Initializing => "busy2",
+        State::Disconnected => "down",
+        State::Connecting => "busy3",
+        State::Connected => "up",
+        State::WFXError => "E2",
+    }
+}
+
 /// Export an API for the main event loop to trigger a log dump of packet filter stats, etc.
 pub fn log_net_state() {
+    logln!(LL::Debug, "WF200Status {}", interface_status_tag());
     unsafe { NET_STATE.log_state() };
 }
 
@@ -176,8 +190,14 @@ pub fn get_rssi() -> Result<u32, u8> {
     }
 }
 
+/// Return current state of DHCP state machine.
+/// This is intended as a way for event loop to monitor DHCP handshake progress and detect slowness.
 pub fn dhcp_get_state() -> dhcp::State {
     unsafe { NET_STATE.dhcp.get_state() }
+}
+
+pub fn dhcp_get_state_tag() -> &'static str {
+    unsafe { NET_STATE.dhcp.get_state_tag() }
 }
 
 /// Reset DHCP client state machine to start at INIT state with new random hostname

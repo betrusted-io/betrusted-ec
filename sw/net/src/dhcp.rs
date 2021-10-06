@@ -84,6 +84,19 @@ impl DhcpClient {
         self.state
     }
 
+    /// Return string tag describing current state machine state
+    pub fn get_state_tag(&self) -> &str {
+        match self.state {
+            State::Halted => "dhcpHalt",
+            State::Init => "dhcpInit",
+            State::Selecting => "dhcpSelect",
+            State::Requesting => "dhcpRequest",
+            State::Bound => "dhcpBound",
+            State::Renewing => "dhcpRenew",
+            State::Rebinding => "dhcpRebind",
+        }
+    }
+
     /// Clear all bindings that get populated from a DHCPOFFER
     fn reset_bindings(&mut self) {
         self.sid = None;
@@ -256,21 +269,33 @@ impl DhcpClient {
             State::Init => (),
             State::Selecting => {
                 logln!(LL::Debug, "DhcpSelect");
-                logln!(LL::Debug, " IP      {:08X}", ip);
-                logln!(LL::Debug, " Gateway {:08X}", gw);
-                logln!(LL::Debug, " Subnet  {:08X}", sn);
-                logln!(LL::Debug, " DNS     {:08X}", dns);
+
                 self.sid = Some(sid);
                 self.ip = Some(ip);
                 self.gateway = Some(gw);
                 self.subnet = Some(sn);
                 self.dns = Some(dns);
+                // Print results to the log
+                self.log_bindings();
             }
             State::Requesting => (),
             State::Bound => (),
             State::Renewing => (),
             State::Rebinding => (),
         }
+    }
+
+    /// Print {IP, gateway, netmask, DNS} bindings to debug log
+    pub fn log_bindings(&self) {
+        match (self.ip, self.gateway, self.subnet, self.dns) {
+            (Some(ip), Some(gateway), Some(subnet), Some(dns)) => {
+                logln!(LL::Debug, " IP   {:08X}", ip);
+                logln!(LL::Debug, " Gtwy {:08X}", gateway);
+                logln!(LL::Debug, " Mask {:08X}", subnet);
+                logln!(LL::Debug, " DNS  {:08X}", dns);
+            }
+            _ => (),
+        };
     }
 
     /// Handle DHCPACK event: transaction ID, server ID

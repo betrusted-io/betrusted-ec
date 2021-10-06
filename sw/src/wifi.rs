@@ -3,7 +3,6 @@ use core::fmt::Write;
 use crate::str_buf::StrBuf;
 use crate::wlan::WlanState;
 use debug::{loghexln, logln, LL};
-use net::dhcp;
 use wfx_bindings::{
     sl_status_t, sl_wfx_host_hold_in_reset, sl_wfx_host_reset_chip,
     sl_wfx_security_mode_e_WFM_SECURITY_MODE_WPA2_PSK, sl_wfx_send_disconnect_command,
@@ -11,9 +10,8 @@ use wfx_bindings::{
 };
 use wfx_rs::hal_wf200;
 use wfx_rs::hal_wf200::{
-    get_status, wf200_fw_build, wf200_fw_major, wf200_fw_minor, wf200_send_pds,
-    wf200_ssid_get_list, wfx_drain_event_queue, wfx_handle_event, wfx_init,
-    wfx_ssid_scan_in_progress, wfx_start_scan, State,
+    wf200_fw_build, wf200_fw_major, wf200_fw_minor, wf200_send_pds, wf200_ssid_get_list,
+    wfx_drain_event_queue, wfx_handle_event, wfx_init, wfx_ssid_scan_in_progress, wfx_start_scan,
 };
 
 // Configure Log Level (used in macro expansions)
@@ -202,8 +200,8 @@ pub fn handle_event() -> u32 {
 /// Append string describing WF200 power and connection status to u8 buffer iterator
 ///
 /// Format:
-///   rssi interface_updown_code
-///   ssid
+///   line1: rssi interface_status dhcp_state
+///   line2: ssid
 ///
 /// The rssi value is in dBm from either the last packet recieved (if connected), or
 /// from the strongest scan result seen during ssid scan commands.
@@ -230,38 +228,13 @@ pub fn append_status_str(mut buf: &mut StrBuf<64>, ws: &WlanState) {
         }
     };
     // Interface status; changes mainly in response to wlan {on,off,join,leave}
-    let ifc_updn = match get_status() {
-        State::Unknown => "E99",
-        State::ResetHold => "off",
-        State::Uninitialized => "busy1",
-        State::Initializing => "busy2",
-        State::Disconnected => "down",
-        State::Connecting => "busy3",
-        State::Connected => "up",
-        State::WFXError => "E98",
+    let ifce_tag = hal_wf200::interface_status_tag();
+    // DHCP sate updates after a `wlan join`
+    let dhcp_tag = hal_wf200::dhcp_get_state_tag();
+    // SSID updates after a `wlan setssid ...`
+    let ssid = match ws.ssid() {
+        Ok(ssid) => ssid,
+        _ => " ",
     };
-    let _ = write!(buf, "{} ", ifc_updn);
-    // DHCP
-    let dhcp_tag = match hal_wf200::dhcp_get_state() {
-        dhcp::State::Halted => "Halt",
-        dhcp::State::Init => "Init",
-        dhcp::State::Selecting => "Select",
-        dhcp::State::Requesting => "Request",
-        dhcp::State::Bound => "Bound",
-        dhcp::State::Renewing => "Renew",
-        dhcp::State::Rebinding => "Rebind",
-    };
-    let _ = write!(buf, "dhcp{} ", dhcp_tag);
-    // Gateway Ping
-    // TODO: implement this
-    let _ = write!(buf, "--");
-    // SSID
-    match ws.ssid() {
-        Ok(ssid) => {
-            let _ = write!(buf, "\nssid:{}", ssid);
-        }
-        _ => {
-            let _ = write!(buf, "\nssid:");
-        }
-    };
+    let _ = write!(buf, "{} {} \n{}", ifce_tag, dhcp_tag, ssid);
 }
