@@ -228,6 +228,7 @@ fn main() -> ! {
 
     // interrupt manager for COM interface
     let mut com_int_mgr = com_bus::ComInterrupts::new();
+    let mut was_connected = false;
 
     //////////////////////// MAIN LOOP ------------------
     logln!(LL::Info, "main loop");
@@ -244,6 +245,14 @@ fn main() -> ! {
                     CountdownStatus::Done => {
                         wifi::dhcp_clock_state_machine();
                         dhcp_oneshot.start(DHCP_POLL_MS);
+
+                        // fire an interrupt whenever we enter or leave the connected state
+                        // QUESTION: does this capture DHCP lease renewals? If not, maybe we should be checking DHCP state instead.
+                        let connected = wfx_rs::hal_wf200::get_status() == wfx_rs::hal_wf200::State::Connected;
+                        if connected != was_connected {
+                            com_int_mgr.set_ipconf_update();
+                            was_connected = connected;
+                        }
                     }
                 }
             }
@@ -754,6 +763,9 @@ fn main() -> ! {
                 com_tx(ComState::ERROR.verb);
             }
         }
+        // update the state of the irq pin after all the potential ACKs have been handled above
+        com_int_mgr.update_irq_pin();
+
         //////////////////////// ---------------------------
         // unsafe { riscv::asm::wfi() }; // potential for power savings? unfortunately WFI seems broken
     }
