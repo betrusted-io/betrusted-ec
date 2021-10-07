@@ -167,7 +167,7 @@ fn main() -> ! {
     // State vars for WPA2 auth credentials for Wifi AP
     let mut wlan_state = WlanState::new();
 
-    // Initialize the no-MMU version of Xous, which will give us
+    // Initialize the no-MMU version of 'Xous' (an extremely old branch of it), which will give us
     // basic access to tasks and interrupts.
     logln!(LL::Trace, "pre-nommu");
     xous_nommu::init();
@@ -739,6 +739,12 @@ fn main() -> ! {
                     for _ in 0..STR_64_WORDS {
                         com_tx(0);
                     }
+                }
+            } else if rx == ComState::WLAN_GET_IPV4_CONF.verb {
+                logln!(LL::Debug, "CWIpConf");
+                let conf = wfx_rs::hal_wf200::com_ipv4_config().encode_u16();
+                for &w in conf.iter() {
+                    com_tx(w);
                 }
             } else {
                 loghexln!(LL::Debug, "ComError ", rx);

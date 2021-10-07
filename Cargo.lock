@@ -611,6 +611,7 @@ version = "0.1.0"
 dependencies = [
  "betrusted-hal",
  "c_types",
+ "com_rs",
  "debug",
  "net",
  "utralib",

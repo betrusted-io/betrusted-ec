@@ -13,6 +13,7 @@ use bt_wf200_pds::PDS_DATA;
 use debug;
 use debug::{log, loghex, loghexln, logln, LL};
 use net;
+use com_rs::serdes::{Ipv4Conf, DhcpState};
 
 // The mixed case constants here are the reason for the `allow(non_upper_case_globals)` above
 pub use wfx_bindings::{
@@ -141,6 +142,39 @@ pub fn interface_status_tag() -> &'static str {
         State::Connecting => "busy3",
         State::Connected => "up",
         State::WFXError => "E2",
+    }
+}
+
+/// Export an API to retrieve net state for COM reporting
+pub fn com_ipv4_config() -> Ipv4Conf {
+    Ipv4Conf {
+        dhcp: match dhcp_get_state() {
+            dhcp::State::Halted => DhcpState::Halted,
+            dhcp::State::Init => DhcpState::Init,
+            dhcp::State::Selecting => DhcpState::Selecting,
+            dhcp::State::Requesting => DhcpState::Requesting,
+            dhcp::State::Bound => DhcpState::Bound,
+            dhcp::State::Renewing => DhcpState::Renewing,
+            dhcp::State::Rebinding => DhcpState::Rebinding,
+        },
+        mac: unsafe { NET_STATE.mac },
+        addr: match unsafe { NET_STATE.dhcp.ip } {
+            Some(ip) => ip.to_be_bytes(),
+            None => [0, 0, 0, 0],
+        },
+        gtwy: match unsafe { NET_STATE.dhcp.gateway } {
+            Some(gw) => gw.to_be_bytes(),
+            None => [0, 0, 0, 0],
+        },
+        mask: match unsafe { NET_STATE.dhcp.subnet } {
+            Some(mask) => mask.to_be_bytes(),
+            None => [0, 0, 0, 0],
+        },
+        dns1: match unsafe { NET_STATE.dhcp.dns } {
+            Some(dns) => dns.to_be_bytes(),
+            None => [0, 0, 0, 0],
+        },
+        dns2: [0; 4]
     }
 }
 
@@ -302,6 +336,72 @@ pub fn wf200_ssid_get_list(ssid_list: &mut [[u8; 32]; SSID_ARRAY_SIZE]) {
                 *d = *s;
             }
         }
+    }
+}
+
+pub struct Wf200Interrupts {
+    state: u16,
+    rx_len: u16,
+    mask: u16,
+    saw_ack: bool,
+}
+impl Wf200Interrupts {
+    pub fn new() -> Self {
+        Wf200Interrupts {
+            state: 0,
+            rx_len: 0,
+            mask: 0,
+            saw_ack: false,
+        }
+    }
+    /// getter for pin state logic
+    pub fn update_irq_pin(&mut self) {
+        let mut com_csr = CSR::new(utralib::HW_COM_BASE as *mut u32);
+        if (self.state & self.mask) != 0 {
+            if !self.saw_ack {
+                com_csr.rmwf(utra::com::CONTROL_HOST_INT, 1);
+            } else {
+                // drop the IRQ line to create a new edge, in case we have a new interrupt despite the ack
+                com_csr.rmwf(utra::com::CONTROL_HOST_INT, 0);
+                self.saw_ack = false;
+            }
+        } else {
+            com_csr.rmwf(utra::com::CONTROL_HOST_INT, 0);
+            self.saw_ack = false;
+        }
+    }
+    /// getter/setters from wf200 logic
+    pub fn set_rx_ready(&mut self, len: u16) {
+        self.rx_len = len;
+        self.state |= com_rs::WLAN_INT_RX_READY;
+    }
+    pub fn ack_rx_ready(&mut self) {
+        self.rx_len = 0;
+        self.state &= !com_rs::WLAN_INT_RX_READY;
+        self.saw_ack = true;
+    }
+    pub fn set_ipconf_update(&mut self) {
+        self.state |= com_rs::WLAN_INT_IPCONF_UPDATE;
+    }
+    pub fn ack_ipconf_update(&mut self) {
+        self.state &= !com_rs::WLAN_INT_IPCONF_UPDATE;
+        self.saw_ack = true;
+    }
+    pub fn set_ssid_update(&mut self) {
+        self.state |= com_rs::WLAN_INT_SSID_UPDATE;
+    }
+    pub fn ack_ssid_update(&mut self) {
+        self.state &= !com_rs::WLAN_INT_SSID_UPDATE;
+        self.saw_ack = true;
+    }
+
+    /// getters/setters for COM interface
+    pub fn get_mask(&self) -> u16 { self.mask }
+    pub fn set_mask(&mut self, new_mask: u16) { self.mask = new_mask; }
+    pub fn get_state(&self) -> (u16, u16) { (self.state, self.rx_len) }
+    pub fn ack(&mut self, acks: u16) {
+        self.state &= !acks;
+        self.saw_ack = true;
     }
 }
 

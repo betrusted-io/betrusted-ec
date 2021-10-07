@@ -15,6 +15,7 @@ betrusted-hal = { path = "../betrusted-hal" }
 wfx_bindings = { path = "../wfx_bindings" }
 xous-nommu = { path = "../xous-nommu" }
 utralib = { path = "../../utralib"}
+com_rs = { path = "../com_rs" }
 
 [features]
 debug_uart = []
