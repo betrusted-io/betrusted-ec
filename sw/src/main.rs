@@ -229,6 +229,12 @@ fn main() -> ! {
     // interrupt manager for COM interface
     let mut com_int_mgr = com_bus::ComInterrupts::new();
     let mut was_connected = false;
+    let mut was_scanning = false;
+    // local copy of the packet data staged for the COM to handle -- make a copy because
+    // wf200 interface could overwrite its own packet copy with another incoming packet
+    let mut raw_packet_buf: [u8; wfx_rs::hal_wf200::WIFI_MTU] = [0; wfx_rs::hal_wf200::WIFI_MTU];
+    let mut raw_packet_slice = &raw_packet_buf[0..0];
+    let mut packets_dropped: u32 = 0;
 
     //////////////////////// MAIN LOOP ------------------
     logln!(LL::Info, "main loop");
@@ -237,6 +243,27 @@ fn main() -> ! {
             //////////////////////// WIFI HANDLER BLOCK ---------
             if use_wifi && wifi_ready {
                 wifi::handle_event();
+                // update interrupt vectors
+                let scanning = wifi::ssid_scan_in_progress();
+                if was_scanning && !scanning { // trigger interrupt when scan is done
+                    com_int_mgr.set_ssid_update();
+                }
+                was_scanning = scanning;
+
+                if wfx_rs::hal_wf200::is_raw_pending() {
+                    if raw_packet_slice.len() != 0 {
+                        packets_dropped += 1;
+                        wfx_rs::hal_wf200::drop_packet();
+                    } else {
+                        let pkt = wfx_rs::hal_wf200::get_packet_data();
+                        for (&src, dst) in
+                        pkt.iter().zip(raw_packet_buf.iter_mut()) {
+                            *dst = src;
+                        }
+                        raw_packet_slice = &raw_packet_buf[0..pkt.len()];
+                    }
+                    com_int_mgr.set_rx_ready(raw_packet_slice.len() as u16);
+                }
                 // Clock the DHCP state machine using its oneshot countdown
                 // timer for rate limiting
                 match dhcp_oneshot.status() {

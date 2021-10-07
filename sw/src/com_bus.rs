@@ -70,7 +70,13 @@ impl ComInterrupts {
     /// getter/setters from internal logic (wf200, etc.)
     pub fn set_rx_ready(&mut self, len: u16) {
         self.rx_len = len;
-        self.state |= com_rs::INT_WLAN_RX_READY;
+        if self.state & com_rs::INT_WLAN_RX_READY != 0 {
+            // if we're getting a second packet before the prior one was serviced, fake an ack
+            // so that the interrupt edge fires again
+            self.saw_ack = true;
+        } else {
+            self.state |= com_rs::INT_WLAN_RX_READY;
+        }
     }
     pub fn ack_rx_ready(&mut self) {
         self.rx_len = 0;

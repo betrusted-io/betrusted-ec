@@ -89,6 +89,25 @@ static mut SSID_ARRAY: [[u8; 32]; SSID_ARRAY_SIZE] = [[0; 32]; SSID_ARRAY_SIZE];
 static mut SSID_INDEX: usize = 0;
 static mut SSID_BEST_RSSI: Option<u8> = None;
 
+// event state variables
+pub const WIFI_MTU: usize = 1500;
+static mut PACKET_PENDING_DAT: [u8; WIFI_MTU] = [0; WIFI_MTU];
+static mut PACKET_PENDING_LEN: Option<usize> = None;
+
+pub fn is_raw_pending() -> bool { unsafe{PACKET_PENDING_LEN.is_some()} }
+pub fn drop_packet() {
+    unsafe{PACKET_PENDING_LEN = None};
+}
+pub fn get_packet_data() -> &'static[u8] {
+    if let Some(p_len) = unsafe{PACKET_PENDING_LEN} {
+        unsafe{PACKET_PENDING_LEN = None};
+        unsafe{&PACKET_PENDING_DAT[0..p_len]}
+    } else {
+        unsafe{PACKET_PENDING_LEN = None};
+        unsafe{&PACKET_PENDING_DAT[0..0]}
+    }
+}
+
 /// Possible link layer connection states
 #[derive(Copy, Clone, PartialEq)]
 pub enum State {
@@ -916,6 +935,14 @@ fn sl_wfx_host_received_frame_callback(rx_buffer: *const sl_wfx_received_ind_t) 
     let length = body.frame_length as usize;
     let data = unsafe { &body.frame.as_slice(length + padding)[padding..] };
     let _filter_bin = net::handle_frame(unsafe { &mut NET_STATE }, data);
+
+    unsafe {
+        // note that this will leak packet data from previous packets in the unused portion of the buffer
+        for (&src, dst) in data.iter().zip(PACKET_PENDING_DAT.iter_mut()) {
+            *dst = src;
+        }
+        PACKET_PENDING_LEN = Some(data.len());
+    }
 }
 
 unsafe fn sl_wfx_scan_result_callback(scan_result: *const sl_wfx_scan_result_ind_body_t) {
