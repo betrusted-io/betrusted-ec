@@ -226,6 +226,9 @@ fn main() -> ! {
         logln!(LL::Info, "wifi off: holding reset");
     }
 
+    // interrupt manager for COM interface
+    let mut com_int_mgr = com_bus::ComInterrupts::new();
+
     //////////////////////// MAIN LOOP ------------------
     logln!(LL::Info, "main loop");
     loop {

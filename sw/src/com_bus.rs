@@ -34,3 +34,77 @@ pub fn com_rx(timeout: u32) -> Result<u16, &'static str> {
     }
     Ok(unsafe { (*com_rd).read() as u16 })
 }
+
+pub struct ComInterrupts {
+    state: u16,
+    rx_len: u16,
+    mask: u16,
+    saw_ack: bool,
+}
+#[allow(dead_code)]
+impl ComInterrupts {
+    pub fn new() -> Self {
+        ComInterrupts {
+            state: 0,
+            rx_len: 0,
+            mask: 0,
+            saw_ack: false,
+        }
+    }
+    /// getter for pin state logic
+    pub fn update_irq_pin(&mut self) {
+        let mut com_csr = CSR::new(utralib::HW_COM_BASE as *mut u32);
+        if (self.state & self.mask) != 0 {
+            if !self.saw_ack {
+                com_csr.rmwf(utra::com::CONTROL_HOST_INT, 1);
+            } else {
+                // drop the IRQ line to create a new edge, in case we have a new interrupt despite the ack
+                com_csr.rmwf(utra::com::CONTROL_HOST_INT, 0);
+                self.saw_ack = false;
+            }
+        } else {
+            com_csr.rmwf(utra::com::CONTROL_HOST_INT, 0);
+            self.saw_ack = false;
+        }
+    }
+    /// getter/setters from internal logic (wf200, etc.)
+    pub fn set_rx_ready(&mut self, len: u16) {
+        self.rx_len = len;
+        self.state |= com_rs::INT_WLAN_RX_READY;
+    }
+    pub fn ack_rx_ready(&mut self) {
+        self.rx_len = 0;
+        self.state &= !com_rs::INT_WLAN_RX_READY;
+        self.saw_ack = true;
+    }
+    pub fn set_ipconf_update(&mut self) {
+        self.state |= com_rs::INT_WLAN_IPCONF_UPDATE;
+    }
+    pub fn ack_ipconf_update(&mut self) {
+        self.state &= !com_rs::INT_WLAN_IPCONF_UPDATE;
+        self.saw_ack = true;
+    }
+    pub fn set_ssid_update(&mut self) {
+        self.state |= com_rs::INT_WLAN_SSID_UPDATE;
+    }
+    pub fn ack_ssid_update(&mut self) {
+        self.state &= !com_rs::INT_WLAN_SSID_UPDATE;
+        self.saw_ack = true;
+    }
+    pub fn set_battery_critical(&mut self) {
+        self.state |= com_rs::INT_BATTERY_CRITICAL;
+    }
+    pub fn ack_battery_critical(&mut self) {
+        self.state &= !com_rs::INT_BATTERY_CRITICAL;
+        self.saw_ack = true;
+    }
+
+    /// getters/setters for COM bus interface
+    pub fn get_mask(&self) -> u16 { self.mask }
+    pub fn set_mask(&mut self, new_mask: u16) { self.mask = new_mask; }
+    pub fn get_state(&self) -> (u16, u16) { (self.state, self.rx_len) }
+    pub fn ack(&mut self, acks: u16) {
+        self.state &= !acks;
+        self.saw_ack = true;
+    }
+}
