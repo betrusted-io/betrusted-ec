@@ -91,21 +91,53 @@ static mut SSID_BEST_RSSI: Option<u8> = None;
 
 // event state variables
 pub const WIFI_MTU: usize = 1500;
+// NOTE this assumption:
+// once a packet is lodged into the PACKET_PENDING, it cannot cange
+// until it has been read out. Thus all new incoming packets must be dropped.
+// If the packet changes, then the read length reported to the SOC could change
+// before the read happens. That would be Bad.
 static mut PACKET_PENDING_DAT: [u8; WIFI_MTU] = [0; WIFI_MTU];
-static mut PACKET_PENDING_LEN: Option<usize> = None;
+static mut PACKET_PENDING: &[u8] = &[];
+static mut PACKETS_DROPPED: u32 = 0;
+static mut LAST_DROPPED: u32 = 0; // state counter to poke the interrupt every time an additional packet is dropped
+static mut WAS_POLLED: bool = false;
+static mut WAS_READ: bool = true;
 
-pub fn is_raw_pending() -> bool { unsafe{PACKET_PENDING_LEN.is_some()} }
+pub fn was_dropped() -> bool {
+    if unsafe { LAST_DROPPED } != unsafe { PACKETS_DROPPED } {
+        unsafe{ LAST_DROPPED = PACKETS_DROPPED };
+        true
+    } else {
+        false
+    }
+}
+pub fn new_pending() -> bool {
+    if unsafe{!WAS_POLLED && (PACKET_PENDING.len() != 0)} {
+        unsafe{ WAS_POLLED = true };
+        true
+    } else {
+        false
+    }
+}
 pub fn drop_packet() {
-    unsafe{PACKET_PENDING_LEN = None};
+    unsafe{ WAS_POLLED = false };
+    unsafe{ PACKETS_DROPPED += 1 };
+}
+// NOTE: we assume that from the point of the length fetch the next operation MUST be a get_packet_data()
+// we want to avoid the case where the length is fetched and then update before the data is read out.
+// WAS_READ is the semaphore that guarantees this.
+pub fn get_packet_len() -> u16 {
+    unsafe{ WAS_READ = false };
+    unsafe{PACKET_PENDING.len() as u16}
 }
 pub fn get_packet_data() -> &'static[u8] {
-    if let Some(p_len) = unsafe{PACKET_PENDING_LEN} {
-        unsafe{PACKET_PENDING_LEN = None};
-        unsafe{&PACKET_PENDING_DAT[0..p_len]}
-    } else {
-        unsafe{PACKET_PENDING_LEN = None};
-        unsafe{&PACKET_PENDING_DAT[0..0]}
-    }
+    unsafe{ WAS_POLLED = false };
+    unsafe{ LAST_DROPPED = PACKETS_DROPPED }; // update this counter because after getting the data, the dropped count doesn't matter anymore
+    // the WAS_READ semaphore indicates that the packet can be replaced with a new one
+    // it's safe to set it in this routine because it is assumed to be SYNCHRONOUS and SINGLE-THREADED
+    // so once the value is returned, it's guaranteed to be copied to the transmit FIFO before any updates can happen
+    unsafe{ WAS_READ = true };
+    unsafe{PACKET_PENDING}
 }
 
 /// Possible link layer connection states
@@ -936,12 +968,20 @@ fn sl_wfx_host_received_frame_callback(rx_buffer: *const sl_wfx_received_ind_t) 
     let data = unsafe { &body.frame.as_slice(length + padding)[padding..] };
     let _filter_bin = net::handle_frame(unsafe { &mut NET_STATE }, data);
 
-    unsafe {
-        // note that this will leak packet data from previous packets in the unused portion of the buffer
-        for (&src, dst) in data.iter().zip(PACKET_PENDING_DAT.iter_mut()) {
-            *dst = src;
+    // note: this is where you'd put in a packet filter for packets going to the SOC, if one were to be
+    // implemented. Right now all data is passed on for early implementation/testing, but since there
+    // is already a filter implemented here, we should eventually take advantage of it.
+    if unsafe{WAS_READ} {
+        unsafe {
+            // note that this will leak packet data from previous packets in the unused portion of the buffer
+            for (&src, dst) in data.iter().zip(PACKET_PENDING_DAT.iter_mut()) {
+                *dst = src;
+            }
+            PACKET_PENDING = &data[0..data.len()];
+            WAS_READ = false;
         }
-        PACKET_PENDING_LEN = Some(data.len());
+    } else {
+        drop_packet();
     }
 }
 

@@ -37,7 +37,7 @@ pub fn com_rx(timeout: u32) -> Result<u16, &'static str> {
 
 pub struct ComInterrupts {
     state: u16,
-    rx_len: u16,
+    rx_len_bytes: u16,
     mask: u16,
     saw_ack: bool,
 }
@@ -46,7 +46,7 @@ impl ComInterrupts {
     pub fn new() -> Self {
         ComInterrupts {
             state: 0,
-            rx_len: 0,
+            rx_len_bytes: 0,
             mask: 0,
             saw_ack: false,
         }
@@ -69,7 +69,7 @@ impl ComInterrupts {
     }
     /// getter/setters from internal logic (wf200, etc.)
     pub fn set_rx_ready(&mut self, len: u16) {
-        self.rx_len = len;
+        self.rx_len_bytes = len;
         if self.state & com_rs::INT_WLAN_RX_READY != 0 {
             // if we're getting a second packet before the prior one was serviced, fake an ack
             // so that the interrupt edge fires again
@@ -79,7 +79,7 @@ impl ComInterrupts {
         }
     }
     pub fn ack_rx_ready(&mut self) {
-        self.rx_len = 0;
+        self.rx_len_bytes = 0;
         self.state &= !com_rs::INT_WLAN_RX_READY;
         self.saw_ack = true;
     }
@@ -107,8 +107,11 @@ impl ComInterrupts {
 
     /// getters/setters for COM bus interface
     pub fn get_mask(&self) -> u16 { self.mask }
-    pub fn set_mask(&mut self, new_mask: u16) { self.mask = new_mask; }
-    pub fn get_state(&self) -> (u16, u16) { (self.state, self.rx_len) }
+    pub fn set_mask(&mut self, new_mask: u16) {
+        self.saw_ack = true; // the intention is to cause any pre-existing interrupts to fire
+        self.mask = new_mask;
+    }
+    pub fn get_state(&self) -> [u16; 2] { [self.state, self.rx_len_bytes] }
     pub fn ack(&mut self, acks: u16) {
         self.state &= !acks;
         self.saw_ack = true;

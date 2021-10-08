@@ -230,11 +230,6 @@ fn main() -> ! {
     let mut com_int_mgr = com_bus::ComInterrupts::new();
     let mut was_connected = false;
     let mut was_scanning = false;
-    // local copy of the packet data staged for the COM to handle -- make a copy because
-    // wf200 interface could overwrite its own packet copy with another incoming packet
-    let mut raw_packet_buf: [u8; wfx_rs::hal_wf200::WIFI_MTU] = [0; wfx_rs::hal_wf200::WIFI_MTU];
-    let mut raw_packet_slice = &raw_packet_buf[0..0];
-    let mut packets_dropped: u32 = 0;
 
     //////////////////////// MAIN LOOP ------------------
     logln!(LL::Info, "main loop");
@@ -250,19 +245,8 @@ fn main() -> ! {
                 }
                 was_scanning = scanning;
 
-                if wfx_rs::hal_wf200::is_raw_pending() {
-                    if raw_packet_slice.len() != 0 {
-                        packets_dropped += 1;
-                        wfx_rs::hal_wf200::drop_packet();
-                    } else {
-                        let pkt = wfx_rs::hal_wf200::get_packet_data();
-                        for (&src, dst) in
-                        pkt.iter().zip(raw_packet_buf.iter_mut()) {
-                            *dst = src;
-                        }
-                        raw_packet_slice = &raw_packet_buf[0..pkt.len()];
-                    }
-                    com_int_mgr.set_rx_ready(raw_packet_slice.len() as u16);
+                if wfx_rs::hal_wf200::new_pending() || wfx_rs::hal_wf200::was_dropped() {
+                    com_int_mgr.set_rx_ready(wfx_rs::hal_wf200::get_packet_len());
                 }
                 // Clock the DHCP state machine using its oneshot countdown
                 // timer for rate limiting
@@ -274,8 +258,9 @@ fn main() -> ! {
                         dhcp_oneshot.start(DHCP_POLL_MS);
 
                         // fire an interrupt whenever we enter or leave the connected state
-                        // QUESTION: does this capture DHCP lease renewals? If not, maybe we should be checking DHCP state instead.
-                        let connected = wfx_rs::hal_wf200::get_status() == wfx_rs::hal_wf200::State::Connected;
+                        let connected =
+                            (wfx_rs::hal_wf200::get_status() == wfx_rs::hal_wf200::State::Connected) &&
+                            (wfx_rs::hal_wf200::dhcp_get_state() == net::dhcp::State::Bound);
                         if connected != was_connected {
                             com_int_mgr.set_ipconf_update();
                             was_connected = connected;
@@ -784,6 +769,62 @@ fn main() -> ! {
                 let conf = wfx_rs::hal_wf200::com_ipv4_config().encode_u16();
                 for &w in conf.iter() {
                     com_tx(w);
+                }
+            } else if rx == ComState::LINK_GET_INTMASK.verb {
+                logln!(LL::Debug, "CLGetIMsk");
+                com_tx(com_int_mgr.get_mask());
+            } else if rx == ComState::LINK_SET_INTMASK.verb {
+                logln!(LL::Debug, "CLSetIMsk");
+                match com_rx(500) {
+                    Ok(result) => {
+                        com_int_mgr.set_mask(result)
+                    }
+                    _ => (),                }
+            } else if rx == ComState::LINK_ACK_INTERRUPT.verb {
+                logln!(LL::Debug, "CLAckInt");
+                match com_rx(500) {
+                    Ok(result) => {
+                        com_int_mgr.ack(result)
+                    }
+                    _ => (),
+                }
+            } else if rx == ComState::LINK_GET_INTERRUPT.verb {
+                logln!(LL::Debug, "CLGetInt");
+                let int_vect = com_int_mgr.get_state();
+                for &w in int_vect.iter() {
+                    com_tx(w);
+                }
+            } else if rx >= ComState::NET_FRAME_FETCH_0.verb && rx <= ComState::NET_FRAME_FETCH_7FF.verb {
+                logln!(LL::Debug, "CLNetFetch");
+                let expected_words = rx & 0x7FF;
+                let packet = wfx_rs::hal_wf200::get_packet_data();
+                let packet_words =
+                    if packet.len() % 2 == 0 {
+                        packet.len() / 2
+                    } else {
+                        packet.len() / 2 + 1
+                    };
+                if expected_words != packet_words as u16 {
+                    // flag an error, but we still need to stuff the FIFO with something to avoid a link error
+                    logln!(LL::Error, "CLNetFetch: len mismatch");
+                }
+                let mut words_sent = 0;
+                while words_sent < packet_words {
+                    // use MSB order
+                    if words_sent * 2 <= packet.len() - 2 {
+                        com_tx(
+                            ((packet[(words_sent * 2) as usize] as u16) << 8) |
+                            packet[(words_sent * 2) as usize + 1] as u16
+                        );
+                    } else if words_sent * 2 < packet.len() {
+                        com_tx(
+                            ((packet[(words_sent * 2) as usize] as u16) << 8) |
+                            0x00
+                        )
+                    } else {
+                        com_tx(0xDEAD);
+                    }
+                    words_sent += 1;
                 }
             } else {
                 loghexln!(LL::Debug, "ComError ", rx);
