@@ -104,6 +104,20 @@ impl ComInterrupts {
         self.state &= !com_rs::INT_BATTERY_CRITICAL;
         self.saw_ack = true;
     }
+    pub fn set_tx_error(&mut self) {
+        self.state |= com_rs::INT_WLAN_TX_ERROR;
+    }
+    pub fn ack_tx_error(&mut self) {
+        self.state &= !com_rs::INT_WLAN_TX_ERROR;
+        self.saw_ack = true;
+    }
+    pub fn set_rx_error(&mut self) {
+        self.state |= com_rs::INT_WLAN_RX_ERROR;
+    }
+    pub fn ack_rx_error(&mut self) {
+        self.state &= !com_rs::INT_WLAN_RX_ERROR;
+        self.saw_ack = true;
+    }
 
     /// getters/setters for COM bus interface
     pub fn get_mask(&self) -> u16 { self.mask }

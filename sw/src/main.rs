@@ -27,6 +27,7 @@ use betrusted_hal::hal_time::{
 };
 use com_rs::serdes::{StringSer, STR_64_U8_SIZE, STR_64_WORDS};
 use com_rs::ComState;
+use wfx_rs::hal_wf200::WIFI_MTU;
 use core::panic::PanicInfo;
 use debug;
 use debug::{log, loghex, loghexln, logln, LL};
@@ -230,6 +231,8 @@ fn main() -> ! {
     let mut com_int_mgr = com_bus::ComInterrupts::new();
     let mut was_connected = false;
     let mut was_scanning = false;
+    let mut tx_errs: u32 = 0;
+    let mut rx_errs: u32 = 0;
 
     //////////////////////// MAIN LOOP ------------------
     logln!(LL::Info, "main loop");
@@ -245,7 +248,10 @@ fn main() -> ! {
                 }
                 was_scanning = scanning;
 
-                if wfx_rs::hal_wf200::new_pending() || wfx_rs::hal_wf200::was_dropped() {
+                if wfx_rs::hal_wf200::was_dropped() {
+                    com_int_mgr.set_rx_ready(wfx_rs::hal_wf200::get_packet_len());
+                    rx_errs += 1;
+                } else if wfx_rs::hal_wf200::new_pending() {
                     com_int_mgr.set_rx_ready(wfx_rs::hal_wf200::get_packet_len());
                 }
                 // Clock the DHCP state machine using its oneshot countdown
@@ -794,9 +800,21 @@ fn main() -> ! {
                 for &w in int_vect.iter() {
                     com_tx(w);
                 }
+            } else if rx == ComState::WLAN_GET_ERRCOUNTS.verb {
+                logln!(LL::Debug, "CWGetErrs");
+                com_tx(tx_errs as u16);
+                com_tx((tx_errs >> 16) as u16);
+                com_tx(rx_errs as u16);
+                com_tx((rx_errs >> 16) as u16);
             } else if rx >= ComState::NET_FRAME_FETCH_0.verb && rx <= ComState::NET_FRAME_FETCH_7FF.verb {
                 logln!(LL::Debug, "CLNetFetch");
-                let expected_words = rx & 0x7FF;
+                let expected_bytes = rx & 0x7FF;
+                let expected_words =
+                    if expected_bytes % 2 == 0 {
+                        expected_bytes / 2
+                    } else {
+                        expected_bytes / 2 + 1
+                    };
                 let packet = wfx_rs::hal_wf200::get_packet_data();
                 let packet_words =
                     if packet.len() % 2 == 0 {
@@ -825,6 +843,51 @@ fn main() -> ! {
                         com_tx(0xDEAD);
                     }
                     words_sent += 1;
+                }
+            } else if rx >= ComState::NET_FRAME_SEND_0.verb && rx <= ComState::NET_FRAME_SEND_7FF.verb {
+                logln!(LL::Debug, "CLNetSend");
+                /*
+                    Code usage note: making this array 1500 bytes causes 4.2k of code to be generated.
+                    Ironically, if the array is 2048 bytes, the code size is smaller. There is something
+                    weird about the array accessor code such that non-power-of-2 arrays pull in a lot more code.
+                */
+                let mut txbuf_backing: [u8; WIFI_MTU] = [0; WIFI_MTU];
+                let num_bytes = rx & 0x7ff;
+                let num_words =
+                    if num_bytes % 2 == 0 {
+                        num_bytes / 2
+                    } else {
+                        num_bytes / 2 + 1
+                    };
+                let mut error = false;
+                let mut words_received = 0;
+                // num_words can be bigger than the MTU, in which case, we fill up to our
+                // buffer, discard the rest, and then ignore the packet (as FIFO must always be drained).
+                while words_received < num_words {
+                    match com_rx(100) {
+                        Ok(result) => {
+                            if words_received * 2 + 1 < WIFI_MTU as u16 {
+                                let be_bytes = result.to_be_bytes();
+                                txbuf_backing[words_received as usize * 2] = be_bytes[0];
+                                txbuf_backing[words_received as usize * 2 + 1] = be_bytes[1];
+                            } else {
+                                error = true;
+                            }
+                        }
+                        _ => error = true,
+                    }
+                    words_received += 1;
+                }
+                if !error {
+                    match wfx_rs::hal_wf200::send_net_packet(&mut txbuf_backing[..num_bytes as usize]) {
+                        Err(_) => {
+                            tx_errs += 1;
+                            com_int_mgr.set_tx_error();
+                        },
+                        _ => (),
+                    }
+                } else {
+                    logln!(LL::Error, "Send packet error!");
                 }
             } else {
                 loghexln!(LL::Debug, "ComError ", rx);

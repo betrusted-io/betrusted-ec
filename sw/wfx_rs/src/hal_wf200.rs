@@ -229,6 +229,28 @@ pub fn com_ipv4_config() -> Ipv4Conf {
     }
 }
 
+pub fn send_net_packet(pkt: &mut [u8]) -> Result<(), ()> {
+    unsafe {
+        // Convert the byte buffer to a struct pointer for the sl_wfx API
+        let frame_req_ptr: *mut sl_wfx_send_frame_req_t =
+            pkt.as_mut_ptr() as *mut _ as *mut sl_wfx_send_frame_req_t;
+        // Send the frame
+        let result = sl_wfx_send_ethernet_frame(
+            frame_req_ptr,
+            pkt.len() as u32,
+            sl_wfx_interface_t_SL_WFX_STA_INTERFACE,
+            0,
+        );
+        match result {
+            SL_STATUS_OK => Ok(()),
+            e => {
+                loghexln!(LL::Debug, "SendFrameErr ", e);
+                Err(())
+            }
+        }
+    }
+}
+
 /// Export an API for the main event loop to trigger a log dump of packet filter stats, etc.
 pub fn log_net_state() {
     logln!(LL::Debug, "WF200Status {}", interface_status_tag());
