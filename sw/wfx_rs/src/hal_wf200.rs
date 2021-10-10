@@ -123,6 +123,10 @@ pub fn drop_packet() {
     unsafe{ WAS_POLLED = false };
     unsafe{ PACKETS_DROPPED += 1 };
 }
+pub fn get_packets_dropped() -> u32 {
+    unsafe{ LAST_DROPPED = PACKETS_DROPPED };
+    unsafe{ PACKETS_DROPPED }
+}
 // NOTE: we assume that from the point of the length fetch the next operation MUST be a get_packet_data()
 // we want to avoid the case where the length is fetched and then update before the data is read out.
 // WAS_READ is the semaphore that guarantees this.
@@ -229,7 +233,17 @@ pub fn com_ipv4_config() -> Ipv4Conf {
     }
 }
 
+fn log_hex(s: &[u8]) {
+    for i in s {
+        log!(LL::Debug, "{:02X}", *i);
+    }
+    log!(LL::Debug, " ");
+}
+
 pub fn send_net_packet(pkt: &mut [u8]) -> Result<(), ()> {
+    log!(LL::Debug, "**Tx ");
+    log_hex(pkt);
+    log!(LL::Debug, "\n\r");
     unsafe {
         // Convert the byte buffer to a struct pointer for the sl_wfx API
         let frame_req_ptr: *mut sl_wfx_send_frame_req_t =
@@ -988,22 +1002,26 @@ fn sl_wfx_host_received_frame_callback(rx_buffer: *const sl_wfx_received_ind_t) 
     let padding = body.frame_padding as usize;
     let length = body.frame_length as usize;
     let data = unsafe { &body.frame.as_slice(length + padding)[padding..] };
-    let _filter_bin = net::handle_frame(unsafe { &mut NET_STATE }, data);
 
-    // note: this is where you'd put in a packet filter for packets going to the SOC, if one were to be
-    // implemented. Right now all data is passed on for early implementation/testing, but since there
-    // is already a filter implemented here, we should eventually take advantage of it.
-    if unsafe{WAS_READ} {
-        unsafe {
-            // note that this will leak packet data from previous packets in the unused portion of the buffer
-            for (&src, dst) in data.iter().zip(PACKET_PENDING_DAT.iter_mut()) {
-                *dst = src;
-            }
-            PACKET_PENDING = &data[0..data.len()];
-            WAS_READ = false;
-        }
+    if dhcp_get_state() != dhcp::State::Bound {
+        // run the current handler only during the DHCP unbound states, so that the DHCP happens
+        // entirely within the EC. Once this is done, pass the frames directly onto the host.
+        let _filter_bin = net::handle_frame(unsafe { &mut NET_STATE }, data);
     } else {
-        drop_packet();
+        // note: this is where you'd put in a packet filter for packets going to the SOC, if one were to be
+        // implemented. Right now, after DHCP is successful, all data is passed on.
+        if unsafe{WAS_READ} {
+            unsafe {
+                // note that this will leak packet data from previous packets in the unused portion of the buffer
+                for (&src, dst) in data.iter().zip(PACKET_PENDING_DAT.iter_mut()) {
+                    *dst = src;
+                }
+                PACKET_PENDING = &data[0..data.len()];
+                WAS_READ = false;
+            }
+        } else {
+            drop_packet();
+        }
     }
 }
 

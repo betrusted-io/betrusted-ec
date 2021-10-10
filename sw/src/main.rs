@@ -232,7 +232,6 @@ fn main() -> ! {
     let mut was_connected = false;
     let mut was_scanning = false;
     let mut tx_errs: u32 = 0;
-    let mut rx_errs: u32 = 0;
 
     //////////////////////// MAIN LOOP ------------------
     logln!(LL::Info, "main loop");
@@ -248,11 +247,10 @@ fn main() -> ! {
                 }
                 was_scanning = scanning;
 
-                if wfx_rs::hal_wf200::was_dropped() {
+                if wfx_rs::hal_wf200::new_pending() {
                     com_int_mgr.set_rx_ready(wfx_rs::hal_wf200::get_packet_len());
-                    rx_errs += 1;
-                } else if wfx_rs::hal_wf200::new_pending() {
-                    com_int_mgr.set_rx_ready(wfx_rs::hal_wf200::get_packet_len());
+                } else if wfx_rs::hal_wf200::was_dropped() {
+                    com_int_mgr.set_rx_error();
                 }
                 // Clock the DHCP state machine using its oneshot countdown
                 // timer for rate limiting
@@ -804,8 +802,9 @@ fn main() -> ! {
                 logln!(LL::Debug, "CWGetErrs");
                 com_tx(tx_errs as u16);
                 com_tx((tx_errs >> 16) as u16);
-                com_tx(rx_errs as u16);
-                com_tx((rx_errs >> 16) as u16);
+                let drops = wfx_rs::hal_wf200::get_packets_dropped();
+                com_tx(drops as u16);
+                com_tx((drops >> 16) as u16);
             } else if rx >= ComState::NET_FRAME_FETCH_0.verb && rx <= ComState::NET_FRAME_FETCH_7FF.verb {
                 logln!(LL::Debug, "CLNetFetch");
                 let expected_bytes = rx & 0x7FF;
@@ -864,7 +863,7 @@ fn main() -> ! {
                 // num_words can be bigger than the MTU, in which case, we fill up to our
                 // buffer, discard the rest, and then ignore the packet (as FIFO must always be drained).
                 while words_received < num_words {
-                    match com_rx(100) {
+                    match com_rx(200) {
                         Ok(result) => {
                             if words_received * 2 + 1 < WIFI_MTU as u16 {
                                 let be_bytes = result.to_be_bytes();
@@ -879,6 +878,7 @@ fn main() -> ! {
                     words_received += 1;
                 }
                 if !error {
+                    logln!(LL::Debug, "Sending packet");
                     match wfx_rs::hal_wf200::send_net_packet(&mut txbuf_backing[..num_bytes as usize]) {
                         Err(_) => {
                             tx_errs += 1;

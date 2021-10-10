@@ -119,7 +119,7 @@ pub fn handle_frame(mut net_state: &mut NetState, data: &[u8]) -> FilterBin {
     let ethertype = &data[12..14]; // ipv4=0x0800, ipv6=0x86DD, arp=0x0806, vlan=0x8100
     let filter_bin = match ethertype {
         ETHERTYPE_IPV4 => handle_ipv4_frame(&mut net_state, data),
-        ETHERTYPE_ARP => handle_arp_frame(&net_state, data),
+        // ETHERTYPE_ARP => handle_arp_frame(&net_state, data), // this just logs the frame, skip it to save CPU cycles...
         _ => FilterBin::DropEType,
     };
     net_state.filter_stats.inc_count_for(filter_bin);

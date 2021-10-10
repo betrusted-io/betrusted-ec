@@ -39,7 +39,7 @@ pub struct ComInterrupts {
     state: u16,
     rx_len_bytes: u16,
     mask: u16,
-    saw_ack: bool,
+    retrigger: bool,
 }
 #[allow(dead_code)]
 impl ComInterrupts {
@@ -48,23 +48,23 @@ impl ComInterrupts {
             state: 0,
             rx_len_bytes: 0,
             mask: 0,
-            saw_ack: false,
+            retrigger: false,
         }
     }
     /// getter for pin state logic
     pub fn update_irq_pin(&mut self) {
         let mut com_csr = CSR::new(utralib::HW_COM_BASE as *mut u32);
         if (self.state & self.mask) != 0 {
-            if !self.saw_ack {
+            if !self.retrigger {
                 com_csr.rmwf(utra::com::CONTROL_HOST_INT, 1);
             } else {
                 // drop the IRQ line to create a new edge, in case we have a new interrupt despite the ack
                 com_csr.rmwf(utra::com::CONTROL_HOST_INT, 0);
-                self.saw_ack = false;
+                self.retrigger = false;
             }
         } else {
             com_csr.rmwf(utra::com::CONTROL_HOST_INT, 0);
-            self.saw_ack = false;
+            self.retrigger = false;
         }
     }
     /// getter/setters from internal logic (wf200, etc.)
@@ -73,7 +73,7 @@ impl ComInterrupts {
         if self.state & com_rs::INT_WLAN_RX_READY != 0 {
             // if we're getting a second packet before the prior one was serviced, fake an ack
             // so that the interrupt edge fires again
-            self.saw_ack = true;
+            self.retrigger = true;
         } else {
             self.state |= com_rs::INT_WLAN_RX_READY;
         }
@@ -81,53 +81,46 @@ impl ComInterrupts {
     pub fn ack_rx_ready(&mut self) {
         self.rx_len_bytes = 0;
         self.state &= !com_rs::INT_WLAN_RX_READY;
-        self.saw_ack = true;
     }
     pub fn set_ipconf_update(&mut self) {
         self.state |= com_rs::INT_WLAN_IPCONF_UPDATE;
     }
     pub fn ack_ipconf_update(&mut self) {
         self.state &= !com_rs::INT_WLAN_IPCONF_UPDATE;
-        self.saw_ack = true;
     }
     pub fn set_ssid_update(&mut self) {
         self.state |= com_rs::INT_WLAN_SSID_UPDATE;
     }
     pub fn ack_ssid_update(&mut self) {
         self.state &= !com_rs::INT_WLAN_SSID_UPDATE;
-        self.saw_ack = true;
     }
     pub fn set_battery_critical(&mut self) {
         self.state |= com_rs::INT_BATTERY_CRITICAL;
     }
     pub fn ack_battery_critical(&mut self) {
         self.state &= !com_rs::INT_BATTERY_CRITICAL;
-        self.saw_ack = true;
     }
     pub fn set_tx_error(&mut self) {
         self.state |= com_rs::INT_WLAN_TX_ERROR;
     }
     pub fn ack_tx_error(&mut self) {
         self.state &= !com_rs::INT_WLAN_TX_ERROR;
-        self.saw_ack = true;
     }
     pub fn set_rx_error(&mut self) {
         self.state |= com_rs::INT_WLAN_RX_ERROR;
     }
     pub fn ack_rx_error(&mut self) {
         self.state &= !com_rs::INT_WLAN_RX_ERROR;
-        self.saw_ack = true;
     }
 
     /// getters/setters for COM bus interface
     pub fn get_mask(&self) -> u16 { self.mask }
     pub fn set_mask(&mut self, new_mask: u16) {
-        self.saw_ack = true; // the intention is to cause any pre-existing interrupts to fire
+        self.retrigger = true; // the intention is to cause any pre-existing interrupts to fire
         self.mask = new_mask;
     }
-    pub fn get_state(&self) -> [u16; 2] { [self.state, self.rx_len_bytes] }
+    pub fn get_state(&self) -> [u16; 2] { [self.state & self.mask, self.rx_len_bytes] }
     pub fn ack(&mut self, acks: u16) {
         self.state &= !acks;
-        self.saw_ack = true;
     }
 }
