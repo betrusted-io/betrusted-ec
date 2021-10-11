@@ -671,7 +671,7 @@ pub unsafe extern "C" fn sl_wfx_host_spi_transfer_no_cs_assert(
 pub unsafe extern "C" fn sl_wfx_host_allocate_buffer(
     buffer: *mut *mut c_types::c_void,
     _type_: sl_wfx_buffer_type_t,
-    _buffer_size: u32,
+    buffer_size: u32,
 ) -> sl_status_t {
     // DANGER! DANGER! This code appears to work, but it does not check the buffer size argument!
     // TODO: Check the requested buffer size argument
@@ -686,6 +686,9 @@ pub unsafe extern "C" fn sl_wfx_host_allocate_buffer(
     }
     WFX_PTR_LIST[i] = WFX_RAM_ALLOC + i * (WFX_RAM_LENGTH / WFX_MAX_PTRS);
     *buffer = WFX_PTR_LIST[i] as *mut c_types::c_void;
+
+    logln!(LL::Debug, "Alloc [{}]:{}", i, buffer_size);
+
     SL_STATUS_OK
 }
 
@@ -707,6 +710,7 @@ pub unsafe extern "C" fn sl_wfx_host_free_buffer(
     if i == WFX_MAX_PTRS {
         return SL_STATUS_ALLOCATION_FAILED;
     }
+    logln!(LL::Debug, "DeAlloc [{}]", i);
     WFX_PTR_LIST[i] = 0;
     SL_STATUS_OK
 }
