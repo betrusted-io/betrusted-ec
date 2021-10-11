@@ -112,7 +112,7 @@ pub fn was_dropped() -> bool {
     }
 }
 pub fn new_pending() -> bool {
-    if unsafe{!WAS_POLLED && (PACKET_PENDING.len() != 0)} {
+    if unsafe{!WAS_POLLED && !WAS_READ} {
         unsafe{ WAS_POLLED = true };
         true
     } else {

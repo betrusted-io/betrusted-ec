@@ -843,6 +843,7 @@ fn main() -> ! {
                     }
                     words_sent += 1;
                 }
+                com_int_mgr.ack_rx_ready();
             } else if rx >= ComState::NET_FRAME_SEND_0.verb && rx <= ComState::NET_FRAME_SEND_7FF.verb {
                 logln!(LL::Debug, "CLNetSend");
                 /*
