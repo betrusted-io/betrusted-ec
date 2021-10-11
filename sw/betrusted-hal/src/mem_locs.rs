@@ -25,3 +25,6 @@ pub const STACK_END:   usize = 0x1001_3000; // stack grows down
 pub const STACK_START: usize = 0x1001_8000;
 pub const STACK_LEN: usize = STACK_START - STACK_END;
 pub const STACK_CANARY: u32 = 0xACE0BACE;
+
+pub const PKT_BUF_BASE: usize = 0x1001_A000;
+pub const PKT_BUF_LEN: usize = 0x6000;

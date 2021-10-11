@@ -47,6 +47,8 @@ mod str_buf;
 mod uart;
 mod wifi;
 mod wlan;
+mod pkt_buf;
+use pkt_buf::*;
 use com_bus::{com_rx, com_tx};
 use power_mgmt::charger_handler;
 use spi::{spi_erase_region, spi_program_page, spi_standby};
@@ -231,6 +233,10 @@ fn main() -> ! {
     // Drain the UART RX buffer
     uart::drain_rx_buf();
 
+    // allocate the packet buffer: we should only ever do this once, as it unsafely conjures it
+    // out of thin air
+    let pktbuf = unsafe{PktBuf::new()};
+
     // Reset & Init WF200 before starting the main loop
     if use_wifi {
         logln!(LL::Info, "wifi...");
@@ -246,6 +252,7 @@ fn main() -> ! {
     let mut was_connected = false;
     let mut was_scanning = false;
     let mut tx_errs: u32 = 0;
+    let mut packets_dropped: u32 = 0;
 
     //////////////////////// MAIN LOOP ------------------
     logln!(LL::Info, "main loop");
@@ -262,6 +269,12 @@ fn main() -> ! {
                 was_scanning = scanning;
 
                 if wfx_rs::hal_wf200::new_pending() {
+                    if let Some(pkt_storage) = pktbuf.get_enqueue_slice(wfx_rs::hal_wf200::get_packet_len() as usize) {
+                        wfx_rs::hal_wf200::copy_packet(pkt_storage);
+                    } else {
+                        packets_dropped += 1; // TODO: change reporting in error handler below
+                        com_int_mgr.set_rx_error();
+                    }
                     com_int_mgr.set_rx_ready(wfx_rs::hal_wf200::get_packet_len());
                 } else if wfx_rs::hal_wf200::was_dropped() {
                     com_int_mgr.set_rx_error();

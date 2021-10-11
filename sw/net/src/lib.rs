@@ -29,6 +29,7 @@ const LOG_LEVEL: LL = LL::Debug;
 
 // Expected Ethernet frame header sizes
 const MAC_HEADER_LEN: usize = 14;
+#[allow(dead_code)]
 const ARP_FRAME_LEN: usize = MAC_HEADER_LEN + 28;
 const IPV4_MIN_HEADER_LEN: usize = 20;
 const IPV4_MIN_FRAME_LEN: usize = MAC_HEADER_LEN + IPV4_MIN_HEADER_LEN;
@@ -37,6 +38,7 @@ const MIN_UDP_FRAME_LEN: usize = IPV4_MIN_FRAME_LEN + UDP_HEADER_LEN;
 
 // Ethertypes for Ethernet MAC header
 const ETHERTYPE_IPV4: &[u8] = &[0x08, 0x00];
+#[allow(dead_code)]
 const ETHERTYPE_ARP: &[u8] = &[0x08, 0x06];
 
 /// Holds network stack state such as DHCP client state, addresses, and diagnostic stats
@@ -328,6 +330,7 @@ fn handle_udp_frame(net_state: &mut NetState, data: &[u8]) -> FilterBin {
 /// | FFFFFFFFFFFF ------------ 0806      | 0001  0800  06   04   0001 ------------ 0A000101 000000000000 0A000102 |
 /// | ------------ ------------ 0806      | 0001  0800  06   04   0002 ------------ 0A000102 ------------ 0A000101 |
 ///
+#[allow(dead_code)]
 fn handle_arp_frame(net_state: &NetState, data: &[u8]) -> FilterBin {
     if data.len() < ARP_FRAME_LEN {
         // Drop malformed (too short) ARP packet

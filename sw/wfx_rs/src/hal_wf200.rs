@@ -129,6 +129,13 @@ pub fn get_packet_data() -> &'static[u8] {
     unsafe{PACKET_PENDING}
 }
 
+pub fn copy_packet(dest: &mut [u8]) {
+    // placeholder
+    for (i, d) in dest.iter_mut().enumerate() {
+        *d = i as u8;
+    }
+}
+
 /// Possible link layer connection states
 #[derive(Copy, Clone, PartialEq)]
 pub enum State {
