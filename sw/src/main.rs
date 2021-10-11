@@ -25,6 +25,7 @@ use betrusted_hal::hal_i2c::Hardi2c;
 use betrusted_hal::hal_time::{
     get_time_ms, get_time_ticks, set_msleep_target_ticks, time_init, TimeMs,
 };
+use betrusted_hal::mem_locs::*;
 use com_rs::serdes::{StringSer, STR_64_U8_SIZE, STR_64_WORDS};
 use com_rs::ComState;
 use wfx_rs::hal_wf200::WIFI_MTU;
@@ -123,6 +124,19 @@ fn shift_speed_test() {
     loghex!(LL::Debug, "ShiftSpeed _:", x);
     loghex!(LL::Debug, ", short_shift:", short_shift_ms);
     loghexln!(LL::Debug, ", long_shift:", long_shift_ms);
+}
+
+fn stack_check() {
+    // check the stack usage
+    let stack: &[u32] = unsafe{core::slice::from_raw_parts(STACK_END as *const u32, (STACK_LEN as usize / core::mem::size_of::<u32>()) as usize)};
+    let mut unused_stack_words = 0;
+    for &word in stack.iter() {
+        if word != STACK_CANARY {
+            break;
+        }
+        unused_stack_words += 1;
+    }
+    logln!(LL::Debug, "{} bytes used of {}", STACK_LEN - unused_stack_words, STACK_LEN);
 }
 
 #[entry]
@@ -331,7 +345,8 @@ fn main() -> ! {
                         let now = TimeMs::now();
                         loghex!(LL::Debug, "NowMs ", now.ms_high_word());
                         loghexln!(LL::Debug, " ", now.ms_low_word());
-                    }
+                    },
+                    b'6' => stack_check(),
                     _ => (),
                 }
             } else if uart_state == uart::RxState::Waking {
@@ -350,6 +365,7 @@ fn main() -> ! {
                         " 3 => Uptime ms\r\n",
                         " 4 => Uptime s\r\n",
                         " 5 => Now ms\r\n",
+                        " 6 => Peak stack usage\r\n",
                     )
                 );
             }

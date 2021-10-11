@@ -1,6 +1,7 @@
 #![allow(non_upper_case_globals)]
 use crate::betrusted_hal::hal_time::delay_ms;
 use crate::betrusted_hal::hal_time::get_time_ms;
+use crate::betrusted_hal::mem_locs::*;
 use crate::wfx_bindings;
 use core::slice;
 use core::str;
@@ -65,22 +66,6 @@ const LOG_LEVEL: LL = LL::Debug;
 const SL_WFX_HIF_BUS_ERROR: u32 = 0xf;
 
 pub const WIFI_EVENT_WIRQ: u32 = 0x1;
-
-// locate firmware at SPI top minus 400kiB. Datasheet says reserve at least 350kiB for firmwares.
-pub const WFX_FIRMWARE_OFFSET: usize = 0x2000_0000 + 1024 * 1024 - 400 * 1024; // 0x2009_C000
-
-//pub const WFX_FIRMWARE_SIZE: usize = 290896; // version C0, as burned to ROM v3.3.2
-pub const WFX_FIRMWARE_SIZE: usize = 305232; // version C0, as burned to ROM v3.12.1. Also applicable for v3.12.3.
-
-/// make a very shitty, temporary malloc that can hold up to 16 entries in the 32k space
-/// this is all to avoid including the "alloc" crate, which is "nightly" and not "stable"
-// reserve top 32kiB for WFX FFI RAM buffers
-pub const WFX_RAM_LENGTH: usize = 32 * 1024;
-pub const WFX_RAM_OFFSET: usize = 0x1000_0000 + 128 * 1024 - WFX_RAM_LENGTH; // 1001_8000
-static mut WFX_RAM_ALLOC: usize = WFX_RAM_OFFSET;
-pub const WFX_MAX_PTRS: usize = 8;
-static mut WFX_PTR_COUNT: u8 = 0;
-static mut WFX_PTR_LIST: [usize; WFX_MAX_PTRS] = [0; WFX_MAX_PTRS];
 
 // SSID scan state variables
 static mut SSID_SCAN_IN_PROGRESS: bool = false;
@@ -659,6 +644,13 @@ pub unsafe extern "C" fn sl_wfx_host_spi_transfer_no_cs_assert(
     SL_STATUS_OK
 }
 
+// crappy alloc constants
+static mut WFX_RAM_ALLOC: usize = WFX_RAM_OFFSET;
+pub const WFX_MAX_PTRS: usize = 4;
+static mut WFX_PTR_COUNT: u8 = 0;
+static mut WFX_PTR_LIST: [usize; WFX_MAX_PTRS] = [0; WFX_MAX_PTRS];
+pub const WFX_ALLOC_MAXLEN: usize = WFX_RAM_LENGTH / WFX_MAX_PTRS;
+
 #[doc = " @brief Called when the driver wants to allocate memory"]
 #[doc = ""]
 #[doc = " @param buffer is a pointer to the data"]
@@ -673,8 +665,10 @@ pub unsafe extern "C" fn sl_wfx_host_allocate_buffer(
     _type_: sl_wfx_buffer_type_t,
     buffer_size: u32,
 ) -> sl_status_t {
-    // DANGER! DANGER! This code appears to work, but it does not check the buffer size argument!
-    // TODO: Check the requested buffer size argument
+    if buffer_size as usize > WFX_ALLOC_MAXLEN {
+        logln!(LL::Error, "Alloc {} larger than max of {}!", buffer_size, WFX_ALLOC_MAXLEN);
+        return SL_STATUS_ALLOCATION_FAILED;
+    }
 
     // find the first "0" entry in the pointer list
     let mut i = 0;
@@ -684,7 +678,7 @@ pub unsafe extern "C" fn sl_wfx_host_allocate_buffer(
     if i == WFX_MAX_PTRS {
         return SL_STATUS_ALLOCATION_FAILED;
     }
-    WFX_PTR_LIST[i] = WFX_RAM_ALLOC + i * (WFX_RAM_LENGTH / WFX_MAX_PTRS);
+    WFX_PTR_LIST[i] = WFX_RAM_ALLOC + i * WFX_ALLOC_MAXLEN;
     *buffer = WFX_PTR_LIST[i] as *mut c_types::c_void;
 
     logln!(LL::Debug, "Alloc [{}]:{}", i, buffer_size);

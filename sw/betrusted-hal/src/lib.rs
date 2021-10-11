@@ -14,6 +14,7 @@ pub mod api_lm3509;
 pub mod api_lsm6ds3;
 pub mod api_bq25618;
 pub mod api_tusb320;
+pub mod mem_locs;
 
 #[cfg(test)]
 mod tests {
