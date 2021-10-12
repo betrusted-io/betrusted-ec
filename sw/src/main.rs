@@ -252,7 +252,6 @@ fn main() -> ! {
     let mut was_connected = false;
     let mut was_scanning = false;
     let mut tx_errs: u32 = 0;
-    let mut packets_dropped: u32 = 0;
 
     //////////////////////// MAIN LOOP ------------------
     logln!(LL::Info, "main loop");
@@ -272,13 +271,14 @@ fn main() -> ! {
                     if let Some(pkt_storage) = pktbuf.get_enqueue_slice(wfx_rs::hal_wf200::get_packet_len() as usize) {
                         wfx_rs::hal_wf200::copy_packet(pkt_storage);
                     } else {
-                        packets_dropped += 1; // TODO: change reporting in error handler below
+                        wfx_rs::hal_wf200::drop_packet();
                         com_int_mgr.set_rx_error();
                     }
-                    com_int_mgr.set_rx_ready(wfx_rs::hal_wf200::get_packet_len());
-                } else if wfx_rs::hal_wf200::was_dropped() {
-                    com_int_mgr.set_rx_error();
                 }
+                if let Some(len) = wfx_rs::hal_wf200::poll_new_avail() {
+                    com_int_mgr.set_rx_ready(len);
+                }
+
                 // Clock the DHCP state machine using its oneshot countdown
                 // timer for rate limiting
                 match dhcp_oneshot.status() {
@@ -843,6 +843,50 @@ fn main() -> ! {
                     } else {
                         expected_bytes / 2 + 1
                     };
+
+                // peek_get_packet() will get an immutable copy of the latest packet, but it
+                // does not pull it out of the queue. This is because we want the storage
+                // to "stay put" until we're done.
+                if let Some(packet) = wfx_rs::hal_wf200::peek_get_packet() {
+                    let packet_words =
+                    if packet.len() % 2 == 0 {
+                        packet.len() / 2
+                    } else {
+                        packet.len() / 2 + 1
+                    };
+                    if expected_words != packet_words as u16 {
+                        // flag an error, but we still need to stuff the FIFO with something to avoid a link error
+                        logln!(LL::Error, "CLNetFetch: len mismatch");
+                    }
+                    let mut words_sent = 0;
+                    while words_sent < packet_words {
+                        // use MSB order
+                        if words_sent * 2 <= packet.len() - 2 {
+                            com_tx(
+                                ((packet[(words_sent * 2) as usize] as u16) << 8) |
+                                packet[(words_sent * 2) as usize + 1] as u16
+                            );
+                        } else if words_sent * 2 < packet.len() {
+                            com_tx(
+                                ((packet[(words_sent * 2) as usize] as u16) << 8) |
+                                0x00
+                            )
+                        } else {
+                            com_tx(0xDEAD);
+                        }
+                        words_sent += 1;
+                    }
+                    // this disposes of the record, we're done with the storage for the packet
+                    wfx_rs::hal_wf200::dequeue_packet();
+                } else {
+                    logln!(LL::Error, "CLNetFetch: no packet pending on request");
+                    let mut words_sent = 0;
+                    while words_sent < packet_words {
+                        com_tx(0xDEAD);
+                        words_sent += 1;
+                    }
+                }
+                /*
                 let packet = wfx_rs::hal_wf200::get_packet_data();
                 let packet_words =
                     if packet.len() % 2 == 0 {
@@ -872,6 +916,7 @@ fn main() -> ! {
                     }
                     words_sent += 1;
                 }
+                */
                 com_int_mgr.ack_rx_ready();
             } else if rx >= ComState::NET_FRAME_SEND_0.verb && rx <= ComState::NET_FRAME_SEND_7FF.verb {
                 logln!(LL::Debug, "CLNetSend");

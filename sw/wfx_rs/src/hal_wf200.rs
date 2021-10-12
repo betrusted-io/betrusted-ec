@@ -14,6 +14,7 @@ use bt_wf200_pds::PDS_DATA;
 use debug;
 use debug::{log, loghex, loghexln, logln, LL};
 use net;
+use net::pkt_buf::PktBuf;
 use com_rs::serdes::{Ipv4Conf, DhcpState};
 
 // The mixed case constants here are the reason for the `allow(non_upper_case_globals)` above
@@ -76,11 +77,15 @@ static mut SSID_BEST_RSSI: Option<u8> = None;
 
 // event state variables
 pub const WIFI_MTU: usize = 1500;
+
 // NOTE this assumption:
 // once a packet is lodged into the PACKET_PENDING, it cannot cange
 // until it has been read out. Thus all new incoming packets must be dropped.
 // If the packet changes, then the read length reported to the SOC could change
 // before the read happens. That would be Bad.
+
+static mut PACKET_BUF: Option<PktBuf> = None;
+
 static mut PACKET_PENDING_DAT: [u8; WIFI_MTU] = [0; WIFI_MTU];
 static mut PACKET_PENDING: &[u8] = &[];
 static mut PACKETS_DROPPED: u32 = 0;
@@ -88,6 +93,34 @@ static mut LAST_DROPPED: u32 = 0; // state counter to poke the interrupt every t
 static mut WAS_POLLED: bool = false;
 static mut WAS_READ: bool = true;
 
+fn ensure_pkt_buf() {
+    unsafe {
+        if PACKET_BUF.is_none() {
+            PACKET_BUF = Some(PktBuf::new());
+        }
+    }
+}
+
+pub fn drop_packet() {
+    unsafe{PACKETS_DROPPED += 1;}
+}
+pub fn get_packets_dropped() -> u32 {
+    unsafe{PACKETS_DROPPED}
+}
+
+pub fn peek_get_packet() -> Option<&'static [u8]> {
+    ensure_pkt_buf();
+    unsafe{PACKET_BUF.unwrap().peek_dequeue_slice()}
+}
+pub fn dequeue_packet() {
+    ensure_pkt_buf();
+    unsafe{PACKET_BUF.unwrap().dequeue();}
+}
+pub fn poll_new_avail() -> Option<u16> {
+    ensure_pkt_buf();
+    unsafe{PACKET_BUF.unwrap().poll_new_avail()}
+}
+/*
 pub fn was_dropped() -> bool {
     if unsafe { LAST_DROPPED } != unsafe { PACKETS_DROPPED } {
         unsafe{ LAST_DROPPED = PACKETS_DROPPED };
@@ -135,6 +168,7 @@ pub fn copy_packet(dest: &mut [u8]) {
         *d = i as u8;
     }
 }
+*/
 
 /// Possible link layer connection states
 #[derive(Copy, Clone, PartialEq)]
@@ -1015,6 +1049,16 @@ fn sl_wfx_host_received_frame_callback(rx_buffer: *const sl_wfx_received_ind_t) 
     } else {
         // note: this is where you'd put in a packet filter for packets going to the SOC, if one were to be
         // implemented. Right now, after DHCP is successful, all data is passed on.
+        ensure_pkt_buf();
+        let maybe_pkt = unsafe{PACKET_BUF.unwrap().get_enqueue_slice(data.len())};
+        if let Some(pkt) = maybe_pkt {
+            for (&src, dst) in data.iter().zip(pkt.iter_mut()) {
+                *dst = src;
+            }
+        } else {
+            drop_packet();
+        }
+        /*
         if unsafe{WAS_READ} {
             unsafe {
                 // note that this will leak packet data from previous packets in the unused portion of the buffer
@@ -1026,7 +1070,7 @@ fn sl_wfx_host_received_frame_callback(rx_buffer: *const sl_wfx_received_ind_t) 
             }
         } else {
             drop_packet();
-        }
+        }*/
     }
 }
 

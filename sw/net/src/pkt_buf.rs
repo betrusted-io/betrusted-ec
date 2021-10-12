@@ -25,6 +25,7 @@ pub struct PktBuf {
     enqueue_index: Cell<Option<usize>>,
     /// index of where to look to figure out the next dequeue location
     dequeue_index: Cell<Option<usize>>,
+    was_polled: Cell<bool>,
 }
 impl PktBuf {
     /// Nothing prevents you from calling this multiple times, but it's definitely a bad idea to do that.
@@ -46,6 +47,7 @@ impl PktBuf {
             ],
             enqueue_index: Cell::new(None),
             dequeue_index: Cell::new(None),
+            was_polled: Cell::new(false),
         }
     }
 
@@ -107,10 +109,10 @@ impl PktBuf {
     /// the dequeue pointer. This arrangement allows an interrupt routine to pop in part way
     /// through a copy out of the dequeue packet, without worry of it being overwritten, and
     /// without having to allocate a second copy of the memory to prevent such overwriting.
-    pub fn peek_dequeue_slice(&self) -> Option<&[u8]> {
+    pub fn peek_dequeue_slice(&self) -> Option<&'static [u8]> {
         if let Some(dq_idx) = self.dequeue_index.get() {
             if let Some(ptr) = self.ptr_storage[dq_idx].get() {
-                //Some(& self.rawbuf.borrow()[ptr.start..ptr.end])
+                // Some(& self.rawbuf.borrow()[ptr.start..ptr.end])
                 Some(
                     unsafe{
                         from_raw_parts(
@@ -130,7 +132,8 @@ impl PktBuf {
     }
     /// this actually gets rid of the dequeue slice, immediately, for good. No
     /// pointer is returned because well, you shouldn't be using it after this is called.
-    pub fn dequeue(&mut self) -> bool {
+    pub fn dequeue(&self) -> bool {
+        self.was_polled.replace(false);
         if let Some(dq_idx) = self.dequeue_index.get() {
             if let Some(ptr) = self.ptr_storage[dq_idx].get() {
                 if let Some(next_dq) = ptr.next_index {
@@ -154,6 +157,27 @@ impl PktBuf {
             }
         } else {
             false
+        }
+    }
+
+    /// this will return the length of the latest available entry, but only once
+    /// upon poll. Repeated polls will return None.
+    /// Polling state resets when dequeue() is called.
+    pub fn poll_new_avail(&self) -> Option<u16> {
+        if !self.was_polled.get() {
+            if let Some(dq_idx) = self.dequeue_index.get() {
+                if let Some(ptr) = self.ptr_storage[dq_idx].get() {
+                    self.was_polled.replace(true);
+                    Some((ptr.end - ptr.start) as u16)
+                } else {
+                    logln!(LL::Debug, "ASSERT: dequeue points at None entry (poll)");
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
         }
     }
 }
