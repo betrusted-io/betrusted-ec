@@ -8,6 +8,7 @@ extern crate betrusted_hal;
 pub extern crate wfx_bindings;
 
 pub mod hal_wf200;
+pub mod pkt_buf;
 
 #[cfg(test)]
 mod tests {

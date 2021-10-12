@@ -1,5 +1,5 @@
 #![no_std]
-//#![forbid(unsafe_code)]
+#![forbid(unsafe_code)]
 //! This crate provides a minimalist IP stack with packet filtering.
 //!
 //! Priority 1 Features to Support Factory Test ([x]=works, [-]=partial, [ ]=todo):
@@ -20,7 +20,6 @@ pub mod filter;
 pub mod hostname;
 pub mod prng;
 pub mod timers;
-pub mod pkt_buf;
 
 use dhcp::DhcpClient;
 use filter::{FilterBin, FilterStats};

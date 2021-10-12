@@ -47,8 +47,6 @@ mod str_buf;
 mod uart;
 mod wifi;
 mod wlan;
-mod pkt_buf;
-use pkt_buf::*;
 use com_bus::{com_rx, com_tx};
 use power_mgmt::charger_handler;
 use spi::{spi_erase_region, spi_program_page, spi_standby};
@@ -233,9 +231,8 @@ fn main() -> ! {
     // Drain the UART RX buffer
     uart::drain_rx_buf();
 
-    // allocate the packet buffer: we should only ever do this once, as it unsafely conjures it
-    // out of thin air
-    let pktbuf = unsafe{PktBuf::new()};
+    // init the packet buffer's region of memory. Highly unsafe, should be done exactly once on boot.
+    wfx_rs::hal_wf200::init_pkt_buf();
 
     // Reset & Init WF200 before starting the main loop
     if use_wifi {
@@ -267,16 +264,11 @@ fn main() -> ! {
                 }
                 was_scanning = scanning;
 
-                if wfx_rs::hal_wf200::new_pending() {
-                    if let Some(pkt_storage) = pktbuf.get_enqueue_slice(wfx_rs::hal_wf200::get_packet_len() as usize) {
-                        wfx_rs::hal_wf200::copy_packet(pkt_storage);
-                    } else {
-                        wfx_rs::hal_wf200::drop_packet();
-                        com_int_mgr.set_rx_error();
-                    }
-                }
                 if let Some(len) = wfx_rs::hal_wf200::poll_new_avail() {
                     com_int_mgr.set_rx_ready(len);
+                }
+                if wfx_rs::hal_wf200::poll_new_dropped() {
+                    com_int_mgr.set_rx_error();
                 }
 
                 // Clock the DHCP state machine using its oneshot countdown
@@ -881,51 +873,22 @@ fn main() -> ! {
                 } else {
                     logln!(LL::Error, "CLNetFetch: no packet pending on request");
                     let mut words_sent = 0;
-                    while words_sent < packet_words {
+                    while words_sent < expected_words {
                         com_tx(0xDEAD);
                         words_sent += 1;
                     }
                 }
-                /*
-                let packet = wfx_rs::hal_wf200::get_packet_data();
-                let packet_words =
-                    if packet.len() % 2 == 0 {
-                        packet.len() / 2
-                    } else {
-                        packet.len() / 2 + 1
-                    };
-                if expected_words != packet_words as u16 {
-                    // flag an error, but we still need to stuff the FIFO with something to avoid a link error
-                    logln!(LL::Error, "CLNetFetch: len mismatch");
-                }
-                let mut words_sent = 0;
-                while words_sent < packet_words {
-                    // use MSB order
-                    if words_sent * 2 <= packet.len() - 2 {
-                        com_tx(
-                            ((packet[(words_sent * 2) as usize] as u16) << 8) |
-                            packet[(words_sent * 2) as usize + 1] as u16
-                        );
-                    } else if words_sent * 2 < packet.len() {
-                        com_tx(
-                            ((packet[(words_sent * 2) as usize] as u16) << 8) |
-                            0x00
-                        )
-                    } else {
-                        com_tx(0xDEAD);
-                    }
-                    words_sent += 1;
-                }
-                */
                 com_int_mgr.ack_rx_ready();
             } else if rx >= ComState::NET_FRAME_SEND_0.verb && rx <= ComState::NET_FRAME_SEND_7FF.verb {
+                use wfx_rs::hal_wf200::PBUF_SIZE;
+                use wfx_rs::hal_wf200::PBUF_HEADER_SIZE;
                 logln!(LL::Debug, "CLNetSend");
                 /*
                     Code usage note: making this array 1500 bytes causes 4.2k of code to be generated.
                     Ironically, if the array is 2048 bytes, the code size is smaller. There is something
                     weird about the array accessor code such that non-power-of-2 arrays pull in a lot more code.
                 */
-                let mut txbuf_backing: [u8; WIFI_MTU] = [0; WIFI_MTU];
+                let mut txbuf_backing: [u8; PBUF_SIZE] = [0; PBUF_SIZE];
                 let num_bytes = rx & 0x7ff;
                 let num_words =
                     if num_bytes % 2 == 0 {
@@ -942,8 +905,8 @@ fn main() -> ! {
                         Ok(result) => {
                             if words_received * 2 + 1 < WIFI_MTU as u16 {
                                 let be_bytes = result.to_be_bytes();
-                                txbuf_backing[words_received as usize * 2] = be_bytes[0];
-                                txbuf_backing[words_received as usize * 2 + 1] = be_bytes[1];
+                                txbuf_backing[PBUF_HEADER_SIZE + words_received as usize * 2] = be_bytes[0];
+                                txbuf_backing[PBUF_HEADER_SIZE + words_received as usize * 2 + 1] = be_bytes[1];
                             } else {
                                 error = true;
                             }
@@ -954,7 +917,9 @@ fn main() -> ! {
                 }
                 if !error {
                     logln!(LL::Debug, "Sending packet");
-                    match wfx_rs::hal_wf200::send_net_packet(&mut txbuf_backing[..num_bytes as usize]) {
+                    match wfx_rs::hal_wf200::send_net_packet(
+                        &mut txbuf_backing[..num_bytes as usize + PBUF_HEADER_SIZE]
+                    ) {
                         Err(_) => {
                             tx_errs += 1;
                             com_int_mgr.set_tx_error();

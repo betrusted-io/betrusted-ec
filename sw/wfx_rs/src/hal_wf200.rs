@@ -14,7 +14,7 @@ use bt_wf200_pds::PDS_DATA;
 use debug;
 use debug::{log, loghex, loghexln, logln, LL};
 use net;
-use net::pkt_buf::PktBuf;
+use crate::pkt_buf::{PktBuf, MAX_PKTS};
 use com_rs::serdes::{Ipv4Conf, DhcpState};
 
 // The mixed case constants here are the reason for the `allow(non_upper_case_globals)` above
@@ -84,41 +84,54 @@ pub const WIFI_MTU: usize = 1500;
 // If the packet changes, then the read length reported to the SOC could change
 // before the read happens. That would be Bad.
 
-static mut PACKET_BUF: Option<PktBuf> = None;
+static mut PACKET_BUF: PktBuf = PktBuf {
+    ptr_storage: [None; MAX_PKTS],
+    enqueue_index: None,
+    dequeue_index: None,
+    was_polled: false,
+    was_init: false,
+};
 
-static mut PACKET_PENDING_DAT: [u8; WIFI_MTU] = [0; WIFI_MTU];
-static mut PACKET_PENDING: &[u8] = &[];
 static mut PACKETS_DROPPED: u32 = 0;
-static mut LAST_DROPPED: u32 = 0; // state counter to poke the interrupt every time an additional packet is dropped
-static mut WAS_POLLED: bool = false;
-static mut WAS_READ: bool = true;
+static mut DROPPED_UPDATED: bool = false;
 
-fn ensure_pkt_buf() {
+pub fn init_pkt_buf() {
     unsafe {
-        if PACKET_BUF.is_none() {
-            PACKET_BUF = Some(PktBuf::new());
-        }
+        PACKET_BUF.init();
     }
 }
 
 pub fn drop_packet() {
-    unsafe{PACKETS_DROPPED += 1;}
+    unsafe{
+        PACKETS_DROPPED += 1;
+        DROPPED_UPDATED = true;
+    }
 }
 pub fn get_packets_dropped() -> u32 {
-    unsafe{PACKETS_DROPPED}
+    unsafe{
+        DROPPED_UPDATED = false;
+        PACKETS_DROPPED
+    }
+}
+pub fn poll_new_dropped() -> bool {
+    unsafe {
+        if DROPPED_UPDATED {
+            DROPPED_UPDATED = false;
+            true
+        } else {
+            false
+        }
+    }
 }
 
 pub fn peek_get_packet() -> Option<&'static [u8]> {
-    ensure_pkt_buf();
-    unsafe{PACKET_BUF.unwrap().peek_dequeue_slice()}
+    unsafe{PACKET_BUF.peek_dequeue_slice()}
 }
 pub fn dequeue_packet() {
-    ensure_pkt_buf();
-    unsafe{PACKET_BUF.unwrap().dequeue();}
+    unsafe{PACKET_BUF.dequeue();}
 }
 pub fn poll_new_avail() -> Option<u16> {
-    ensure_pkt_buf();
-    unsafe{PACKET_BUF.unwrap().poll_new_avail()}
+    unsafe{PACKET_BUF.poll_new_avail()}
 }
 /*
 pub fn was_dropped() -> bool {
@@ -206,9 +219,9 @@ static mut WIFI_CONTEXT: sl_wfx_context_t = sl_wfx_context_t {
 // The math for these PBUF_* constants, and related buffer slicing using them, determines
 // the correctness of casting PBUF to a `*mut sl_wfx_send_frame_req_t` as required for
 // calling sl_wfx_send_ethernet_frame(). Be wary of any code involving PBUF_* constants.
-const PBUF_HEADER_SIZE: usize = core::mem::size_of::<sl_wfx_send_frame_req_t>();
+pub const PBUF_HEADER_SIZE: usize = core::mem::size_of::<sl_wfx_send_frame_req_t>();
 const PBUF_DATA_SIZE: usize = 1500;
-const PBUF_SIZE: usize = PBUF_HEADER_SIZE + PBUF_DATA_SIZE;
+pub const PBUF_SIZE: usize = PBUF_HEADER_SIZE + PBUF_DATA_SIZE;
 /// Packet buffer for building outbound Ethernet II frames
 static mut PBUF: [u8; PBUF_SIZE] = [0; PBUF_SIZE];
 
@@ -722,7 +735,7 @@ pub unsafe extern "C" fn sl_wfx_host_allocate_buffer(
     WFX_PTR_LIST[i] = WFX_RAM_ALLOC + i * WFX_ALLOC_MAXLEN;
     *buffer = WFX_PTR_LIST[i] as *mut c_types::c_void;
 
-    logln!(LL::Debug, "Alloc [{}]:{}", i, buffer_size);
+    logln!(LL::Trace, "Alloc [{}]:{}", i, buffer_size);
 
     SL_STATUS_OK
 }
@@ -745,7 +758,7 @@ pub unsafe extern "C" fn sl_wfx_host_free_buffer(
     if i == WFX_MAX_PTRS {
         return SL_STATUS_ALLOCATION_FAILED;
     }
-    logln!(LL::Debug, "DeAlloc [{}]", i);
+    logln!(LL::Trace, "DeAlloc [{}]", i);
     WFX_PTR_LIST[i] = 0;
     SL_STATUS_OK
 }
@@ -1049,8 +1062,7 @@ fn sl_wfx_host_received_frame_callback(rx_buffer: *const sl_wfx_received_ind_t) 
     } else {
         // note: this is where you'd put in a packet filter for packets going to the SOC, if one were to be
         // implemented. Right now, after DHCP is successful, all data is passed on.
-        ensure_pkt_buf();
-        let maybe_pkt = unsafe{PACKET_BUF.unwrap().get_enqueue_slice(data.len())};
+        let maybe_pkt = unsafe{PACKET_BUF.get_enqueue_slice(data.len())};
         if let Some(pkt) = maybe_pkt {
             for (&src, dst) in data.iter().zip(pkt.iter_mut()) {
                 *dst = src;
@@ -1058,19 +1070,6 @@ fn sl_wfx_host_received_frame_callback(rx_buffer: *const sl_wfx_received_ind_t) 
         } else {
             drop_packet();
         }
-        /*
-        if unsafe{WAS_READ} {
-            unsafe {
-                // note that this will leak packet data from previous packets in the unused portion of the buffer
-                for (&src, dst) in data.iter().zip(PACKET_PENDING_DAT.iter_mut()) {
-                    *dst = src;
-                }
-                PACKET_PENDING = &data[0..data.len()];
-                WAS_READ = false;
-            }
-        } else {
-            drop_packet();
-        }*/
     }
 }
 
