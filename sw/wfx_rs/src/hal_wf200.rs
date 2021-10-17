@@ -220,7 +220,7 @@ static mut WIFI_CONTEXT: sl_wfx_context_t = sl_wfx_context_t {
 // the correctness of casting PBUF to a `*mut sl_wfx_send_frame_req_t` as required for
 // calling sl_wfx_send_ethernet_frame(). Be wary of any code involving PBUF_* constants.
 pub const PBUF_HEADER_SIZE: usize = core::mem::size_of::<sl_wfx_send_frame_req_t>();
-const PBUF_DATA_SIZE: usize = 1500;
+const PBUF_DATA_SIZE: usize = WIFI_MTU;
 pub const PBUF_SIZE: usize = PBUF_HEADER_SIZE + PBUF_DATA_SIZE;
 /// Packet buffer for building outbound Ethernet II frames
 static mut PBUF: [u8; PBUF_SIZE] = [0; PBUF_SIZE];
