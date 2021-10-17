@@ -806,7 +806,7 @@ fn main() -> ! {
                     }
                     _ => (),                }
             } else if rx == ComState::LINK_ACK_INTERRUPT.verb {
-                logln!(LL::Debug, "CLAckInt");
+                logln!(LL::Trace, "CLAckInt");
                 match com_rx(500) {
                     Ok(result) => {
                         com_int_mgr.ack(result)
@@ -814,7 +814,7 @@ fn main() -> ! {
                     _ => (),
                 }
             } else if rx == ComState::LINK_GET_INTERRUPT.verb {
-                logln!(LL::Debug, "CLGetInt");
+                logln!(LL::Trace, "CLGetInt");
                 let int_vect = com_int_mgr.get_state();
                 for &w in int_vect.iter() {
                     com_tx(w);
@@ -827,7 +827,7 @@ fn main() -> ! {
                 com_tx(drops as u16);
                 com_tx((drops >> 16) as u16);
             } else if rx >= ComState::NET_FRAME_FETCH_0.verb && rx <= ComState::NET_FRAME_FETCH_7FF.verb {
-                logln!(LL::Debug, "CLNetFetch");
+                logln!(LL::Trace, "CLNetFetch");
                 let expected_bytes = rx & 0x7FF;
                 let expected_words =
                     if expected_bytes % 2 == 0 {
@@ -882,7 +882,7 @@ fn main() -> ! {
             } else if rx >= ComState::NET_FRAME_SEND_0.verb && rx <= ComState::NET_FRAME_SEND_7FF.verb {
                 use wfx_rs::hal_wf200::PBUF_SIZE;
                 use wfx_rs::hal_wf200::PBUF_HEADER_SIZE;
-                logln!(LL::Debug, "CLNetSend");
+                logln!(LL::Trace, "CLNetSend");
                 /*
                     Code usage note: making this array 1500 bytes causes 4.2k of code to be generated.
                     Ironically, if the array is 2048 bytes, the code size is smaller. There is something

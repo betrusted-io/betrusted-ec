@@ -272,6 +272,7 @@ pub fn com_ipv4_config() -> Ipv4Conf {
     }
 }
 
+#[allow(dead_code)]
 fn log_hex(s: &[u8]) {
     for i in s {
         log!(LL::Debug, "{:02X}", *i);
@@ -280,9 +281,6 @@ fn log_hex(s: &[u8]) {
 }
 
 pub fn send_net_packet(pkt: &mut [u8]) -> Result<(), ()> {
-    log!(LL::Debug, "**Tx ");
-    log_hex(pkt);
-    log!(LL::Debug, "\n\r");
     unsafe {
         // Convert the byte buffer to a struct pointer for the sl_wfx API
         let frame_req_ptr: *mut sl_wfx_send_frame_req_t =
