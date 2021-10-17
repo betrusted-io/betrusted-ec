@@ -134,7 +134,7 @@ fn stack_check() {
         if word != STACK_CANARY {
             break;
         }
-        unused_stack_words += 1;
+        unused_stack_words += 4;
     }
     logln!(LL::Debug, "{} bytes used of {}", STACK_LEN - unused_stack_words, STACK_LEN);
 }
