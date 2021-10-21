@@ -377,6 +377,11 @@ pub fn dhcp_reset() -> Result<(), u8> {
     Ok(())
 }
 
+/// Inform DHCP state machine that the network link dropped
+pub fn dhcp_handle_link_drop() {
+    unsafe { NET_STATE.dhcp.handle_link_drop() };
+}
+
 /// Send a DHCP request
 pub fn dhcp_do_next() -> Result<(), u8> {
     // Make sure the link is active before we try to use it

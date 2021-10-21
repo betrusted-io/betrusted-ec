@@ -114,6 +114,11 @@ impl DhcpClient {
         logln!(LL::Debug, "DhcpHalt");
     }
 
+    /// Handle network link drop
+    pub fn handle_link_drop(&mut self) {
+        self.halt_and_reset();
+    }
+
     /// Feed the state machine some entropy so it can start at INIT with new random hostname and xid.
     /// Also, save some entropy for generating randomized exponential backoff delays for retries.
     pub fn begin_at_init(&mut self, entropy: [u32; 5]) {
