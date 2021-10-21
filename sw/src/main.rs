@@ -28,7 +28,6 @@ use betrusted_hal::hal_time::{
 use betrusted_hal::mem_locs::*;
 use com_rs::serdes::{StringSer, STR_64_U8_SIZE, STR_64_WORDS};
 use com_rs::ComState;
-use wfx_rs::hal_wf200::WIFI_MTU;
 use core::panic::PanicInfo;
 use debug;
 use debug::{log, loghex, loghexln, logln, LL};
@@ -38,6 +37,7 @@ use utralib::generated::{
     utra, CSR, HW_COM_BASE, HW_CRG_BASE, HW_GIT_BASE, HW_POWER_BASE, HW_TICKTIMER_BASE,
 };
 use volatile::Volatile;
+use wfx_rs::hal_wf200::WIFI_MTU;
 
 // Modules from this crate
 mod com_bus;
@@ -128,7 +128,12 @@ fn shift_speed_test() {
 
 fn stack_check() {
     // check the stack usage
-    let stack: &[u32] = unsafe{core::slice::from_raw_parts(STACK_END as *const u32, (STACK_LEN as usize / core::mem::size_of::<u32>()) as usize)};
+    let stack: &[u32] = unsafe {
+        core::slice::from_raw_parts(
+            STACK_END as *const u32,
+            (STACK_LEN as usize / core::mem::size_of::<u32>()) as usize,
+        )
+    };
     let mut unused_stack_words = 0;
     for &word in stack.iter() {
         if word != STACK_CANARY {
@@ -136,7 +141,12 @@ fn stack_check() {
         }
         unused_stack_words += 4;
     }
-    logln!(LL::Debug, "{} bytes used of {}", STACK_LEN - unused_stack_words, STACK_LEN);
+    logln!(
+        LL::Debug,
+        "{} bytes used of {}",
+        STACK_LEN - unused_stack_words,
+        STACK_LEN
+    );
 }
 
 #[entry]
@@ -259,7 +269,8 @@ fn main() -> ! {
                 wifi::handle_event();
                 // update interrupt vectors
                 let scanning = wifi::ssid_scan_in_progress();
-                if was_scanning && !scanning { // trigger interrupt when scan is done
+                if was_scanning && !scanning {
+                    // trigger interrupt when scan is done
                     com_int_mgr.set_ssid_update();
                 }
                 was_scanning = scanning;
@@ -281,9 +292,9 @@ fn main() -> ! {
                         dhcp_oneshot.start(DHCP_POLL_MS);
 
                         // fire an interrupt whenever we enter or leave the connected state
-                        let connected =
-                            (wfx_rs::hal_wf200::get_status() == wfx_rs::hal_wf200::State::Connected) &&
-                            (wfx_rs::hal_wf200::dhcp_get_state() == net::dhcp::State::Bound);
+                        let connected = (wfx_rs::hal_wf200::get_status()
+                            == wfx_rs::hal_wf200::State::Connected)
+                            && (wfx_rs::hal_wf200::dhcp_get_state() == net::dhcp::State::Bound);
                         if connected != was_connected {
                             com_int_mgr.set_ipconf_update();
                             was_connected = connected;
@@ -350,7 +361,7 @@ fn main() -> ! {
                         let now = TimeMs::now();
                         loghex!(LL::Debug, "NowMs ", now.ms_high_word());
                         loghexln!(LL::Debug, " ", now.ms_low_word());
-                    },
+                    }
                     b'6' => stack_check(),
                     _ => (),
                 }
@@ -801,16 +812,13 @@ fn main() -> ! {
             } else if rx == ComState::LINK_SET_INTMASK.verb {
                 logln!(LL::Debug, "CLSetIMsk");
                 match com_rx(500) {
-                    Ok(result) => {
-                        com_int_mgr.set_mask(result)
-                    }
-                    _ => (),                }
+                    Ok(result) => com_int_mgr.set_mask(result),
+                    _ => (),
+                }
             } else if rx == ComState::LINK_ACK_INTERRUPT.verb {
                 logln!(LL::Trace, "CLAckInt");
                 match com_rx(500) {
-                    Ok(result) => {
-                        com_int_mgr.ack(result)
-                    }
+                    Ok(result) => com_int_mgr.ack(result),
                     _ => (),
                 }
             } else if rx == ComState::LINK_GET_INTERRUPT.verb {
@@ -826,22 +834,22 @@ fn main() -> ! {
                 let drops = wfx_rs::hal_wf200::get_packets_dropped();
                 com_tx(drops as u16);
                 com_tx((drops >> 16) as u16);
-            } else if rx >= ComState::NET_FRAME_FETCH_0.verb && rx <= ComState::NET_FRAME_FETCH_7FF.verb {
+            } else if rx >= ComState::NET_FRAME_FETCH_0.verb
+                && rx <= ComState::NET_FRAME_FETCH_7FF.verb
+            {
                 logln!(LL::Trace, "CLNetFetch");
                 let expected_bytes = rx & 0x7FF;
-                let expected_words =
-                    if expected_bytes % 2 == 0 {
-                        expected_bytes / 2
-                    } else {
-                        expected_bytes / 2 + 1
-                    };
+                let expected_words = if expected_bytes % 2 == 0 {
+                    expected_bytes / 2
+                } else {
+                    expected_bytes / 2 + 1
+                };
 
                 // peek_get_packet() will get an immutable copy of the latest packet, but it
                 // does not pull it out of the queue. This is because we want the storage
                 // to "stay put" until we're done.
                 if let Some(packet) = wfx_rs::hal_wf200::peek_get_packet() {
-                    let packet_words =
-                    if packet.len() % 2 == 0 {
+                    let packet_words = if packet.len() % 2 == 0 {
                         packet.len() / 2
                     } else {
                         packet.len() / 2 + 1
@@ -855,14 +863,11 @@ fn main() -> ! {
                         // use MSB order
                         if words_sent * 2 <= packet.len() - 2 {
                             com_tx(
-                                ((packet[(words_sent * 2) as usize] as u16) << 8) |
-                                packet[(words_sent * 2) as usize + 1] as u16
+                                ((packet[(words_sent * 2) as usize] as u16) << 8)
+                                    | packet[(words_sent * 2) as usize + 1] as u16,
                             );
                         } else if words_sent * 2 < packet.len() {
-                            com_tx(
-                                ((packet[(words_sent * 2) as usize] as u16) << 8) |
-                                0x00
-                            )
+                            com_tx(((packet[(words_sent * 2) as usize] as u16) << 8) | 0x00)
                         } else {
                             com_tx(0xDEAD);
                         }
@@ -879,9 +884,11 @@ fn main() -> ! {
                     }
                 }
                 com_int_mgr.ack_rx_ready();
-            } else if rx >= ComState::NET_FRAME_SEND_0.verb && rx <= ComState::NET_FRAME_SEND_7FF.verb {
-                use wfx_rs::hal_wf200::PBUF_SIZE;
+            } else if rx >= ComState::NET_FRAME_SEND_0.verb
+                && rx <= ComState::NET_FRAME_SEND_7FF.verb
+            {
                 use wfx_rs::hal_wf200::PBUF_HEADER_SIZE;
+                use wfx_rs::hal_wf200::PBUF_SIZE;
                 logln!(LL::Trace, "CLNetSend");
                 /*
                     Code usage note: making this array 1500 bytes causes 4.2k of code to be generated.
@@ -890,12 +897,11 @@ fn main() -> ! {
                 */
                 let mut txbuf_backing: [u8; PBUF_SIZE] = [0; PBUF_SIZE];
                 let num_bytes = rx & 0x7ff;
-                let num_words =
-                    if num_bytes % 2 == 0 {
-                        num_bytes / 2
-                    } else {
-                        num_bytes / 2 + 1
-                    };
+                let num_words = if num_bytes % 2 == 0 {
+                    num_bytes / 2
+                } else {
+                    num_bytes / 2 + 1
+                };
                 let mut error = false;
                 let mut words_received = 0;
                 // num_words can be bigger than the MTU, in which case, we fill up to our
@@ -905,8 +911,10 @@ fn main() -> ! {
                         Ok(result) => {
                             if words_received * 2 + 1 < WIFI_MTU as u16 {
                                 let be_bytes = result.to_be_bytes();
-                                txbuf_backing[PBUF_HEADER_SIZE + words_received as usize * 2] = be_bytes[0];
-                                txbuf_backing[PBUF_HEADER_SIZE + words_received as usize * 2 + 1] = be_bytes[1];
+                                txbuf_backing[PBUF_HEADER_SIZE + words_received as usize * 2] =
+                                    be_bytes[0];
+                                txbuf_backing[PBUF_HEADER_SIZE + words_received as usize * 2 + 1] =
+                                    be_bytes[1];
                             } else {
                                 error = true;
                             }
@@ -918,12 +926,12 @@ fn main() -> ! {
                 if !error {
                     logln!(LL::Debug, "Sending packet");
                     match wfx_rs::hal_wf200::send_net_packet(
-                        &mut txbuf_backing[..num_bytes as usize + PBUF_HEADER_SIZE]
+                        &mut txbuf_backing[..num_bytes as usize + PBUF_HEADER_SIZE],
                     ) {
                         Err(_) => {
                             tx_errs += 1;
                             com_int_mgr.set_tx_error();
-                        },
+                        }
                         _ => (),
                     }
                 } else {

@@ -10,12 +10,12 @@ use utralib::generated::{utra, CSR, HW_WIFI_BASE};
 
 mod bt_wf200_pds;
 
+use crate::pkt_buf::{PktBuf, MAX_PKTS};
 use bt_wf200_pds::PDS_DATA;
+use com_rs::serdes::{DhcpState, Ipv4Conf};
 use debug;
 use debug::{log, loghex, loghexln, logln, LL};
 use net;
-use crate::pkt_buf::{PktBuf, MAX_PKTS};
-use com_rs::serdes::{Ipv4Conf, DhcpState};
 
 // The mixed case constants here are the reason for the `allow(non_upper_case_globals)` above
 pub use wfx_bindings::{
@@ -102,13 +102,13 @@ pub fn init_pkt_buf() {
 }
 
 pub fn drop_packet() {
-    unsafe{
+    unsafe {
         PACKETS_DROPPED += 1;
         DROPPED_UPDATED = true;
     }
 }
 pub fn get_packets_dropped() -> u32 {
-    unsafe{
+    unsafe {
         DROPPED_UPDATED = false;
         PACKETS_DROPPED
     }
@@ -125,13 +125,15 @@ pub fn poll_new_dropped() -> bool {
 }
 
 pub fn peek_get_packet() -> Option<&'static [u8]> {
-    unsafe{PACKET_BUF.peek_dequeue_slice()}
+    unsafe { PACKET_BUF.peek_dequeue_slice() }
 }
 pub fn dequeue_packet() {
-    unsafe{PACKET_BUF.dequeue();}
+    unsafe {
+        PACKET_BUF.dequeue();
+    }
 }
 pub fn poll_new_avail() -> Option<u16> {
-    unsafe{PACKET_BUF.poll_new_avail()}
+    unsafe { PACKET_BUF.poll_new_avail() }
 }
 /*
 pub fn was_dropped() -> bool {
@@ -268,7 +270,7 @@ pub fn com_ipv4_config() -> Ipv4Conf {
             Some(dns) => dns.to_be_bytes(),
             None => [0, 0, 0, 0],
         },
-        dns2: [0; 4]
+        dns2: [0; 4],
     }
 }
 
@@ -718,7 +720,12 @@ pub unsafe extern "C" fn sl_wfx_host_allocate_buffer(
     buffer_size: u32,
 ) -> sl_status_t {
     if buffer_size as usize > WFX_ALLOC_MAXLEN {
-        logln!(LL::Error, "Alloc {} larger than max of {}!", buffer_size, WFX_ALLOC_MAXLEN);
+        logln!(
+            LL::Error,
+            "Alloc {} larger than max of {}!",
+            buffer_size,
+            WFX_ALLOC_MAXLEN
+        );
         return SL_STATUS_ALLOCATION_FAILED;
     }
 
@@ -1060,7 +1067,7 @@ fn sl_wfx_host_received_frame_callback(rx_buffer: *const sl_wfx_received_ind_t) 
     } else {
         // note: this is where you'd put in a packet filter for packets going to the SOC, if one were to be
         // implemented. Right now, after DHCP is successful, all data is passed on.
-        let maybe_pkt = unsafe{PACKET_BUF.get_enqueue_slice(data.len())};
+        let maybe_pkt = unsafe { PACKET_BUF.get_enqueue_slice(data.len()) };
         if let Some(pkt) = maybe_pkt {
             for (&src, dst) in data.iter().zip(pkt.iter_mut()) {
                 *dst = src;
