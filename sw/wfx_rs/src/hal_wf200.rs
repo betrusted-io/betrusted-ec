@@ -10,18 +10,19 @@ use utralib::generated::{utra, CSR, HW_WIFI_BASE};
 
 mod bt_wf200_pds;
 
+use crate::pkt_buf::{PktBuf, MAX_PKTS};
 use bt_wf200_pds::PDS_DATA;
+use com_rs::serdes::{DhcpState, Ipv4Conf};
 use debug;
 use debug::{log, loghex, loghexln, logln, LL};
 use net;
-use crate::pkt_buf::{PktBuf, MAX_PKTS};
-use com_rs::serdes::{Ipv4Conf, DhcpState};
 
 // The mixed case constants here are the reason for the `allow(non_upper_case_globals)` above
 pub use wfx_bindings::{
     sl_status_t, sl_wfx_buffer_type_t, sl_wfx_confirmations_ids_e_SL_WFX_CONNECT_CNF_ID,
     sl_wfx_confirmations_ids_e_SL_WFX_DISCONNECT_CNF_ID,
     sl_wfx_confirmations_ids_e_SL_WFX_SEND_FRAME_CNF_ID,
+    sl_wfx_confirmations_ids_e_SL_WFX_SET_ARP_IP_ADDRESS_CNF_ID,
     sl_wfx_confirmations_ids_e_SL_WFX_START_SCAN_CNF_ID,
     sl_wfx_confirmations_ids_e_SL_WFX_STOP_SCAN_CNF_ID, sl_wfx_connect_ind_t, sl_wfx_context_t,
     sl_wfx_data_write, sl_wfx_disable_device_power_save, sl_wfx_disconnect_ind_t,
@@ -53,9 +54,10 @@ pub use wfx_bindings::{
     sl_wfx_scan_complete_ind_t, sl_wfx_scan_mode_e_WFM_SCAN_MODE_ACTIVE,
     sl_wfx_scan_result_ind_body_t, sl_wfx_scan_result_ind_t, sl_wfx_send_configuration,
     sl_wfx_send_ethernet_frame, sl_wfx_send_frame_req_t, sl_wfx_send_scan_command,
-    sl_wfx_set_power_mode, sl_wfx_ssid_def_t, sl_wfx_state_t_SL_WFX_STA_INTERFACE_CONNECTED,
-    u_int32_t, SL_STATUS_ALLOCATION_FAILED, SL_STATUS_IO_TIMEOUT, SL_STATUS_OK,
-    SL_STATUS_WIFI_SLEEP_GRANTED, SL_WFX_CONT_NEXT_LEN_MASK, SL_WFX_EXCEPTION_DATA_SIZE_MAX,
+    sl_wfx_set_arp_ip_address, sl_wfx_set_power_mode, sl_wfx_ssid_def_t,
+    sl_wfx_state_t_SL_WFX_STA_INTERFACE_CONNECTED, u_int32_t, SL_STATUS_ALLOCATION_FAILED,
+    SL_STATUS_IO_TIMEOUT, SL_STATUS_OK, SL_STATUS_WIFI_SLEEP_GRANTED, SL_STATUS_WIFI_WRONG_STATE,
+    SL_WFX_CONT_NEXT_LEN_MASK, SL_WFX_EXCEPTION_DATA_SIZE_MAX,
 };
 
 // Configure Log Level (used in macro expansions)
@@ -102,13 +104,13 @@ pub fn init_pkt_buf() {
 }
 
 pub fn drop_packet() {
-    unsafe{
+    unsafe {
         PACKETS_DROPPED += 1;
         DROPPED_UPDATED = true;
     }
 }
 pub fn get_packets_dropped() -> u32 {
-    unsafe{
+    unsafe {
         DROPPED_UPDATED = false;
         PACKETS_DROPPED
     }
@@ -125,13 +127,15 @@ pub fn poll_new_dropped() -> bool {
 }
 
 pub fn peek_get_packet() -> Option<&'static [u8]> {
-    unsafe{PACKET_BUF.peek_dequeue_slice()}
+    unsafe { PACKET_BUF.peek_dequeue_slice() }
 }
 pub fn dequeue_packet() {
-    unsafe{PACKET_BUF.dequeue();}
+    unsafe {
+        PACKET_BUF.dequeue();
+    }
 }
 pub fn poll_new_avail() -> Option<u16> {
-    unsafe{PACKET_BUF.poll_new_avail()}
+    unsafe { PACKET_BUF.poll_new_avail() }
 }
 /*
 pub fn was_dropped() -> bool {
@@ -268,7 +272,7 @@ pub fn com_ipv4_config() -> Ipv4Conf {
             Some(dns) => dns.to_be_bytes(),
             None => [0, 0, 0, 0],
         },
-        dns2: [0; 4]
+        dns2: [0; 4],
     }
 }
 
@@ -348,14 +352,44 @@ pub fn get_rssi() -> Result<u32, u8> {
     }
 }
 
+/// Enable WF200 ARP response offloading
+/// See https://docs.silabs.com/wifi/wf200/rtos/latest/group-f-u-l-l-m-a-c-d-r-i-v-e-r-a-p-i#gabc2fb642a325bfda29d120f81f8df5f8
+pub fn arp_begin_offloading() {
+    if let Some(mut ip) = unsafe { NET_STATE.dhcp.ip } {
+        let size = 1u8;
+        match unsafe { sl_wfx_set_arp_ip_address(&mut ip, size) } {
+            SL_STATUS_OK => logln!(LL::Debug, "ArpBegin"),
+            err => loghexln!(LL::Debug, "ArpBeginErr ", err),
+        };
+    }
+}
+
+/// Disable WF200 ARP response offloading (docs say to set address to 0)
+pub fn arp_stop_offloading() {
+    let mut off = 0u32;
+    let size = 1u8;
+    match unsafe { sl_wfx_set_arp_ip_address(&mut off, size) } {
+        SL_STATUS_OK => logln!(LL::Debug, "ArpEnd0"),
+        // This happens after a WLAN_OFF command from COM (means radio is in reset)
+        SL_STATUS_WIFI_WRONG_STATE => logln!(LL::Debug, "ArpEnd1"),
+        err => loghexln!(LL::Debug, "ArpStopErr ", err),
+    };
+}
+
 /// Return current state of DHCP state machine.
 /// This is intended as a way for event loop to monitor DHCP handshake progress and detect slowness.
 pub fn dhcp_get_state() -> dhcp::State {
     unsafe { NET_STATE.dhcp.get_state() }
 }
 
+/// Get a description of the DHCP state suitable for including in status string
 pub fn dhcp_get_state_tag() -> &'static str {
     unsafe { NET_STATE.dhcp.get_state_tag() }
+}
+
+/// Check for notification of DHCP state changes to Bound or Halted
+pub fn dhcp_pop_and_ack_change_event() -> Option<dhcp::DhcpEvent> {
+    unsafe { NET_STATE.dhcp.pop_and_ack_change_event() }
 }
 
 /// Reset DHCP client state machine to start at INIT state with new random hostname
@@ -373,6 +407,11 @@ pub fn dhcp_reset() -> Result<(), u8> {
         _ => return Err(0x01),
     }
     Ok(())
+}
+
+/// Inform DHCP state machine that the network link dropped
+pub fn dhcp_handle_link_drop() {
+    unsafe { NET_STATE.dhcp.handle_link_drop() };
 }
 
 /// Send a DHCP request
@@ -718,7 +757,12 @@ pub unsafe extern "C" fn sl_wfx_host_allocate_buffer(
     buffer_size: u32,
 ) -> sl_status_t {
     if buffer_size as usize > WFX_ALLOC_MAXLEN {
-        logln!(LL::Error, "Alloc {} larger than max of {}!", buffer_size, WFX_ALLOC_MAXLEN);
+        logln!(
+            LL::Error,
+            "Alloc {} larger than max of {}!",
+            buffer_size,
+            WFX_ALLOC_MAXLEN
+        );
         return SL_STATUS_ALLOCATION_FAILED;
     }
 
@@ -1060,7 +1104,7 @@ fn sl_wfx_host_received_frame_callback(rx_buffer: *const sl_wfx_received_ind_t) 
     } else {
         // note: this is where you'd put in a packet filter for packets going to the SOC, if one were to be
         // implemented. Right now, after DHCP is successful, all data is passed on.
-        let maybe_pkt = unsafe{PACKET_BUF.get_enqueue_slice(data.len())};
+        let maybe_pkt = unsafe { PACKET_BUF.get_enqueue_slice(data.len()) };
         if let Some(pkt) = maybe_pkt {
             for (&src, dst) in data.iter().zip(pkt.iter_mut()) {
                 *dst = src;
@@ -1257,6 +1301,9 @@ pub unsafe extern "C" fn sl_wfx_host_post_event(
         }
         sl_wfx_requests_ids_e_SL_WFX_GET_SIGNAL_STRENGTH_REQ_ID => {
             logln!(LL::Debug, "WfxGetSigStr");
+        }
+        sl_wfx_confirmations_ids_e_SL_WFX_SET_ARP_IP_ADDRESS_CNF_ID => {
+            // This happens when you set an IP address for ARP offloading
         }
         sl_wfx_confirmations_ids_e_SL_WFX_SEND_FRAME_CNF_ID => {
             // This happens when a frame gets sent.
