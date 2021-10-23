@@ -48,9 +48,17 @@ pub enum PacketNeeded {
     None,
 }
 
+/// State transition notification latch for polling by event loop
+#[derive(Copy, Clone, PartialEq)]
+pub enum DhcpEvent {
+    ChangedToBound,
+    ChangedToHalted,
+}
+
 /// State Machine for DHCP client
 pub struct DhcpClient {
     entropy: [u32; 2],
+    state_change_event_latch: Option<DhcpEvent>,
     pub hostname: Hostname,
     pub state: State,
     pub secs: Stopwatch,
@@ -66,6 +74,7 @@ impl DhcpClient {
     pub const fn new() -> Self {
         Self {
             entropy: [0; 2],
+            state_change_event_latch: None,
             hostname: Hostname::new_blank(),
             state: State::Halted,
             secs: Stopwatch::new(),
@@ -82,6 +91,17 @@ impl DhcpClient {
     /// Return current state machine state
     pub fn get_state(&self) -> State {
         self.state
+    }
+
+    /// Check for notification of Bind/Halt state change event with implicit ACK
+    pub fn pop_and_ack_change_event(&mut self) -> Option<DhcpEvent> {
+        match self.state_change_event_latch {
+            sce @ Some(_) => {
+                self.state_change_event_latch = None;
+                sce
+            }
+            None => None,
+        }
     }
 
     /// Return string tag describing current state machine state
@@ -109,6 +129,7 @@ impl DhcpClient {
     /// Reset to refelct a state transition to halted (this means something went wrong)
     fn halt_and_reset(&mut self) {
         self.state = State::Halted;
+        self.state_change_event_latch = Some(DhcpEvent::ChangedToHalted);
         self.secs.reset();
         self.reset_bindings();
         logln!(LL::Debug, "DhcpHalt");
@@ -244,9 +265,9 @@ impl DhcpClient {
                 match lease_expired {
                     true => {
                         // This is bad. Lease is up. Unable to get a new one.
-                        // TODO: Inform EC main event loop
                         self.reset_bindings();
                         self.state = State::Halted;
+                        self.state_change_event_latch = Some(DhcpEvent::ChangedToHalted);
                         PacketNeeded::None
                     }
                     _ => {
@@ -314,6 +335,7 @@ impl DhcpClient {
                 // TODO: Set T1 (renew) timer
                 // TODO: Set T2 (rebind) timer
                 self.state = State::Bound;
+                self.state_change_event_latch = Some(DhcpEvent::ChangedToBound);
                 logln!(LL::Debug, "DhcpBound");
             }
             State::Bound => (),
@@ -338,6 +360,7 @@ impl DhcpClient {
                 // This is bad. DHCP servers have probably assigned all their available leases.
                 self.reset_bindings();
                 self.state = State::Halted;
+                self.state_change_event_latch = Some(DhcpEvent::ChangedToHalted);
                 logln!(LL::Debug, "DhcpHalted");
             }
         }
@@ -359,7 +382,8 @@ impl DhcpClient {
             Some(x) => x,
             None => return Err(0x04), // This means state machine was not initialized properly
         };
-        // Buffer might be a full MTU, so only use what we need. (this determines number of loop iterations below)
+        // Buffer might be a full MTU, so only use what we need.
+        // (this determines number of loop iterations below)
         pbuf = &mut pbuf[..DHCP_FRAME_LEN];
         // Ethernet MAC header
         let dst_mac = [255u8, 255, 255, 255, 255, 255];

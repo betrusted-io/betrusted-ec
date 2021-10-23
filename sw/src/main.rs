@@ -31,13 +31,14 @@ use com_rs::ComState;
 use core::panic::PanicInfo;
 use debug;
 use debug::{log, loghex, loghexln, logln, LL};
+use net::dhcp;
 use net::timers::{Countdown, CountdownStatus, Stopwatch};
 use riscv_rt::entry;
 use utralib::generated::{
     utra, CSR, HW_COM_BASE, HW_CRG_BASE, HW_GIT_BASE, HW_POWER_BASE, HW_TICKTIMER_BASE,
 };
 use volatile::Volatile;
-use wfx_rs::hal_wf200::WIFI_MTU;
+use wfx_rs::hal_wf200::{self, WIFI_MTU};
 
 // Modules from this crate
 mod com_bus;
@@ -290,6 +291,20 @@ fn main() -> ! {
                     CountdownStatus::Done => {
                         wifi::dhcp_clock_state_machine();
                         dhcp_oneshot.start(DHCP_POLL_MS);
+                        // Maybe this is sorta redundant with the "connected" check below?
+                        // The conditions they check for are subtly different. Point of this
+                        // match is specifically to use one-shot event notifications from
+                        // the DHCP state machine to control the WF200 ARP response
+                        // offloading feature.
+                        match hal_wf200::dhcp_pop_and_ack_change_event() {
+                            Some(dhcp::DhcpEvent::ChangedToBound) => {
+                                hal_wf200::arp_begin_offloading();
+                            }
+                            Some(dhcp::DhcpEvent::ChangedToHalted) => {
+                                hal_wf200::arp_stop_offloading();
+                            }
+                            _ => (),
+                        };
 
                         // fire an interrupt whenever we enter or leave the connected state
                         let connected = (wfx_rs::hal_wf200::get_status()
@@ -756,6 +771,7 @@ fn main() -> ! {
             } else if rx == ComState::WLAN_OFF.verb {
                 logln!(LL::Debug, "CWlanOff");
                 // TODO: Make graceful shutdown procedure instead of this immediate reset
+                hal_wf200::arp_stop_offloading();
                 wifi_ready = false;
                 wifi::wf200_reset_hold();
                 logln!(LL::Debug, "holding WF200 reset")
