@@ -81,12 +81,18 @@ pub fn dhcp_init() {
 
 /// Clock the DHCP state machine
 pub fn dhcp_clock_state_machine() {
-    if hal_wf200::get_status() == hal_wf200::State::Connected {
-        match hal_wf200::dhcp_do_next() {
+    let link = hal_wf200::get_status();
+    let dhcp = hal_wf200::dhcp_get_state();
+    match link {
+        hal_wf200::State::Connected => match hal_wf200::dhcp_do_next() {
             Ok(_) => (),
             Err(e) => loghexln!(LL::Debug, "DhcpNextErr ", e),
-        };
-    }
+        },
+        hal_wf200::State::Disconnected if dhcp == net::dhcp::State::Bound => {
+            hal_wf200::dhcp_handle_link_drop();
+        }
+        _ => (),
+    };
 }
 
 /// Leave an access point.
