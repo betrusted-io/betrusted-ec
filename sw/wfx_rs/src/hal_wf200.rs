@@ -56,6 +56,7 @@ pub use wfx_bindings::{
     sl_wfx_set_power_mode, sl_wfx_ssid_def_t, sl_wfx_state_t_SL_WFX_STA_INTERFACE_CONNECTED,
     u_int32_t, SL_STATUS_ALLOCATION_FAILED, SL_STATUS_IO_TIMEOUT, SL_STATUS_OK,
     SL_STATUS_WIFI_SLEEP_GRANTED, SL_WFX_CONT_NEXT_LEN_MASK, SL_WFX_EXCEPTION_DATA_SIZE_MAX,
+    sl_wfx_reg_read_32, sl_wfx_register_address_t_SL_WFX_CONFIG_REG_ID,
 };
 
 // Configure Log Level (used in macro expansions)
@@ -1232,7 +1233,17 @@ pub unsafe extern "C" fn sl_wfx_host_post_event(
             // fixed the problem.
             log!(LL::Debug, "WfxError: ");
             match error {
-                SL_WFX_HIF_BUS_ERROR => logln!(LL::Debug, "WfxHifBusErr"),
+                SL_WFX_HIF_BUS_ERROR => {
+                    use core::convert::TryInto;
+                    let maybe_err = u32::from_be_bytes(core::ptr::addr_of!((*firmware_error).body.data).read_unaligned().as_slice(4).try_into().unwrap());
+                    loghex!(LL::Debug, "WfxHifBusErr: ", maybe_err);
+                    let mut config: u32 = 0;
+                    let config_ptr = &mut config as *mut u32;
+                    sl_wfx_reg_read_32(
+                        sl_wfx_register_address_t_SL_WFX_CONFIG_REG_ID,
+                        config_ptr);
+                    loghexln!(LL::Debug, " WfxConfig: ", config);
+                },
                 _ => loghexln!(LL::Debug, "", error),
             }
         }
