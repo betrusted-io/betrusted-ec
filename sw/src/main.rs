@@ -152,7 +152,7 @@ fn stack_check() {
 
 #[entry]
 fn main() -> ! {
-    logln!(LL::Info, "\r\n====UP5K==0B");
+    logln!(LL::Info, "\r\n====UP5K==0C");
     let mut com_csr = CSR::new(HW_COM_BASE as *mut u32);
     let mut crg_csr = CSR::new(HW_CRG_BASE as *mut u32);
     let mut ticktimer_csr = CSR::new(HW_TICKTIMER_BASE as *mut u32);
@@ -258,7 +258,6 @@ fn main() -> ! {
 
     // interrupt manager for COM interface
     let mut com_int_mgr = com_bus::ComInterrupts::new();
-    let mut was_connected = false;
     let mut was_scanning = false;
     let mut tx_errs: u32 = 0;
 
@@ -294,31 +293,22 @@ fn main() -> ! {
                     CountdownStatus::Done => {
                         wifi::dhcp_clock_state_machine();
                         dhcp_oneshot.start(DHCP_POLL_MS);
-                        // Maybe this is sorta redundant with the "connected" check below?
-                        // The conditions they check for are subtly different. Point of this
-                        // match is specifically to use one-shot event notifications from
-                        // the DHCP state machine to control the WF200 ARP response
-                        // offloading feature.
+                        // Respond to one-shot connection state change event notifications from the
+                        // DHCP state machine to control ARP offloading and keep the COM net bridge
+                        // informed
                         match hal_wf200::dhcp_pop_and_ack_change_event() {
                             Some(dhcp::DhcpEvent::ChangedToBound) => {
                                 hal_wf200::arp_begin_offloading();
+                                // fire an interrupt whenever we enter connected state
+                                com_int_mgr.set_ipconf_update();
                             }
                             Some(dhcp::DhcpEvent::ChangedToHalted) => {
                                 hal_wf200::arp_stop_offloading();
+                                // fire an interrupt whenever we leave the connected state
+                                com_int_mgr.set_ipconf_update();
                             }
                             _ => (),
                         };
-
-                        // fire an interrupt whenever we enter or leave the connected state
-                        if com_net_bridge_enable {
-                            let connected = (wfx_rs::hal_wf200::get_status()
-                                == wfx_rs::hal_wf200::State::Connected)
-                                && (wfx_rs::hal_wf200::dhcp_get_state() == net::dhcp::State::Bound);
-                            if connected != was_connected {
-                                com_int_mgr.set_ipconf_update();
-                                was_connected = connected;
-                            }
-                        }
                     }
                 }
             }
@@ -956,7 +946,7 @@ fn main() -> ! {
                 }
                 if !error {
                     if com_net_bridge_enable {
-                        logln!(LL::Debug, "Sending packet");
+                        log!(LL::Debug, "T"); // Log TX of packet, but make it quick
                         match wfx_rs::hal_wf200::send_net_packet(
                             &mut txbuf_backing[..num_bytes as usize + PBUF_HEADER_SIZE],
                         ) {

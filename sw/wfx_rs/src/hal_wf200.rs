@@ -15,7 +15,7 @@ use bt_wf200_pds::PDS_DATA;
 use com_rs::serdes::{DhcpState, Ipv4Conf};
 use debug;
 use debug::{log, loghex, loghexln, logln, LL};
-use net;
+use net::{self, filter::FilterBin};
 
 // The mixed case constants here are the reason for the `allow(non_upper_case_globals)` above
 pub use wfx_bindings::{
@@ -1102,24 +1102,24 @@ fn sl_wfx_host_received_frame_callback(rx_buffer: *const sl_wfx_received_ind_t) 
     let length = body.frame_length as usize;
     let data = unsafe { &body.frame.as_slice(length + padding)[padding..] };
 
-    // com_net_bridge_enable is tied to an AT command in the EC main event loop
-    if !(unsafe { NET_STATE.com_net_bridge_enable }) || (dhcp_get_state() != dhcp::State::Bound) {
-        // run the current handler only during the DHCP unbound states, so that the DHCP happens
-        // entirely within the EC. Once this is done, pass the frames directly onto the host.
-        let _filter_bin = net::handle_frame(unsafe { &mut NET_STATE }, data);
-    } else {
-        // note: this is where you'd put in a packet filter for packets going to the SOC, if one were to be
-        // implemented. Right now, after DHCP is successful, all data is passed on.
-        //
-        // TODO: Refactor this logic with a filter that will allow the EC to complete a DHCP Renew or Rebind
-        //       without disconnecting the COM bus net bridge. (that will probably be a moderate hassle)
-        let maybe_pkt = unsafe { PACKET_BUF.get_enqueue_slice(data.len()) };
-        if let Some(pkt) = maybe_pkt {
-            for (&src, dst) in data.iter().zip(pkt.iter_mut()) {
-                *dst = src;
+    // This will give the EC's DHCP client and packet filter first dibs on the packet
+    let filter_bin = net::handle_frame(unsafe { &mut NET_STATE }, data);
+
+    // If the filter bin came back as ComFwd, that means the EC wants the packet to be
+    // forwarded up the COM bus net bridge. The com_net_bridge_enable check relates to an
+    // AT command in the EC main event loop
+    if (filter_bin == FilterBin::ComFwd) && unsafe { NET_STATE.com_net_bridge_enable } {
+        if let Some(_) = unsafe { NET_STATE.dhcp.ip } {
+            let maybe_pkt = unsafe { PACKET_BUF.get_enqueue_slice(data.len()) };
+            if let Some(pkt) = maybe_pkt {
+                log!(LL::Debug, "R"); // RX packet for COM bus
+                for (&src, dst) in data.iter().zip(pkt.iter_mut()) {
+                    *dst = src;
+                }
+            } else {
+                log!(LL::Debug, "D"); // Drop RX packet because COM bus congested
+                drop_packet();
             }
-        } else {
-            drop_packet();
         }
     }
 }
