@@ -48,6 +48,7 @@ pub struct NetState {
     pub filter_stats: FilterStats,
     pub prng: NetPrng,
     pub dhcp: DhcpClient,
+    pub com_net_bridge_enable: bool,
 }
 impl NetState {
     /// Initialize a new NetState struct
@@ -57,6 +58,7 @@ impl NetState {
             filter_stats: FilterStats::new_all_zero(),
             prng: NetPrng::new_from(&[0x55u16; 8]),
             dhcp: DhcpClient::new(),
+            com_net_bridge_enable: true,
         }
     }
 
@@ -80,11 +82,15 @@ impl NetState {
         loghexln!(LL::Debug, "DropFrag ", self.filter_stats.drop_frag);
         loghexln!(LL::Debug, "DropIpCk ", self.filter_stats.drop_ipck);
         loghexln!(LL::Debug, "DropUdpCk ", self.filter_stats.drop_udpck);
-        loghexln!(LL::Debug, "ArpReq ", self.filter_stats.arp_req);
-        loghexln!(LL::Debug, "ArpReply ", self.filter_stats.arp_reply);
+        loghexln!(LL::Debug, "Arp ", self.filter_stats.arp);
         loghexln!(LL::Debug, "Icmp ", self.filter_stats.icmp);
         loghexln!(LL::Debug, "Dhcp ", self.filter_stats.dhcp);
         loghexln!(LL::Debug, "Udp ", self.filter_stats.udp);
+        loghexln!(LL::Debug, "ComFwd ", self.filter_stats.com_fwd);
+    }
+
+    pub fn set_com_net_bridge_enable(&mut self, enable: bool) {
+        self.com_net_bridge_enable = enable;
     }
 }
 
@@ -122,7 +128,7 @@ pub fn handle_frame(mut net_state: &mut NetState, data: &[u8]) -> FilterBin {
     let ethertype = &data[12..14]; // ipv4=0x0800, ipv6=0x86DD, arp=0x0806, vlan=0x8100
     let filter_bin = match ethertype {
         ETHERTYPE_IPV4 => handle_ipv4_frame(&mut net_state, data),
-        // ETHERTYPE_ARP => handle_arp_frame(&net_state, data), // this just logs the frame, skip it to save CPU cycles...
+        ETHERTYPE_ARP => handle_arp_frame(&net_state, data),
         _ => FilterBin::DropEType,
     };
     net_state.filter_stats.inc_count_for(filter_bin);
@@ -213,84 +219,22 @@ fn handle_ipv4_frame(net_state: &mut NetState, data: &[u8]) -> FilterBin {
         return FilterBin::DropIpCk;
     }
     const PROTO_UDP: u8 = 0x11;
+    const PROTO_TCP: u8 = 0x06;
     const PROTO_ICMP: u8 = 0x01;
     match ip_proto[0] {
         PROTO_UDP => handle_udp_frame(net_state, data),
         PROTO_ICMP => handle_icmp_frame(data),
+        PROTO_TCP => FilterBin::ComFwd,
         _ => FilterBin::DropProto,
     }
-}
-
-fn log_mac_header(data: &[u8]) {
-    if data.len() < MAC_HEADER_LEN {
-        return;
-    }
-    let dest_mac = &data[..6];
-    let src_mac = &data[6..12];
-    let ethertype = &data[12..14];
-    log_hex(dest_mac);
-    log_hex(src_mac);
-    log_hex(ethertype);
-}
-
-fn log_ipv4_header(data: &[u8]) {
-    if data.len() < IPV4_MIN_FRAME_LEN {
-        return;
-    }
-    let ip_ver_ihl = &data[14..15];
-    let ip_dcsp_ecn = &data[15..16];
-    let ip_length = &data[16..18];
-    let ip_id = &data[18..20];
-    let ip_flags_frag = &data[20..22];
-    let ip_ttl = &data[22..23];
-    let ip_proto = &data[23..24];
-    let ip_checksum = &data[24..26];
-    let ip_src = &data[26..30];
-    let ip_dst = &data[30..34];
-    log_hex(ip_ver_ihl);
-    log_hex(ip_dcsp_ecn);
-    log_hex(ip_length);
-    log!(LL::Debug, " ");
-    log_hex(ip_id);
-    log_hex(ip_flags_frag);
-    log!(LL::Debug, " ");
-    log_hex(ip_ttl);
-    log_hex(ip_proto);
-    log_hex(ip_checksum);
-    log!(LL::Debug, " ");
-    log_hex(ip_src);
-    log!(LL::Debug, " ");
-    log_hex(ip_dst);
-}
-
-fn log_udp_header(data: &[u8]) {
-    if data.len() < MIN_UDP_FRAME_LEN {
-        return;
-    }
-    let udp = &data[IPV4_MIN_FRAME_LEN..];
-    let src_port = &udp[0..2];
-    let dst_port = &udp[2..4];
-    let length = &udp[4..6];
-    let checksum = &udp[6..8];
-    log_hex(src_port);
-    log_hex(dst_port);
-    log!(LL::Debug, " ");
-    log_hex(length);
-    log_hex(checksum);
 }
 
 fn handle_icmp_frame(data: &[u8]) -> FilterBin {
     if data.len() < IPV4_MIN_FRAME_LEN {
         return FilterBin::DropNoise;
     }
-    log!(LL::Debug, "RxICMP ");
-    log_mac_header(data);
-    log!(LL::Debug, "\r\n  ");
-    log_ipv4_header(data);
-    log!(LL::Debug, "\r\n  ");
-    log_hex(&data[IPV4_MIN_FRAME_LEN..]);
-    logln!(LL::Debug, "");
-    return FilterBin::Icmp;
+    // Forward ICMP up the COM bus
+    return FilterBin::ComFwd;
 }
 
 fn handle_udp_frame(net_state: &mut NetState, data: &[u8]) -> FilterBin {
@@ -299,39 +243,22 @@ fn handle_udp_frame(net_state: &mut NetState, data: &[u8]) -> FilterBin {
         return FilterBin::DropNoise;
     }
     let udp = &data[IPV4_MIN_FRAME_LEN..];
+    let dst_port = u16::from_be_bytes([udp[2], udp[3]]);
+    const DHCP_CLIENT: u16 = 68;
+    if dst_port != DHCP_CLIENT {
+        // Return early for non-DHCP UDP to skip the checksum check on packets
+        // that will get forwarded up the COM bus net bridge to smoltcp
+        return FilterBin::ComFwd;
+    }
+    // If we make it here, packet is for the DHCP client, so check the checksum
     let checksum = &udp[6..8];
     if u16::from_be_bytes([checksum[0], checksum[1]]) != ipv4_udp_checksum(data) {
-        // Drop if UDP checksum validation fails
         return FilterBin::DropUdpCk;
     }
-    let dst_port = u16::from_be_bytes([udp[2], udp[3]]);
-    let payload = &udp[8..];
-    const DHCP_CLIENT: u16 = 68;
-    match dst_port {
-        DHCP_CLIENT => return net_state.dhcp.handle_frame(data),
-        _ => {
-            log!(LL::Debug, "RxUDP ");
-            log_mac_header(data);
-            log!(LL::Debug, "\r\n  ");
-            log_ipv4_header(data);
-            log!(LL::Debug, "\r\n  ");
-            log_udp_header(data);
-            log!(LL::Debug, "\r\n  ");
-            log_hex(payload);
-            logln!(LL::Debug, "");
-            return FilterBin::Udp;
-        }
-    };
+    return net_state.dhcp.handle_frame(data);
 }
 
 /// Handle received Ethernet frame of type ARP (0x0806)
-///
-/// |-------- Ethernet MAC Header --------|----------------------------- ARP --------------------------------------|
-/// | DEST_MAC     SRC_MAC      ETHERTYPE | HTYPE PTYPE HLEN PLEN OPER SHA          SPA      THA          TPA      |
-/// | FFFFFFFFFFFF ------------ 0806      | 0001  0800  06   04   0001 ------------ 0A000101 000000000000 0A000102 |
-/// | ------------ ------------ 0806      | 0001  0800  06   04   0002 ------------ 0A000102 ------------ 0A000101 |
-///
-#[allow(dead_code)]
 fn handle_arp_frame(net_state: &NetState, data: &[u8]) -> FilterBin {
     if data.len() < ARP_FRAME_LEN {
         // Drop malformed (too short) ARP packet
@@ -355,21 +282,16 @@ fn handle_arp_frame(net_state: &NetState, data: &[u8]) -> FilterBin {
     }
     // Handle replies, and requests that are addressed to us
     let oper = u16::from_be_bytes([data[20], data[21]]);
-    let sha = &data[22..28];
-    let spa = u32::from_be_bytes([data[28], data[29], data[30], data[31]]);
+    //let _sha = &data[22..28];
+    //let _spa = u32::from_be_bytes([data[28], data[29], data[30], data[31]]);
     let tpa = u32::from_be_bytes([data[38], data[39], data[40], data[41]]);
     if (oper == 1) && (tpa == my_ip4) {
         // ARP Request
-        log!(LL::Debug, "ArpReq ");
-        log_hex(sha);
-        logln!(LL::Debug, "{:08X}", spa);
-        return FilterBin::ArpReq;
+        return FilterBin::Arp;
     } else if oper == 2 {
-        // ARP Reply
-        log!(LL::Debug, "ArpReply {:08X} is ", spa);
-        log_hex(sha);
-        logln!(LL::Debug, "");
-        return FilterBin::ArpReply;
+        // ARP Reply: these should be passed up the COM bus net bridge
+        log!(LL::Debug, "A");
+        return FilterBin::ComFwd;
     }
     return FilterBin::DropNoise;
 }
