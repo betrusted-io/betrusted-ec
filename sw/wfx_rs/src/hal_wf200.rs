@@ -322,6 +322,11 @@ pub fn net_prng_rand() -> u32 {
     unsafe { NET_STATE.prng.next() }
 }
 
+/// Allow main event loop to disconnect the COM bus net bridge
+pub fn set_com_net_bridge_enable(enable: bool) {
+    unsafe { NET_STATE.set_com_net_bridge_enable(enable) };
+}
+
 /// Return dBm (positive) of strongest RSSI seen during all previous SSID scans
 pub fn get_best_ssid_scan_rssi() -> Option<u8> {
     unsafe { SSID_BEST_RSSI }
@@ -1097,13 +1102,17 @@ fn sl_wfx_host_received_frame_callback(rx_buffer: *const sl_wfx_received_ind_t) 
     let length = body.frame_length as usize;
     let data = unsafe { &body.frame.as_slice(length + padding)[padding..] };
 
-    if dhcp_get_state() != dhcp::State::Bound {
+    // com_net_bridge_enable is tied to an AT command in the EC main event loop
+    if !(unsafe { NET_STATE.com_net_bridge_enable }) || (dhcp_get_state() != dhcp::State::Bound) {
         // run the current handler only during the DHCP unbound states, so that the DHCP happens
         // entirely within the EC. Once this is done, pass the frames directly onto the host.
         let _filter_bin = net::handle_frame(unsafe { &mut NET_STATE }, data);
     } else {
         // note: this is where you'd put in a packet filter for packets going to the SOC, if one were to be
         // implemented. Right now, after DHCP is successful, all data is passed on.
+        //
+        // TODO: Refactor this logic with a filter that will allow the EC to complete a DHCP Renew or Rebind
+        //       without disconnecting the COM bus net bridge. (that will probably be a moderate hassle)
         let maybe_pkt = unsafe { PACKET_BUF.get_enqueue_slice(data.len()) };
         if let Some(pkt) = maybe_pkt {
             for (&src, dst) in data.iter().zip(pkt.iter_mut()) {

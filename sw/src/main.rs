@@ -189,6 +189,7 @@ fn main() -> ! {
 
     let mut use_wifi: bool = true;
     let mut wifi_ready: bool = false;
+    let mut com_net_bridge_enable: bool = true;
 
     // State vars for WPA2 auth credentials for Wifi AP
     let mut wlan_state = WlanState::new();
@@ -276,11 +277,13 @@ fn main() -> ! {
                 }
                 was_scanning = scanning;
 
-                if let Some(len) = wfx_rs::hal_wf200::poll_new_avail() {
-                    com_int_mgr.set_rx_ready(len);
-                }
-                if wfx_rs::hal_wf200::poll_new_dropped() {
-                    com_int_mgr.set_rx_error();
+                if com_net_bridge_enable {
+                    if let Some(len) = wfx_rs::hal_wf200::poll_new_avail() {
+                        com_int_mgr.set_rx_ready(len);
+                    }
+                    if wfx_rs::hal_wf200::poll_new_dropped() {
+                        com_int_mgr.set_rx_error();
+                    }
                 }
 
                 // Clock the DHCP state machine using its oneshot countdown
@@ -307,12 +310,14 @@ fn main() -> ! {
                         };
 
                         // fire an interrupt whenever we enter or leave the connected state
-                        let connected = (wfx_rs::hal_wf200::get_status()
-                            == wfx_rs::hal_wf200::State::Connected)
-                            && (wfx_rs::hal_wf200::dhcp_get_state() == net::dhcp::State::Bound);
-                        if connected != was_connected {
-                            com_int_mgr.set_ipconf_update();
-                            was_connected = connected;
+                        if com_net_bridge_enable {
+                            let connected = (wfx_rs::hal_wf200::get_status()
+                                == wfx_rs::hal_wf200::State::Connected)
+                                && (wfx_rs::hal_wf200::dhcp_get_state() == net::dhcp::State::Bound);
+                            if connected != was_connected {
+                                com_int_mgr.set_ipconf_update();
+                                was_connected = connected;
+                            }
                         }
                     }
                 }
@@ -378,6 +383,15 @@ fn main() -> ! {
                         loghexln!(LL::Debug, " ", now.ms_low_word());
                     }
                     b'6' => stack_check(),
+                    b'7' => {
+                        // Toggle COM bus network bridge enable/disable status
+                        com_net_bridge_enable = !com_net_bridge_enable;
+                        hal_wf200::set_com_net_bridge_enable(com_net_bridge_enable);
+                        match com_net_bridge_enable {
+                            true => logln!(LL::Debug, "ComNetBridgeOn"),
+                            false => logln!(LL::Debug, "ComNetBridgeOff"),
+                        };
+                    }
                     _ => (),
                 }
             } else if uart_state == uart::RxState::Waking {
@@ -397,6 +411,7 @@ fn main() -> ! {
                         " 4 => Uptime s\r\n",
                         " 5 => Now ms\r\n",
                         " 6 => Peak stack usage\r\n",
+                        " 7 => Toggle COM bus net bridge\r\n",
                     )
                 );
             }
@@ -940,15 +955,19 @@ fn main() -> ! {
                     words_received += 1;
                 }
                 if !error {
-                    logln!(LL::Debug, "Sending packet");
-                    match wfx_rs::hal_wf200::send_net_packet(
-                        &mut txbuf_backing[..num_bytes as usize + PBUF_HEADER_SIZE],
-                    ) {
-                        Err(_) => {
-                            tx_errs += 1;
-                            com_int_mgr.set_tx_error();
+                    if com_net_bridge_enable {
+                        logln!(LL::Debug, "Sending packet");
+                        match wfx_rs::hal_wf200::send_net_packet(
+                            &mut txbuf_backing[..num_bytes as usize + PBUF_HEADER_SIZE],
+                        ) {
+                            Err(_) => {
+                                tx_errs += 1;
+                                com_int_mgr.set_tx_error();
+                            }
+                            _ => (),
                         }
-                        _ => (),
+                    } else {
+                        logln!(LL::Debug, "ComNetBrigeDrop");
                     }
                 } else {
                     logln!(LL::Error, "Send packet error!");
