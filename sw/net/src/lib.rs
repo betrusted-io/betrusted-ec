@@ -1,17 +1,6 @@
 #![no_std]
 #![forbid(unsafe_code)]
 //! This crate provides a minimalist IP stack with packet filtering.
-//!
-//! Priority 1 Features to Support Factory Test ([x]=works, [-]=partial, [ ]=todo):
-//! - [x] Ethernet frame RX and protocol handler dispatch
-//! - [x] Packet filter: drop multicast, unsuported protocol, failed checksum, etc.
-//! - [x] Diagnostic stats event counters with UP5K UART debug command API
-//! - [x] Ethernet frame TX
-//! - [x] DHCP client Discover/Offer/Request/Ack binding flow
-//! - [x] Remember best RSSI from SSID scan
-//! - [x] Check RSSI from most recent packet (or SSID scan if link down) during wlan status
-//! - [x] Encode {RSSI, AP join, DHCP bind} results in WLAN_STATUS response
-//!
 use debug;
 use debug::{log, loghexln, logln, LL};
 
@@ -30,7 +19,6 @@ const LOG_LEVEL: LL = LL::Debug;
 
 // Expected Ethernet frame header sizes
 const MAC_HEADER_LEN: usize = 14;
-#[allow(dead_code)]
 const ARP_FRAME_LEN: usize = MAC_HEADER_LEN + 28;
 const IPV4_MIN_HEADER_LEN: usize = 20;
 const IPV4_MIN_FRAME_LEN: usize = MAC_HEADER_LEN + IPV4_MIN_HEADER_LEN;
@@ -39,7 +27,6 @@ const MIN_UDP_FRAME_LEN: usize = IPV4_MIN_FRAME_LEN + UDP_HEADER_LEN;
 
 // Ethertypes for Ethernet MAC header
 const ETHERTYPE_IPV4: &[u8] = &[0x08, 0x00];
-#[allow(dead_code)]
 const ETHERTYPE_ARP: &[u8] = &[0x08, 0x06];
 
 /// Holds network stack state such as DHCP client state, addresses, and diagnostic stats
@@ -223,18 +210,10 @@ fn handle_ipv4_frame(net_state: &mut NetState, data: &[u8]) -> FilterBin {
     const PROTO_ICMP: u8 = 0x01;
     match ip_proto[0] {
         PROTO_UDP => handle_udp_frame(net_state, data),
-        PROTO_ICMP => handle_icmp_frame(data),
+        PROTO_ICMP => FilterBin::ComFwd,
         PROTO_TCP => FilterBin::ComFwd,
         _ => FilterBin::DropProto,
     }
-}
-
-fn handle_icmp_frame(data: &[u8]) -> FilterBin {
-    if data.len() < IPV4_MIN_FRAME_LEN {
-        return FilterBin::DropNoise;
-    }
-    // Forward ICMP up the COM bus
-    return FilterBin::ComFwd;
 }
 
 fn handle_udp_frame(net_state: &mut NetState, data: &[u8]) -> FilterBin {

@@ -68,6 +68,7 @@ pub struct DhcpClient {
     pub ip: Option<u32>,
     pub subnet: Option<u32>,
     pub gateway: Option<u32>,
+    pub lease_sec: Option<u32>,
     pub dns: Option<u32>,
 }
 impl DhcpClient {
@@ -84,6 +85,7 @@ impl DhcpClient {
             ip: None,
             subnet: None,
             gateway: None,
+            lease_sec: None,
             dns: None,
         }
     }
@@ -123,6 +125,7 @@ impl DhcpClient {
         self.ip = None;
         self.subnet = None;
         self.gateway = None;
+        self.lease_sec = None;
         self.dns = None;
     }
 
@@ -288,17 +291,17 @@ impl DhcpClient {
     }
 
     /// Handle DHCPOFFER event: transaction ID, server ID, IP, gateway IP, subnet mask, DNS server
-    pub fn handle_offer(&mut self, xid: u32, sid: u32, ip: u32, gw: u32, sn: u32, dns: u32) {
-        logln!(LL::Debug, "DHCPOFFER  x:{:08X}  s:{:08X}", xid, sid);
+    pub fn handle_offer(&mut self, sid: u32, ip: u32, gw: u32, ls: u32, sn: u32, dns: u32) {
+        logln!(LL::Debug, "DhcpOffer");
         match self.state {
             State::Halted => (),
             State::Init => (),
             State::Selecting => {
                 logln!(LL::Debug, "DhcpSelect");
-
                 self.sid = Some(sid);
                 self.ip = Some(ip);
                 self.gateway = Some(gw);
+                self.lease_sec = Some(ls);
                 self.subnet = Some(sn);
                 self.dns = Some(dns);
                 // Print results to the log
@@ -313,12 +316,13 @@ impl DhcpClient {
 
     /// Print {IP, gateway, netmask, DNS} bindings to debug log
     pub fn log_bindings(&self) {
-        match (self.ip, self.gateway, self.subnet, self.dns) {
-            (Some(ip), Some(gateway), Some(subnet), Some(dns)) => {
-                logln!(LL::Debug, " IP   {:08X}", ip);
-                logln!(LL::Debug, " Gtwy {:08X}", gateway);
-                logln!(LL::Debug, " Mask {:08X}", subnet);
-                logln!(LL::Debug, " DNS  {:08X}", dns);
+        match (self.ip, self.gateway, self.lease_sec, self.subnet, self.dns) {
+            (Some(ip), Some(gateway), Some(lease), Some(subnet), Some(dns)) => {
+                logln!(LL::Debug, " IP    {:08X}", ip);
+                logln!(LL::Debug, " Gtwy  {:08X}", gateway);
+                logln!(LL::Debug, " Lease {:08X}", lease);
+                logln!(LL::Debug, " Mask  {:08X}", subnet);
+                logln!(LL::Debug, " DNS   {:08X}", dns);
             }
             _ => (),
         };
@@ -601,7 +605,6 @@ impl DhcpClient {
             return FilterBin::DropDhcp;
         }
         match self.state {
-            // TODO: verify if this list of listening states is correct
             State::Selecting | State::Requesting | State::Renewing | State::Rebinding => (),
             // No need to parse frame if state machine is not in state that expects a server response
             _ => return FilterBin::DropDhcp,
@@ -638,18 +641,19 @@ impl DhcpClient {
                     opts.msg_type,
                     opts.server_id,
                     opts.gateway,
+                    opts.ip_lease_time,
                     opts.subnet,
                     opts.dns,
                 ) {
-                    (Some(DHCPOFFER), Some(sid), Some(gw), Some(sn), Some(dns)) => {
-                        self.handle_offer(xid, sid, yiaddr, gw, sn, dns);
+                    (Some(DHCPOFFER), Some(sid), Some(gw), Some(ilt), Some(sn), Some(dns)) => {
+                        self.handle_offer(sid, yiaddr, gw, ilt, sn, dns);
                         return FilterBin::Dhcp;
                     }
-                    (Some(DHCPACK), Some(sid), _, _, _) => {
+                    (Some(DHCPACK), Some(sid), _, _, _, _) => {
                         self.handle_ack(xid, sid);
                         return FilterBin::Dhcp;
                     }
-                    (Some(DHCPNAK), Some(sid), _, _, _) => {
+                    (Some(DHCPNAK), Some(sid), _, _, _, _) => {
                         self.handle_nak(xid, sid);
                         return FilterBin::Dhcp;
                     }
