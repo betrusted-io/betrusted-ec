@@ -12,8 +12,8 @@ pub fn time_init() {
 /// 32-bit overflow would take 49.7 days of uptime, so need to consider it.
 #[derive(Copy, Clone, PartialEq)]
 pub struct TimeMs {
-    time0: u32, // Low 32-bits from hardware timer
-    time1: u32, // High 8-bits from hardware timer
+    pub time0: u32, // Low 32-bits from hardware timer
+    pub time1: u32, // High 8-bits from hardware timer
 }
 #[derive(Copy, Clone)]
 pub enum TimeMsErr {
@@ -56,6 +56,34 @@ impl TimeMs {
                 // Enforce 40-bit overflow if crossing the 34 year boundary
                 time1: 0x0000_00ff & self.time1.wrapping_add(1),
             },
+        }
+    }
+
+    /// Calculate a timestamp for interval seconds after &self.
+    ///
+    /// This is based on a 40-bit ms timer that will overflow at 34 years of continuous
+    /// uptime. To simplify time handling code, we will ignore that and just saturate the
+    /// timer at END_OF_TIME_MS. That means the timer intervals will clip at the rollover
+    /// point in the unlikely event that you manage to achieve 34 years of uptime.
+    ///
+    pub fn add_s(&self, interval_s: u32) -> Self {
+        const MS_TIMER_BITS: u32 = 40;
+        const END_OF_TIME_MS: u64 = 2u64.pow(MS_TIMER_BITS) - 1;
+        const MS_PER_SECOND: u64 = 1000;
+        let time: u64 = match (interval_s as u64).overflowing_mul(MS_PER_SECOND) {
+            (t, overflow) if (overflow == false) && (t < END_OF_TIME_MS) => t,
+            _ => END_OF_TIME_MS,
+        };
+        let start_time = ((self.time1 as u64) << 32) | (self.time0 as u64);
+        let mut target = start_time.saturating_add(time);
+        if target > END_OF_TIME_MS {
+            target = END_OF_TIME_MS;
+        }
+        let high_bits = (target >> 32) as u32;
+        let low_bits = (target & 0xffff_ffff) as u32;
+        Self {
+            time0: low_bits,
+            time1: high_bits,
         }
     }
 

@@ -11,7 +11,7 @@
 //! header size (VLAN tags) would require modifications.
 //!
 extern crate betrusted_hal;
-use crate::timers::{RetryStatus, RetryTimer, Stopwatch, StopwatchErr};
+use crate::timers::{Countdown, CountdownStatus, RetryStatus, RetryTimer, Stopwatch, StopwatchErr};
 use crate::{hostname::Hostname, FilterBin, MIN_UDP_FRAME_LEN};
 use debug::{loghexln, logln, LL};
 
@@ -59,6 +59,9 @@ pub enum DhcpEvent {
 pub struct DhcpClient {
     entropy: [u32; 2],
     state_change_event_latch: Option<DhcpEvent>,
+    timer_t1: Countdown,
+    timer_t2: Countdown,
+    timer_lease: Countdown,
     pub hostname: Hostname,
     pub state: State,
     pub secs: Stopwatch,
@@ -76,6 +79,9 @@ impl DhcpClient {
         Self {
             entropy: [0; 2],
             state_change_event_latch: None,
+            timer_t1: Countdown::new(),
+            timer_t2: Countdown::new(),
+            timer_lease: Countdown::new(),
             hostname: Hostname::new_blank(),
             state: State::Halted,
             secs: Stopwatch::new(),
@@ -127,6 +133,9 @@ impl DhcpClient {
         self.gateway = None;
         self.lease_sec = None;
         self.dns = None;
+        self.timer_t1.clear();
+        self.timer_t2.clear();
+        self.timer_lease.clear();
     }
 
     /// Reset to refelct a state transition to halted (this means something went wrong)
@@ -214,75 +223,75 @@ impl DhcpClient {
                     }
                 }
             }
-            State::Requesting => {
-                match self.retry.status() {
-                    RetryStatus::Halted => {
-                        self.halt_and_reset();
-                        // TODO: notify main event loop of DHCP connection problem
-                        PacketNeeded::None
-                    }
-                    RetryStatus::TimerRunning => PacketNeeded::None,
-                    RetryStatus::TimerExpired => {
-                        self.retry.schedule_next(self.entropy[1]);
-                        PacketNeeded::Request
-                    }
+            State::Requesting => match self.retry.status() {
+                RetryStatus::Halted => {
+                    self.halt_and_reset();
+                    PacketNeeded::None
                 }
-            }
+                RetryStatus::TimerRunning => PacketNeeded::None,
+                RetryStatus::TimerExpired => {
+                    self.retry.schedule_next(self.entropy[1]);
+                    PacketNeeded::Request
+                }
+            },
             State::Bound => {
-                // TODO: check T1 timer to decide on transition to State::Renewing
-                let t1_expired = false;
-                match t1_expired {
-                    true => {
+                match self.timer_t1.status() {
+                    CountdownStatus::Done => {
+                        self.timer_t1.clear();
                         self.state = State::Renewing;
-                        // TODO: set exponential backoff timer for Renew REQUEST retry
+                        self.retry = RetryTimer::new_first_random(self.entropy[1]);
+                        self.secs.start();
+                        logln!(LL::Debug, "DhcpRenew");
+                        // TODO: Make sure Renew packet follows DHCP RFC
                         PacketNeeded::Renew
                     }
-                    _ => PacketNeeded::None,
+                    CountdownStatus::NotDone => PacketNeeded::None,
+                    CountdownStatus::NotStarted => PacketNeeded::None,
                 }
             }
             State::Renewing => {
-                // TODO: check T2 timer to decide on transition to State::Rebinding
-                let t2_expired = false;
-                match t2_expired {
-                    true => {
+                match self.timer_t2.status() {
+                    CountdownStatus::Done => {
+                        self.timer_t2.clear();
                         self.state = State::Rebinding;
+                        self.retry = RetryTimer::new_first_random(self.entropy[1]);
+                        self.secs.start();
+                        logln!(LL::Debug, "DhcpRebind");
+                        // TODO: Make sure Rebind packet format follows DHCP RFC
                         PacketNeeded::Rebind
                     }
                     _ => {
-                        // TODO: check elapsed time for exponential backoff on Renew REQUEST retry
-                        let wait_for_ack_expired = false;
-                        match wait_for_ack_expired {
-                            true => {
-                                // TODO: set exponential backoff timer for Renew REQUEST retry
-                                // TODO: notify main event loop of DHCP connection problem
+                        // TODO: Make sure renew retry timing follows RFC
+                        match self.retry.status() {
+                            RetryStatus::Halted | RetryStatus::TimerRunning => PacketNeeded::None,
+                            RetryStatus::TimerExpired => {
+                                logln!(LL::Debug, "DhcpRenewRetry");
+                                self.retry.schedule_next(self.entropy[1]);
                                 PacketNeeded::Renew
                             }
-                            _ => PacketNeeded::None,
                         }
                     }
                 }
             }
             State::Rebinding => {
-                // TODO: check elapsed time left on lease
-                let lease_expired = false;
-                match lease_expired {
-                    true => {
+                match self.timer_lease.status() {
+                    CountdownStatus::Done => {
                         // This is bad. Lease is up. Unable to get a new one.
                         self.reset_bindings();
                         self.state = State::Halted;
                         self.state_change_event_latch = Some(DhcpEvent::ChangedToHalted);
+                        logln!(LL::Debug, "DhcpLeaseExpire");
                         PacketNeeded::None
                     }
                     _ => {
-                        // TODO: check elapsed time for exponential backoff on Rebind REQUEST retry
-                        let wait_for_ack_expired = false;
-                        match wait_for_ack_expired {
-                            true => {
-                                // TODO: set exponential backoff timer for Rebind REQUEST retry
-                                // TODO: notify main event loop of DHCP connection problem
-                                PacketNeeded::Request
+                        // TODO: Make sure rebind retry timing to follow RFC
+                        match self.retry.status() {
+                            RetryStatus::Halted | RetryStatus::TimerRunning => PacketNeeded::None,
+                            RetryStatus::TimerExpired => {
+                                logln!(LL::Debug, "DhcpRebindRetry");
+                                self.retry.schedule_next(self.entropy[1]);
+                                PacketNeeded::Rebind
                             }
-                            _ => PacketNeeded::None,
                         }
                     }
                 }
@@ -329,15 +338,31 @@ impl DhcpClient {
     }
 
     /// Handle DHCPACK event: transaction ID, server ID
-    pub fn handle_ack(&mut self, xid: u32, sid: u32) {
-        logln!(LL::Debug, "DHCPACK  x:{:X}  s:{:08X}", xid, sid);
+    pub fn handle_ack(&mut self) {
+        logln!(LL::Debug, "DhcpACK");
         match self.state {
             State::Halted => (),
             State::Init => (),
             State::Selecting => (),
             State::Requesting | State::Renewing | State::Rebinding => {
-                // TODO: Set T1 (renew) timer
-                // TODO: Set T2 (rebind) timer
+                // See RFC 2131 § 4.4.5 "Reacquisition and expiration" for rules on
+                // calculating T1 and T2 timers. TL;DR: T1=0.5*lease, T2=0.875*lease.
+                if let Some(lease_sec) = self.lease_sec {
+                    // Set T1 timer for lease_sec * 0.5
+                    let t1 = lease_sec >> 1;
+                    self.timer_t1.start_s(t1);
+                    // Set T2 timer for approximately lease_sec * 0.875.
+                    // (8/7=0.875 and >>3 is equivalent to integer /8)
+                    let t2 = ((lease_sec as u64 * 7) >> 3) as u32;
+                    self.timer_t2.start_s(t2);
+                    // Set lease timer for 0.937 of the full lease interval (allow margin for possibly slow clock)
+                    let lease = ((lease_sec as u64 * 15) >> 4) as u32;
+                    self.timer_lease.start_s(lease);
+                } else {
+                    // This is bad. It shouldn't happen unless there's a logic error in the
+                    // state machine code.
+                    logln!(LL::Debug, "DhcpLeaseSecErr");
+                }
                 self.state = State::Bound;
                 self.state_change_event_latch = Some(DhcpEvent::ChangedToBound);
                 logln!(LL::Debug, "DhcpBound");
@@ -347,8 +372,8 @@ impl DhcpClient {
     }
 
     /// Handle DHCPNAK event: transaction ID, server ID
-    pub fn handle_nak(&mut self, xid: u32, sid: u32) {
-        logln!(LL::Debug, "DHCNAK  x:{:08X}  s:{:08X}", xid, sid);
+    pub fn handle_nak(&mut self) {
+        logln!(LL::Debug, "DhcpNAK");
         match self.state {
             State::Halted => (),
             State::Init => (),
@@ -360,7 +385,6 @@ impl DhcpClient {
             }
             State::Bound => (),
             State::Renewing | State::Rebinding => {
-                // TODO: Inform EC's main event loop of DHCP bind hard fail.
                 // This is bad. DHCP servers have probably assigned all their available leases.
                 self.reset_bindings();
                 self.state = State::Halted;
@@ -649,12 +673,12 @@ impl DhcpClient {
                         self.handle_offer(sid, yiaddr, gw, ilt, sn, dns);
                         return FilterBin::Dhcp;
                     }
-                    (Some(DHCPACK), Some(sid), _, _, _, _) => {
-                        self.handle_ack(xid, sid);
+                    (Some(DHCPACK), _, _, _, _, _) => {
+                        self.handle_ack();
                         return FilterBin::Dhcp;
                     }
-                    (Some(DHCPNAK), Some(sid), _, _, _, _) => {
-                        self.handle_nak(xid, sid);
+                    (Some(DHCPNAK), _, _, _, _, _) => {
+                        self.handle_nak();
                         return FilterBin::Dhcp;
                     }
                     // Responses missing any of the required options will match here and get dropped
