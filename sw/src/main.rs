@@ -152,7 +152,7 @@ fn stack_check() {
 
 #[entry]
 fn main() -> ! {
-    logln!(LL::Info, "\r\n====UP5K==0C");
+    logln!(LL::Info, "\r\n====UP5K==0D");
     let mut com_csr = CSR::new(HW_COM_BASE as *mut u32);
     let mut crg_csr = CSR::new(HW_CRG_BASE as *mut u32);
     let mut ticktimer_csr = CSR::new(HW_TICKTIMER_BASE as *mut u32);
@@ -285,8 +285,7 @@ fn main() -> ! {
                     }
                 }
 
-                // Clock the DHCP state machine using its oneshot countdown
-                // timer for rate limiting
+                // Clock the DHCP state machine using its oneshot countdown timer for rate limiting
                 match dhcp_oneshot.status() {
                     CountdownStatus::NotStarted => dhcp_oneshot.start(DHCP_POLL_MS),
                     CountdownStatus::NotDone => (),
@@ -297,11 +296,13 @@ fn main() -> ! {
                         // DHCP state machine to control ARP offloading and keep the COM net bridge
                         // informed
                         match hal_wf200::dhcp_pop_and_ack_change_event() {
+                            // Happens for Discover, Renew, and Rebind
                             Some(dhcp::DhcpEvent::ChangedToBound) => {
                                 hal_wf200::arp_begin_offloading();
                                 // fire an interrupt whenever we enter connected state
                                 com_int_mgr.set_ipconf_update();
                             }
+                            // Happens for `wlan leave` or a failure during Renew / Rebind
                             Some(dhcp::DhcpEvent::ChangedToHalted) => {
                                 hal_wf200::arp_stop_offloading();
                                 // fire an interrupt whenever we leave the connected state
