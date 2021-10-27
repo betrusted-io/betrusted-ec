@@ -1,4 +1,8 @@
 use betrusted_hal::hal_time::{TimeMs, TimeMsErr};
+use debug::{loghexln, loghex, logln, log, LL};
+
+// This is used by logging macros
+const LOG_LEVEL: LL = LL::Debug;
 
 /// Countdown tracks a one-shot countdown timer.
 #[derive(Copy, Clone)]
@@ -17,9 +21,19 @@ impl Countdown {
         Self { done_time: None }
     }
 
-    /// Start countdown timer
+    /// Start countdown timer with interval in ms
     pub fn start(&mut self, interval_ms: u32) {
         self.done_time = Some(TimeMs::now().add_ms(interval_ms));
+    }
+
+    /// Start countdown timer with interval in seconds (backed by 40-bit hardware ms timer)
+    pub fn start_s(&mut self, interval_s: u32) {
+        self.done_time = Some(TimeMs::now().add_s(interval_s));
+    }
+
+    /// Clear the timer
+    pub fn clear(&mut self) {
+        self.done_time = None;
     }
 
     /// Return countdown timer status
@@ -31,6 +45,26 @@ impl Countdown {
             },
             None => CountdownStatus::NotStarted,
         }
+    }
+
+    /// Debug log the timer's internal state
+    pub fn debug_log(&self, tag: &str) {
+        log!(LL::Debug, "{} ", tag);
+        match self.status() {
+            CountdownStatus::Done => log!(LL::Debug, "Done "),
+            CountdownStatus::NotDone => log!(LL::Debug, "NotDone "),
+            CountdownStatus::NotStarted => log!(LL::Debug, "NotStarted "),
+        };
+        match self.done_time {
+            Some(dt) => {
+                let now = TimeMs::now();
+                loghex!(LL::Debug, " now ", now.time0);
+                loghex!(LL::Debug, " ", now.time1);
+                loghex!(LL::Debug, " exp ", dt.time0);
+                loghexln!(LL::Debug, " ", dt.time1);
+            }
+            _ => logln!(LL::Debug, "--"),
+        };
     }
 }
 
