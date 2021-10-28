@@ -239,7 +239,7 @@ impl DhcpClient {
                     CountdownStatus::Done => {
                         self.timer_t1.clear();
                         self.state = State::Renewing;
-                        self.retry = RetryTimer::new_first_random(self.entropy[1]);
+                        self.retry = RetryTimer::new_first_random_renew(self.entropy[1]);
                         self.secs.start();
                         logln!(LL::Debug, "DhcpRenew");
                         // TODO: Make sure Renew packet follows DHCP RFC
@@ -254,23 +254,20 @@ impl DhcpClient {
                     CountdownStatus::Done => {
                         self.timer_t2.clear();
                         self.state = State::Rebinding;
-                        self.retry = RetryTimer::new_first_random(self.entropy[1]);
+                        self.retry = RetryTimer::new_first_random_renew(self.entropy[1]);
                         self.secs.start();
                         logln!(LL::Debug, "DhcpRebind");
                         // TODO: Make sure Rebind packet format follows DHCP RFC
                         PacketNeeded::Rebind
                     }
-                    _ => {
-                        // TODO: Make sure renew retry timing follows RFC
-                        match self.retry.status() {
-                            RetryStatus::Halted | RetryStatus::TimerRunning => PacketNeeded::None,
-                            RetryStatus::TimerExpired => {
-                                logln!(LL::Debug, "DhcpRenewRetry");
-                                self.retry.schedule_next(self.entropy[1]);
-                                PacketNeeded::Renew
-                            }
+                    _ => match self.retry.status() {
+                        RetryStatus::Halted | RetryStatus::TimerRunning => PacketNeeded::None,
+                        RetryStatus::TimerExpired => {
+                            logln!(LL::Debug, "DhcpRenewRetry");
+                            self.retry.schedule_next_renew(self.entropy[1]);
+                            PacketNeeded::Renew
                         }
-                    }
+                    },
                 }
             }
             State::Rebinding => {
@@ -283,17 +280,14 @@ impl DhcpClient {
                         logln!(LL::Debug, "DhcpLeaseExpire");
                         PacketNeeded::None
                     }
-                    _ => {
-                        // TODO: Make sure rebind retry timing to follow RFC
-                        match self.retry.status() {
-                            RetryStatus::Halted | RetryStatus::TimerRunning => PacketNeeded::None,
-                            RetryStatus::TimerExpired => {
-                                logln!(LL::Debug, "DhcpRebindRetry");
-                                self.retry.schedule_next(self.entropy[1]);
-                                PacketNeeded::Rebind
-                            }
+                    _ => match self.retry.status() {
+                        RetryStatus::Halted | RetryStatus::TimerRunning => PacketNeeded::None,
+                        RetryStatus::TimerExpired => {
+                            logln!(LL::Debug, "DhcpRebindRetry");
+                            self.retry.schedule_next_renew(self.entropy[1]);
+                            PacketNeeded::Rebind
                         }
-                    }
+                    },
                 }
             }
         }
