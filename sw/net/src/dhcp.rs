@@ -55,6 +55,14 @@ pub enum DhcpEvent {
     ChangedToHalted,
 }
 
+/// The three types of DHCP request packets that require slightly different MAC or DHCP options
+#[derive(Copy, Clone, PartialEq)]
+pub enum RequestType {
+    Discover,
+    Renew,
+    Rebind,
+}
+
 /// State Machine for DHCP client
 pub struct DhcpClient {
     entropy: [u32; 2],
@@ -71,6 +79,7 @@ pub struct DhcpClient {
     pub ip: Option<u32>,
     pub subnet: Option<u32>,
     pub gateway: Option<u32>,
+    pub gateway_mac: Option<[u8; 6]>,
     pub lease_sec: Option<u32>,
     pub dns: Option<u32>,
 }
@@ -91,6 +100,7 @@ impl DhcpClient {
             ip: None,
             subnet: None,
             gateway: None,
+            gateway_mac: None,
             lease_sec: None,
             dns: None,
         }
@@ -234,42 +244,36 @@ impl DhcpClient {
                     PacketNeeded::Request
                 }
             },
-            State::Bound => {
-                match self.timer_t1.status() {
-                    CountdownStatus::Done => {
-                        self.timer_t1.clear();
-                        self.state = State::Renewing;
-                        self.retry = RetryTimer::new_first_random_renew(self.entropy[1]);
-                        self.secs.start();
-                        logln!(LL::Debug, "DhcpRenew");
-                        // TODO: Make sure Renew packet follows DHCP RFC
+            State::Bound => match self.timer_t1.status() {
+                CountdownStatus::Done => {
+                    self.timer_t1.clear();
+                    self.state = State::Renewing;
+                    self.retry = RetryTimer::new_first_random_renew(self.entropy[1]);
+                    self.secs.start();
+                    logln!(LL::Debug, "DhcpRenew");
+                    PacketNeeded::Renew
+                }
+                CountdownStatus::NotDone => PacketNeeded::None,
+                CountdownStatus::NotStarted => PacketNeeded::None,
+            },
+            State::Renewing => match self.timer_t2.status() {
+                CountdownStatus::Done => {
+                    self.timer_t2.clear();
+                    self.state = State::Rebinding;
+                    self.retry = RetryTimer::new_first_random_renew(self.entropy[1]);
+                    self.secs.start();
+                    logln!(LL::Debug, "DhcpRebind");
+                    PacketNeeded::Rebind
+                }
+                _ => match self.retry.status() {
+                    RetryStatus::Halted | RetryStatus::TimerRunning => PacketNeeded::None,
+                    RetryStatus::TimerExpired => {
+                        logln!(LL::Debug, "DhcpRenewRetry");
+                        self.retry.schedule_next_renew(self.entropy[1]);
                         PacketNeeded::Renew
                     }
-                    CountdownStatus::NotDone => PacketNeeded::None,
-                    CountdownStatus::NotStarted => PacketNeeded::None,
-                }
-            }
-            State::Renewing => {
-                match self.timer_t2.status() {
-                    CountdownStatus::Done => {
-                        self.timer_t2.clear();
-                        self.state = State::Rebinding;
-                        self.retry = RetryTimer::new_first_random_renew(self.entropy[1]);
-                        self.secs.start();
-                        logln!(LL::Debug, "DhcpRebind");
-                        // TODO: Make sure Rebind packet format follows DHCP RFC
-                        PacketNeeded::Rebind
-                    }
-                    _ => match self.retry.status() {
-                        RetryStatus::Halted | RetryStatus::TimerRunning => PacketNeeded::None,
-                        RetryStatus::TimerExpired => {
-                            logln!(LL::Debug, "DhcpRenewRetry");
-                            self.retry.schedule_next_renew(self.entropy[1]);
-                            PacketNeeded::Renew
-                        }
-                    },
-                }
-            }
+                },
+            },
             State::Rebinding => {
                 match self.timer_lease.status() {
                     CountdownStatus::Done => {
@@ -294,7 +298,16 @@ impl DhcpClient {
     }
 
     /// Handle DHCPOFFER event: transaction ID, server ID, IP, gateway IP, subnet mask, DNS server
-    pub fn handle_offer(&mut self, sid: u32, ip: u32, gw: u32, ls: u32, sn: u32, dns: u32) {
+    pub fn handle_offer(
+        &mut self,
+        sid: u32,
+        ip: u32,
+        gw: u32,
+        gwm: &[u8; 6],
+        ls: u32,
+        sn: u32,
+        dns: u32,
+    ) {
         logln!(LL::Debug, "DhcpOffer");
         match self.state {
             State::Halted => (),
@@ -304,6 +317,7 @@ impl DhcpClient {
                 self.sid = Some(sid);
                 self.ip = Some(ip);
                 self.gateway = Some(gw);
+                self.gateway_mac = Some(*gwm);
                 self.lease_sec = Some(ls);
                 self.subnet = Some(sn);
                 self.dns = Some(dns);
@@ -332,7 +346,7 @@ impl DhcpClient {
     }
 
     /// Handle DHCPACK event: transaction ID, server ID
-    pub fn handle_ack(&mut self) {
+    pub fn handle_ack(&mut self, lease_sec: u32) {
         logln!(LL::Debug, "DhcpACK");
         match self.state {
             State::Halted => (),
@@ -341,22 +355,17 @@ impl DhcpClient {
             State::Requesting | State::Renewing | State::Rebinding => {
                 // See RFC 2131 § 4.4.5 "Reacquisition and expiration" for rules on
                 // calculating T1 and T2 timers. TL;DR: T1=0.5*lease, T2=0.875*lease.
-                if let Some(lease_sec) = self.lease_sec {
-                    // Set T1 timer for lease_sec * 0.5
-                    let t1 = lease_sec >> 1;
-                    self.timer_t1.start_s(t1);
-                    // Set T2 timer for approximately lease_sec * 0.875.
-                    // (8/7=0.875 and >>3 is equivalent to integer /8)
-                    let t2 = ((lease_sec as u64 * 7) >> 3) as u32;
-                    self.timer_t2.start_s(t2);
-                    // Set lease timer for 0.937 of the full lease interval (allow margin for possibly slow clock)
-                    let lease = ((lease_sec as u64 * 15) >> 4) as u32;
-                    self.timer_lease.start_s(lease);
-                } else {
-                    // This is bad. It shouldn't happen unless there's a logic error in the
-                    // state machine code.
-                    logln!(LL::Debug, "DhcpLeaseSecErr");
-                }
+                self.lease_sec = Some(lease_sec);
+                // Set T1 timer for lease_sec * 0.5
+                let t1 = lease_sec >> 1;
+                self.timer_t1.start_s(t1);
+                // Set T2 timer for approximately lease_sec * 0.875.
+                // (8/7=0.875 and >>3 is equivalent to integer /8)
+                let t2 = ((lease_sec as u64 * 7) >> 3) as u32;
+                self.timer_t2.start_s(t2);
+                // Set lease timer for 0.937 of the full lease interval (allow margin for possibly slow clock)
+                let lease = ((lease_sec as u64 * 15) >> 4) as u32;
+                self.timer_lease.start_s(lease);
                 self.state = State::Bound;
                 self.state_change_event_latch = Some(DhcpEvent::ChangedToBound);
                 logln!(LL::Debug, "DhcpBound");
@@ -388,15 +397,17 @@ impl DhcpClient {
         }
     }
 
-    /// Build a DHCP discover packet by filling in a template of byte arrays.
-    /// Returns Ok(data_length), where data_length is the number of bytes of pbuf.len()
-    /// that were used to hold the packet data
-    pub fn build_discover_frame<'a>(
+    /// Fill in the DHCP packet headers for MAC, IP, UDP, and BOOTP
+    fn build_dhcp_headers<'a>(
         &mut self,
-        mut pbuf: &'a mut [u8],
+        pbuf: &'a mut [u8],
         src_mac: &[u8; 6],
+        dst_mac: &[u8; 6],
+        ciaddr: u32,
         ip_id: u16,
-    ) -> Result<u32, u8> {
+        ip_src: u32,
+        ip_dst: u32,
+    ) -> Result<usize, u8> {
         if pbuf.len() < DHCP_FRAME_LEN {
             return Err(0x03);
         }
@@ -404,25 +415,23 @@ impl DhcpClient {
             Some(x) => x,
             None => return Err(0x04), // This means state machine was not initialized properly
         };
-        // Buffer might be a full MTU, so only use what we need.
-        // (this determines number of loop iterations below)
-        pbuf = &mut pbuf[..DHCP_FRAME_LEN];
         // Ethernet MAC header
-        let dst_mac = [255u8, 255, 255, 255, 255, 255];
         let ethertype = [8u8, 0];
         let mac_it = dst_mac.iter().chain(src_mac.iter()).chain(ethertype.iter());
         // IP header (checksum starts 0x0000 and gets updated later)
         let ip_vihl_tos_len = [0x45 as u8, 0x00, 0x01, 0x48];
         let ip_id_flagfrag = [(ip_id >> 8) as u8, ip_id as u8, 0x00, 0x00];
         let ip_ttl_proto_csum = [255u8, 17, 0, 0];
-        let ip_src_dst = [0u8, 0, 0, 0, 255, 255, 255, 255];
+        let ip_src_bytes = ip_src.to_be_bytes();
+        let ip_dst_bytes = ip_dst.to_be_bytes();
         // UDP header
         let udp_srcp_dstp_len_csum = [0, 68, 0, 67, 0x01, 0x34, 0, 0];
         let ip_udp_it = ip_vihl_tos_len
             .iter()
             .chain(ip_id_flagfrag.iter())
             .chain(ip_ttl_proto_csum.iter())
-            .chain(ip_src_dst.iter())
+            .chain(ip_src_bytes.iter())
+            .chain(ip_dst_bytes.iter())
             .chain(udp_srcp_dstp_len_csum.iter());
         // DHCP
         let zero = [0u8];
@@ -435,7 +444,8 @@ impl DhcpClient {
             Err(StopwatchErr::NotStarted) => return Err(0x07),
         };
         let dhcp_secs_flags = [(secs >> 8) as u8, secs as u8, 0, 0];
-        let dhcp_ci_yi_si_gi = zero.iter().cycle().take(16);
+        let ciaddr_bytes = ciaddr.to_be_bytes();
+        let dhcp_ci_yi_si_gi = ciaddr_bytes.iter().chain(zero.iter().cycle().take(12));
         let dhcp_chaddr = src_mac.iter().chain(zero.iter().cycle().take(10));
         let dhcp_sname_file = zero.iter().cycle().take(64 + 128);
         let dhcp_it = dhcp_op_ht_hl_hop_s
@@ -445,6 +455,39 @@ impl DhcpClient {
             .chain(dhcp_ci_yi_si_gi)
             .chain(dhcp_chaddr)
             .chain(dhcp_sname_file);
+        let src_it = mac_it.chain(ip_udp_it).chain(dhcp_it);
+        let mut header_bytes: usize = 0;
+        for (dst, src) in pbuf.iter_mut().zip(src_it) {
+            *dst = *src;
+            header_bytes += 1;
+        }
+        Ok(header_bytes)
+    }
+
+    /// Build a DHCP discover packet by filling in a template of byte arrays.
+    /// Returns Ok(data_length), where data_length is the number of bytes of pbuf.len()
+    /// that were used to hold the packet data
+    pub fn build_discover_frame<'a>(
+        &mut self,
+        mut pbuf: &'a mut [u8],
+        src_mac: &[u8; 6],
+        ip_id: u16,
+    ) -> Result<u32, u8> {
+        if pbuf.len() < DHCP_FRAME_LEN {
+            return Err(0x08);
+        }
+        // Buffer might be a full MTU, so only use what we need.
+        // (this determines number of loop iterations below)
+        pbuf = &mut pbuf[..DHCP_FRAME_LEN];
+        // Fill in the MAC, IP, UDP, and BOOTP headers for a DHCP packet
+        let dst_mac = [255u8, 255, 255, 255, 255, 255];
+        let ciaddr = 0u32;
+        let ip_src = 0u32;
+        let ip_dst = 0xffffffffu32;
+        let header_bytes =
+            self.build_dhcp_headers(&mut pbuf, src_mac, &dst_mac, ciaddr, ip_id, ip_src, ip_dst)?;
+
+        let zero = [0u8];
         // DHCP options part 1: magic cookie, 53_type, 55_paramRequestList, 57_maxMsgSize, 61_clientId
         let dopt1 = [
             0x63 as u8, 0x82, 0x53, 0x63, 53, 1, 1, 55, 7, 1, 121, 3, 6, 15, 119, 252, 57, 2, 0x05,
@@ -475,8 +518,7 @@ impl DhcpClient {
             .chain(dopt4)
             .chain(dopt5.iter())
             .chain(pad);
-        let src_it = mac_it.chain(ip_udp_it).chain(dhcp_it).chain(dhcp_opts_it);
-        for (dst, src) in pbuf.iter_mut().zip(src_it) {
+        for (dst, src) in pbuf[header_bytes..].iter_mut().zip(dhcp_opts_it) {
             *dst = *src;
         }
         // Do the checksum fixup. Note how these checksum offsets assume the minimum MAC and
@@ -499,55 +541,41 @@ impl DhcpClient {
         &mut self,
         mut pbuf: &'a mut [u8],
         src_mac: &[u8; 6],
+        request_type: RequestType,
         ip_id: u16,
     ) -> Result<u32, u8> {
         if pbuf.len() < DHCP_FRAME_LEN {
-            return Err(0x03);
+            return Err(0x09);
         }
-        let xid = match self.xid {
-            Some(x) => x,
-            None => return Err(0x04), // This means state machine was not initialized properly
-        };
-        // Buffer might be a full MTU, so only use what we need. (this determines number of loop iterations below)
+        // Buffer might be a full MTU, so only use what we need.
+        // (this determines number of loop iterations below)
         pbuf = &mut pbuf[..DHCP_FRAME_LEN];
-        // Ethernet MAC header
-        let dst_mac = [255u8, 255, 255, 255, 255, 255];
-        let ethertype = [8u8, 0];
-        let mac_it = dst_mac.iter().chain(src_mac.iter()).chain(ethertype.iter());
-        // IP header (checksum starts 0x0000 and gets updated later)
-        let ip_vihl_tos_len = [0x45 as u8, 0x00, 0x01, 0x48];
-        let ip_id_flagfrag = [(ip_id >> 8) as u8, ip_id as u8, 0x00, 0x00];
-        let ip_ttl_proto_csum = [255u8, 17, 0, 0];
-        let ip_src_dst = [0u8, 0, 0, 0, 255, 255, 255, 255];
-        // UDP header
-        let udp_srcp_dstp_len_csum = [0, 68, 0, 67, 0x01, 0x34, 0, 0];
-        let ip_udp_it = ip_vihl_tos_len
-            .iter()
-            .chain(ip_id_flagfrag.iter())
-            .chain(ip_ttl_proto_csum.iter())
-            .chain(ip_src_dst.iter())
-            .chain(udp_srcp_dstp_len_csum.iter());
-        // DHCP
-        let zero = [0u8];
-        let xid_bytes = xid.to_be_bytes();
-        let dhcp_op_ht_hl_hop_s = [1u8, 1, 6, 0];
-        let secs = match self.secs.elapsed_s() {
-            Ok(s) => s as u16,
-            Err(StopwatchErr::Overflow) => return Err(0x05),
-            Err(StopwatchErr::Underflow) => return Err(0x06),
-            Err(StopwatchErr::NotStarted) => return Err(0x07),
+        // Fill in the MAC, IP, UDP, and BOOTP headers for a DHCP packet
+        let mut dst_mac: [u8; 6] = [255; 6];
+        let mut ciaddr: u32 = 0;
+        let mut ip_src: u32 = 0;
+        let mut ip_dst: u32 = 0xffffffff;
+        match (self.gateway_mac, self.ip, self.sid) {
+            (Some(gateway_mac), Some(ip), Some(sid)) => match request_type {
+                RequestType::Renew => {
+                    // RFC 2131 says Request packet for Renewing must be unicast
+                    dst_mac = gateway_mac;
+                    ip_src = ip;
+                    ip_dst = sid;
+                    ciaddr = ip;
+                }
+                RequestType::Rebind => {
+                    // RFC 2131 says Request packet for Rebinding must be broadcast
+                    ciaddr = ip;
+                }
+                _ => (),
+            },
+            _ => return Err(0x0A),
         };
-        let dhcp_secs_flags = [(secs >> 8) as u8, secs as u8, 0, 0];
-        let dhcp_ci_yi_si_gi = zero.iter().cycle().take(16);
-        let dhcp_chaddr = src_mac.iter().chain(zero.iter().cycle().take(10));
-        let dhcp_sname_file = zero.iter().cycle().take(64 + 128);
-        let dhcp_it = dhcp_op_ht_hl_hop_s
-            .iter()
-            .chain(xid_bytes.iter())
-            .chain(dhcp_secs_flags.iter())
-            .chain(dhcp_ci_yi_si_gi)
-            .chain(dhcp_chaddr)
-            .chain(dhcp_sname_file);
+        let header_bytes =
+            self.build_dhcp_headers(&mut pbuf, src_mac, &dst_mac, ciaddr, ip_id, ip_src, ip_dst)?;
+
+        let zero = [0u8];
         // DHCP options part 1: magic cookie, 53_type, 55_paramRequestList, 57_maxMsgSize, 61_clientId
         let dopt1 = [
             0x63 as u8, 0x82, 0x53, 0x63, 53, 1, 3, 55, 7, 1, 121, 3, 6, 15, 119, 252, 57, 2, 0x05,
@@ -558,11 +586,11 @@ impl DhcpClient {
         // Part 3: 50_RequestedIp, 54_ServerID
         let ri = match self.ip {
             Some(ip) => ip.to_be_bytes(),
-            None => return Err(0x05),
+            None => return Err(0x0B),
         };
         let sid = match self.sid {
             Some(sid) => sid.to_be_bytes(),
-            None => return Err(0x06),
+            None => return Err(0x0C),
         };
         let dopt3 = [
             50u8, 4, ri[0], ri[1], ri[2], ri[3], 54, 4, sid[0], sid[1], sid[2], sid[3],
@@ -574,16 +602,27 @@ impl DhcpClient {
         // Part 6: 255_end
         let dopt6 = [255u8];
         let pad = zero.iter().cycle();
-        let dhcp_opts_it = dopt1
-            .iter()
-            .chain(dopt2)
-            .chain(dopt3.iter())
-            .chain(dopt4.iter())
-            .chain(dopt5)
-            .chain(dopt6.iter())
-            .chain(pad);
-        let src_it = mac_it.chain(ip_udp_it).chain(dhcp_it).chain(dhcp_opts_it);
-        for (dst, src) in pbuf.iter_mut().zip(src_it) {
+        let dhcp_opts_it = match request_type {
+            // According to RFC 2131, Request packets in the Renewing or Rebinding state
+            // "MUST NOT" fill in the requested IP or server ID options.
+            RequestType::Renew | RequestType::Rebind => dopt1
+                .iter()
+                .chain(dopt2)
+                .chain([].iter()) // omit part 3 (requested IP & server ID) to follow RFC 2131
+                .chain(dopt4.iter())
+                .chain(dopt5)
+                .chain(dopt6.iter())
+                .chain(pad),
+            RequestType::Discover => dopt1
+                .iter()
+                .chain(dopt2)
+                .chain(dopt3.iter())
+                .chain(dopt4.iter())
+                .chain(dopt5)
+                .chain(dopt6.iter())
+                .chain(pad),
+        };
+        for (dst, src) in pbuf[header_bytes..].iter_mut().zip(dhcp_opts_it) {
             *dst = *src;
         }
         // Do the checksum fixup. Note how these checksum offsets assume the minimum MAC and
@@ -664,11 +703,15 @@ impl DhcpClient {
                     opts.dns,
                 ) {
                     (Some(DHCPOFFER), Some(sid), Some(gw), Some(ilt), Some(sn), Some(dns)) => {
-                        self.handle_offer(sid, yiaddr, gw, ilt, sn, dns);
+                        let mut gateway_mac: [u8; 6] = [0; 6];
+                        for (dst, src) in gateway_mac.iter_mut().zip(&data[6..12]) {
+                            *dst = *src;
+                        }
+                        self.handle_offer(sid, yiaddr, gw, &gateway_mac, ilt, sn, dns);
                         return FilterBin::Dhcp;
                     }
-                    (Some(DHCPACK), _, _, _, _, _) => {
-                        self.handle_ack();
+                    (Some(DHCPACK), _, _, Some(ilt), _, _) => {
+                        self.handle_ack(ilt);
                         return FilterBin::Dhcp;
                     }
                     (Some(DHCPNAK), _, _, _, _, _) => {
