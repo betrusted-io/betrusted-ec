@@ -152,7 +152,7 @@ fn stack_check() {
 
 #[entry]
 fn main() -> ! {
-    logln!(LL::Info, "\r\n====UP5K==0D");
+    logln!(LL::Info, "\r\n====UP5K==0E");
     let mut com_csr = CSR::new(HW_COM_BASE as *mut u32);
     let mut crg_csr = CSR::new(HW_CRG_BASE as *mut u32);
     let mut ticktimer_csr = CSR::new(HW_TICKTIMER_BASE as *mut u32);

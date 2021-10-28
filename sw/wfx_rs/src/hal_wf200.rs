@@ -455,10 +455,27 @@ pub fn dhcp_do_next() -> Result<(), u8> {
                     ip_id,
                 )?;
             }
-            PacketNeeded::Request | PacketNeeded::Rebind | PacketNeeded::Renew => {
+            PacketNeeded::Request => {
                 data_length = NET_STATE.dhcp.build_request_frame(
                     &mut PBUF[PBUF_HEADER_SIZE..],
                     &src_mac,
+                    dhcp::RequestType::Discover,
+                    ip_id,
+                )?;
+            }
+            PacketNeeded::Renew => {
+                data_length = NET_STATE.dhcp.build_request_frame(
+                    &mut PBUF[PBUF_HEADER_SIZE..],
+                    &src_mac,
+                    dhcp::RequestType::Renew,
+                    ip_id,
+                )?;
+            }
+            PacketNeeded::Rebind => {
+                data_length = NET_STATE.dhcp.build_request_frame(
+                    &mut PBUF[PBUF_HEADER_SIZE..],
+                    &src_mac,
+                    dhcp::RequestType::Rebind,
                     ip_id,
                 )?;
             }

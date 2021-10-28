@@ -1,5 +1,5 @@
 use betrusted_hal::hal_time::{TimeMs, TimeMsErr};
-use debug::{loghexln, loghex, logln, log, LL};
+use debug::{log, loghex, loghexln, logln, LL};
 
 // This is used by logging macros
 const LOG_LEVEL: LL = LL::Debug;
@@ -148,6 +148,7 @@ enum Retry {
     R4s,
     R8s,
     R16s,
+    RRenew,
     Halted,
 }
 #[derive(Copy, Clone, PartialEq)]
@@ -172,6 +173,7 @@ impl RetryTimer {
             Retry::R4s => (entropy >> 7) & (2048 - 1),
             Retry::R8s => (entropy >> 14) & (2048 - 1),
             Retry::R16s => (entropy >> 21) & (2048 - 1),
+            Retry::RRenew => entropy & (2048 - 1),
             Retry::Halted => 0,
         };
         Self {
@@ -188,6 +190,11 @@ impl RetryTimer {
         Self::new_random(Retry::R2s, 1000, entropy)
     }
 
+    /// Schedule and return the first >60s retry for renew, per RFC 2131
+    pub fn new_first_random_renew(entropy: u32) -> Self {
+        Self::new_random(Retry::RRenew, 60000, entropy)
+    }
+
     /// Schedule the next randomized retry timer, following the retry sequence
     pub fn schedule_next(&mut self, entropy: u32) {
         let new_retry = match self.retry {
@@ -200,6 +207,11 @@ impl RetryTimer {
             },
         };
         *self = new_retry;
+    }
+
+    /// Schedule the next DHCP Renewing retry timer for >60 seconds, per RFC 2131
+    pub fn schedule_next_renew(&mut self, entropy: u32) {
+        *self = Self::new_random(Retry::RRenew, 60000, entropy);
     }
 
     /// Return timer status
