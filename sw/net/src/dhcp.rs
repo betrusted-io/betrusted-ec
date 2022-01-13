@@ -117,6 +117,7 @@ impl DhcpClient {
             DhcpState::Bound => "dhcpBound",
             DhcpState::Renewing => "dhcpRenew",
             DhcpState::Rebinding => "dhcpRebind",
+            DhcpState::Invalid => "dhcpInvalid",
         }
     }
 
@@ -279,6 +280,7 @@ impl DhcpClient {
                     },
                 }
             }
+            DhcpState::Invalid => PacketNeeded::None,
         }
     }
 
@@ -313,6 +315,7 @@ impl DhcpClient {
             DhcpState::Bound => (),
             DhcpState::Renewing => (),
             DhcpState::Rebinding => (),
+            DhcpState::Invalid => (),
         }
     }
 
@@ -356,6 +359,7 @@ impl DhcpClient {
                 logln!(LL::Debug, "DhcpBound");
             }
             DhcpState::Bound => (),
+            DhcpState::Invalid => (),
         }
     }
 
@@ -379,6 +383,7 @@ impl DhcpClient {
                 self.state_change_event_latch = Some(DhcpEvent::ChangedToHalted);
                 logln!(LL::Debug, "DhcpHalted");
             }
+            DhcpState::Invalid => (),
         }
     }
 

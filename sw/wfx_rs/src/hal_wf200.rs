@@ -13,7 +13,7 @@ mod bt_wf200_pds;
 
 use crate::pkt_buf::{PktBuf, MAX_PKTS};
 use bt_wf200_pds::PDS_DATA;
-use com_rs::serdes::{DhcpState, Ipv4Conf};
+use com_rs::serdes::Ipv4Conf;
 use debug;
 use debug::{log, loghex, loghexln, logln, LL};
 use net::{self, filter::FilterBin};
@@ -188,15 +188,7 @@ pub fn interface_status_tag() -> &'static str {
 /// Export an API to retrieve net state for COM reporting
 pub fn com_ipv4_config() -> Ipv4Conf {
     Ipv4Conf {
-        dhcp: match dhcp_get_state() {
-            com_rs::DhcpState::Halted => DhcpState::Halted,
-            com_rs::DhcpState::Init => DhcpState::Init,
-            com_rs::DhcpState::Selecting => DhcpState::Selecting,
-            com_rs::DhcpState::Requesting => DhcpState::Requesting,
-            com_rs::DhcpState::Bound => DhcpState::Bound,
-            com_rs::DhcpState::Renewing => DhcpState::Renewing,
-            com_rs::DhcpState::Rebinding => DhcpState::Rebinding,
-        },
+        dhcp: dhcp_get_state(),
         mac: unsafe { NET_STATE.mac },
         addr: match unsafe { NET_STATE.dhcp.ip } {
             Some(ip) => ip.to_be_bytes(),
