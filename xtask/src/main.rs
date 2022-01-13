@@ -185,6 +185,11 @@ fn build_hw_image(debug: bool, svd: Option<String>) -> Result<(), DynError> {
     // Tools use this environment variable to know when to rebuild the UTRA crate.
     std::env::set_var("EC_SVD_FILE", path.canonicalize().unwrap());
 
+    // pass the current git tag onto the build
+    let output = Command::new("git").args(&["describe", "HEAD"]).output().unwrap();
+    let git_rev = String::from_utf8(output.stdout).unwrap();
+    std::env::set_var("GIT_REV", git_rev);
+
     let sw = build_sw(debug)?;
 
     let loaderpath = PathBuf::from("sw/loader.S");

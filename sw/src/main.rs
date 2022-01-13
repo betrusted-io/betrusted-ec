@@ -1,7 +1,7 @@
 #![no_main]
 #![no_std]
 
-// note: to get vscode to reload file, do shift-ctrl-p, 'reload window'. developer:Reload window
+use core::convert::TryInto;
 
 extern crate betrusted_hal;
 extern crate com_rs;
@@ -152,7 +152,8 @@ fn stack_check() {
 
 #[entry]
 fn main() -> ! {
-    logln!(LL::Info, "\r\n====UP5K==0E");
+    logln!(LL::Info, "\r\n====UP5K==0F");
+    let gitrev = core::env!("GIT_REV");
     let mut com_csr = CSR::new(HW_COM_BASE as *mut u32);
     let mut crg_csr = CSR::new(HW_CRG_BASE as *mut u32);
     let mut ticktimer_csr = CSR::new(HW_TICKTIMER_BASE as *mut u32);
@@ -718,6 +719,23 @@ fn main() -> ! {
                 com_tx((git_csr.rf(utra::git::GITREV_GITREV) >> 16) as u16);
                 com_tx((git_csr.rf(utra::git::GITREV_GITREV) & 0xFFFF) as u16);
                 com_tx(git_csr.rf(utra::git::DIRTY_DIRTY) as u16);
+            } else if rx == ComState::EC_SW_TAG.verb {
+                logln!(LL::Debug, "CECSwTag");
+                let mut tag_ret = [0u16; ComState::EC_SW_TAG.r_words as usize];
+                // serialize the byte data describing the tag
+                for (src, dst) in gitrev.as_bytes().chunks(2).zip(tag_ret[1..].iter_mut()) {
+                    *dst = if src.len() == 2 {
+                        u16::from_le_bytes(src.try_into().unwrap())
+                    } else {
+                        src[0] as u16
+                    };
+                }
+                // record the length field
+                tag_ret[0] = gitrev.as_bytes().len() as u16;
+                // send it to the host
+                for w in tag_ret {
+                    com_tx(w);
+                }
             } else if rx == ComState::WF200_RESET.verb {
                 log!(LL::Debug, "CWF200Reset ");
                 match com_rx(250) {

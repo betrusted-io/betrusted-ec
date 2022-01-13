@@ -74,7 +74,7 @@ pub const WIFI_EVENT_WIRQ: u32 = 0x1;
 // SSID scan state variables
 static mut SSID_SCAN_IN_PROGRESS: bool = false;
 pub const SSID_ARRAY_SIZE: usize = 6;
-static mut SSID_ARRAY: [[u8; 32]; SSID_ARRAY_SIZE] = [[0; 32]; SSID_ARRAY_SIZE];
+static mut SSID_ARRAY: [[u8; 33]; SSID_ARRAY_SIZE] = [[0; 33]; SSID_ARRAY_SIZE];
 static mut SSID_INDEX: usize = 0;
 static mut SSID_BEST_RSSI: Option<u8> = None;
 
@@ -1148,7 +1148,7 @@ unsafe fn sl_wfx_scan_result_callback(scan_result: *const sl_wfx_scan_result_ind
         // Silently ignore scan results for hidden SSIDs since they're of no use to us
         return;
     }
-    let ssid = match str::from_utf8(slice::from_raw_parts(&sr.ssid_def.ssid as *const u8, 32)) {
+    let ssid = match str::from_utf8(slice::from_raw_parts(&sr.ssid_def.ssid as *const u8, sr.ssid_def.ssid_length as usize)) {
         Ok(s) => s,
         _ => "",
     };
@@ -1172,16 +1172,13 @@ unsafe fn sl_wfx_scan_result_callback(scan_result: *const sl_wfx_scan_result_ind
         _ => Some(dbm as u8),
     };
     let _chan = sr.channel as u8;
-    for (dst_ssid, src_ssid) in SSID_ARRAY[SSID_INDEX]
+    for (dst_ssid, &src_ssid) in SSID_ARRAY[SSID_INDEX][1..33]
         .iter_mut()
         .zip(ssid.as_bytes().iter())
     {
-        // Filter nulls to '.' to bypass `ssid scan` shellchat command's broken filter
-        *dst_ssid = match *src_ssid {
-            0 => b'.',
-            c => c,
-        };
+        *dst_ssid = src_ssid
     }
+    SSID_ARRAY[SSID_INDEX][0] = sr.ssid_def.ssid_length as u8;
     // This is like `n = (n+1) % m`, but % is slow on the EC's minimal RV32I core
     SSID_INDEX += 1;
     if SSID_INDEX >= SSID_ARRAY_SIZE {
@@ -1192,6 +1189,10 @@ unsafe fn sl_wfx_scan_result_callback(scan_result: *const sl_wfx_scan_result_ind
 pub fn wfx_start_scan() -> sl_status_t {
     let result: sl_status_t;
     unsafe {
+        SSID_INDEX = 0;
+        for ssid in SSID_ARRAY.iter_mut() {
+            ssid[0] = 0; // set the length field on each entry to 0 as a proxy for clearing the array
+        }
         SSID_SCAN_IN_PROGRESS = true;
         result = sl_wfx_send_scan_command(
             sl_wfx_scan_mode_e_WFM_SCAN_MODE_ACTIVE as u16,
