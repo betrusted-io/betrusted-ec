@@ -179,7 +179,7 @@ pub fn ssid_scan_in_progress() -> bool {
     wfx_ssid_scan_in_progress()
 }
 
-pub fn ssid_get_list(mut ssid_list: &mut [[u8; 32]; SSID_ARRAY_SIZE]) {
+pub fn ssid_get_list(mut ssid_list: &mut [[u8; 34]; SSID_ARRAY_SIZE]) {
     wf200_ssid_get_list(&mut ssid_list);
 }
 

@@ -443,34 +443,19 @@ fn main() -> ! {
                     false => com_tx(1),
                 }
             } else if rx == ComState::SSID_FETCH.verb {
-                logln!(LL::Debug, "CSsidFetch...");
-                let mut ssid_list: [[u8; 32]; wifi::SSID_ARRAY_SIZE] =
-                    [[0; 32]; wifi::SSID_ARRAY_SIZE];
-                wifi::ssid_get_list(&mut ssid_list);
-                // This gets consumed by xous-core/services/com/main.rs::xmain() in the match branch for
-                // `Some(Opcode::SsidFetchAsString) => {...}` which is expecting to unpack an array of six
-                // SSIDs of 32 bytes each in the format of 6 * (16 * u16 COM bus words). That code divides
-                // its RX buffer into 6 * (32 byte) arrays. It expects unused characters to be nulls.
-                for i in 0..wifi::SSID_ARRAY_SIZE {
-                    for j in 0..16 {
-                        let n = j << 1;
-                        let lsb = ssid_list[i][n] as u16;
-                        let msb = ssid_list[i][n + 1] as u16;
-                        com_tx(lsb | (msb << 8));
-                    }
+                // just a catch in case a legacy SoC rev talks to us. could probably remove sometime around the year 2023
+                for _ in 0..ComState::SSID_FETCH.r_words {
+                    com_tx(0);
                 }
-                {
-                    // Debug dump the list of SSIDs
-                    for i in 0..wifi::SSID_ARRAY_SIZE {
-                        for j in 0..32 {
-                            match ssid_list[i][j] as u8 {
-                                0 => log!(LL::Debug, "."),
-                                c => log!(LL::Debug, "{}", c as char),
-                            }
-                        }
-                        log!(LL::Debug, "\r\n");
+            } else if rx == ComState::SSID_FETCH_STR.verb {
+                logln!(LL::Debug, "CSsidFetch...");
+                let mut ssid_list: [[u8; 34]; wifi::SSID_ARRAY_SIZE] =
+                    [[0; 34]; wifi::SSID_ARRAY_SIZE];
+                wifi::ssid_get_list(&mut ssid_list);
+                for record in ssid_list.iter() {
+                    for word in record.chunks(2) {
+                        com_tx(u16::from_le_bytes(word.try_into().unwrap()));
                     }
-                    logln!(LL::Debug, "...fetchDone");
                 }
             } else if rx == ComState::LOOP_TEST.verb {
                 logln!(LL::Debug, "CLoop");

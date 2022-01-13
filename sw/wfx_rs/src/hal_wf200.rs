@@ -73,8 +73,9 @@ pub const WIFI_EVENT_WIRQ: u32 = 0x1;
 
 // SSID scan state variables
 static mut SSID_SCAN_IN_PROGRESS: bool = false;
-pub const SSID_ARRAY_SIZE: usize = 6;
-static mut SSID_ARRAY: [[u8; 33]; SSID_ARRAY_SIZE] = [[0; 33]; SSID_ARRAY_SIZE];
+pub const SSID_ARRAY_SIZE: usize = 8;
+// format: [dbm as u8] [len as u8] [ssid as storage in [u8; 32]]
+static mut SSID_ARRAY: [[u8; 34]; SSID_ARRAY_SIZE] = [[0; 34]; SSID_ARRAY_SIZE];
 static mut SSID_INDEX: usize = 0;
 static mut SSID_BEST_RSSI: Option<u8> = None;
 
@@ -515,7 +516,7 @@ pub fn wf200_send_pds(data: [u8; 256], length: u16) -> bool {
     }
 }
 
-pub fn wf200_ssid_get_list(ssid_list: &mut [[u8; 32]; SSID_ARRAY_SIZE]) {
+pub fn wf200_ssid_get_list(ssid_list: &mut [[u8; 34]; SSID_ARRAY_SIZE]) {
     unsafe {
         for (dst, src) in ssid_list.iter_mut().zip(SSID_ARRAY.iter()) {
             for (d, s) in (*dst).iter_mut().zip(src.iter()) {
@@ -1172,13 +1173,14 @@ unsafe fn sl_wfx_scan_result_callback(scan_result: *const sl_wfx_scan_result_ind
         _ => Some(dbm as u8),
     };
     let _chan = sr.channel as u8;
-    for (dst_ssid, &src_ssid) in SSID_ARRAY[SSID_INDEX][1..33]
+    for (dst_ssid, &src_ssid) in SSID_ARRAY[SSID_INDEX][2..]
         .iter_mut()
         .zip(ssid.as_bytes().iter())
     {
         *dst_ssid = src_ssid
     }
-    SSID_ARRAY[SSID_INDEX][0] = sr.ssid_def.ssid_length as u8;
+    SSID_ARRAY[SSID_INDEX][1] = sr.ssid_def.ssid_length as u8;
+    SSID_ARRAY[SSID_INDEX][0] = if dbm < 256 { dbm as u8 } else { 255 };
     // This is like `n = (n+1) % m`, but % is slow on the EC's minimal RV32I core
     SSID_INDEX += 1;
     if SSID_INDEX >= SSID_ARRAY_SIZE {
