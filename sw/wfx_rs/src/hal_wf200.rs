@@ -171,6 +171,9 @@ pub const PBUF_SIZE: usize = PBUF_HEADER_SIZE + PBUF_DATA_SIZE;
 /// Packet buffer for building outbound Ethernet II frames
 static mut PBUF: [u8; PBUF_SIZE] = [0; PBUF_SIZE];
 
+pub fn interface_status() -> LinkState {
+    unsafe{CURRENT_STATUS}
+}
 /// Return string tag describing status of WF200
 pub fn interface_status_tag() -> &'static str {
     match unsafe { CURRENT_STATUS } {

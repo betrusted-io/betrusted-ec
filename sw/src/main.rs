@@ -26,7 +26,6 @@ use betrusted_hal::hal_time::{
     get_time_ms, get_time_ticks, set_msleep_target_ticks, time_init, TimeMs,
 };
 use betrusted_hal::mem_locs::*;
-use com_rs::serdes::{StringSer, STR_64_U8_SIZE, STR_64_WORDS};
 use com_rs::ComState;
 use core::panic::PanicInfo;
 use debug;
@@ -51,7 +50,6 @@ mod wlan;
 use com_bus::{com_rx, com_tx};
 use power_mgmt::charger_handler;
 use spi::{spi_erase_region, spi_program_page, spi_standby};
-use str_buf::StrBuf;
 use wlan::WlanState;
 
 // Configure Log Level (used in macro expansions)
@@ -804,25 +802,50 @@ fn main() -> ! {
                 logln!(LL::Debug, "CWlanLeave");
                 wifi::ap_leave();
             } else if rx == ComState::WLAN_STATUS.verb {
+                // try not to entirely break older versions of the firmware for now
+                for _ in 0..ComState::WLAN_STATUS.r_words {
+                    com_tx(0);
+                }
+            } else if rx == ComState::WLAN_BIN_STATUS.verb {
                 logln!(LL::Debug, "CWStatus");
-                let mut buf = StrBuf::<STR_64_U8_SIZE>::new();
-                wifi::append_status_str(&mut buf, &wlan_state);
-                let mut error = true;
-                if let Ok(status) = buf.as_str() {
-                    let mut str_ser = StringSer::<STR_64_WORDS>::new();
-                    if let Ok(tx) = str_ser.encode(&status) {
-                        for w in tx.iter() {
-                            com_tx(*w);
-                        }
-                        error = false;
+                // send the rssi
+                let rssi_result: Result<u32, u8> = hal_wf200::get_rssi();
+                match rssi_result {
+                    Ok(rssi) => {
+                        com_tx((rssi & 0xff) as u16)
+                    }
+                    Err(e) => {
+                        com_tx((e as u16) << 8)
                     }
                 }
-                if error {
-                    // Even if something went wrong with the string encoding, still need to send the
-                    // proper number of response words over the COM bus to maintain protocol sync.
-                    logln!(LL::Debug, "CWStatusErr");
-                    for _ in 0..STR_64_WORDS {
-                        com_tx(0);
+                // send the interface status
+                let iface_status = hal_wf200::interface_status() as u16;
+                com_tx(iface_status);
+                // send ipv4 state
+                let conf = wfx_rs::hal_wf200::com_ipv4_config().encode_u16();
+                for &w in conf.iter() {
+                    com_tx(w);
+                }
+                // send current ssid as a len-encoded fixed storage string
+                match wlan_state.ssid() {
+                    Ok(ssid) => {
+                        let mut ssid_buf = [0u16; 17];
+                        ssid_buf[0] = ssid.len() as u16;
+                        for (src, dst) in ssid.as_bytes().chunks(2).zip(ssid_buf[1..].iter_mut()) {
+                            if src.len() == 2 {
+                                *dst = u16::from_le_bytes(src.try_into().unwrap());
+                            } else {
+                                *dst = src[0] as u16;
+                            }
+                        }
+                        for w in ssid_buf {
+                            com_tx(w);
+                        }
+                    }
+                    Err(_) => {
+                        for _ in 0..17 {
+                            com_tx(0);
+                        }
                     }
                 }
             } else if rx == ComState::WLAN_GET_IPV4_CONF.verb {

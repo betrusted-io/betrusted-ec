@@ -1,6 +1,3 @@
-use core::fmt::Write;
-
-use crate::str_buf::StrBuf;
 use crate::wlan::WlanState;
 use debug::{loghexln, logln, LL};
 use wfx_bindings::{
@@ -201,46 +198,4 @@ pub fn send_pds(data: [u8; 256], length: u16) -> bool {
 
 pub fn handle_event() -> u32 {
     wfx_handle_event()
-}
-
-/// Append string describing WF200 power and connection status to u8 buffer iterator
-///
-/// Format:
-///   line1: rssi interface_status dhcp_state
-///   line2: ssid
-///
-/// The rssi value is in dBm from either the last packet recieved (if connected), or
-/// from the strongest scan result seen during ssid scan commands.
-///
-pub fn append_status_str(mut buf: &mut StrBuf<64>, ws: &WlanState) {
-    // RSSI
-    let rssi_result: Result<u32, u8> = hal_wf200::get_rssi();
-    match rssi_result {
-        Ok(rssi) => {
-            logln!(LL::Debug, "RxRssi -{}", rssi);
-            let _ = write!(&mut buf, "-{} ", rssi);
-        }
-        Err(e) => {
-            loghexln!(LL::Debug, "RxRssiErr ", e);
-            match hal_wf200::get_best_ssid_scan_rssi() {
-                Some(rssi) => {
-                    logln!(LL::Debug, "ScanRssi -{}", rssi);
-                    let _ = write!(&mut buf, "-{} ", rssi);
-                }
-                _ => {
-                    let _ = write!(&mut buf, "-- ");
-                }
-            }
-        }
-    };
-    // Interface status; changes mainly in response to wlan {on,off,join,leave}
-    let ifce_tag = hal_wf200::interface_status_tag();
-    // DHCP sate updates after a `wlan join`
-    let dhcp_tag = hal_wf200::dhcp_get_state_tag();
-    // SSID updates after a `wlan setssid ...`
-    let ssid = match ws.ssid() {
-        Ok(ssid) => ssid,
-        _ => " ",
-    };
-    let _ = write!(buf, "{} {} \n{}", ifce_tag, dhcp_tag, ssid);
 }
