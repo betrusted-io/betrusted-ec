@@ -7,6 +7,7 @@ use core::slice;
 use core::str;
 use net::dhcp::{self, PacketNeeded};
 use utralib::generated::{utra, CSR, HW_WIFI_BASE};
+use com_rs::LinkState;
 
 mod bt_wf200_pds;
 
@@ -139,70 +140,9 @@ pub fn dequeue_packet() {
 pub fn poll_new_avail() -> Option<u16> {
     unsafe { PACKET_BUF.poll_new_avail() }
 }
-/*
-pub fn was_dropped() -> bool {
-    if unsafe { LAST_DROPPED } != unsafe { PACKETS_DROPPED } {
-        unsafe{ LAST_DROPPED = PACKETS_DROPPED };
-        true
-    } else {
-        false
-    }
-}
-pub fn new_pending() -> bool {
-    if unsafe{!WAS_POLLED && !WAS_READ} {
-        unsafe{ WAS_POLLED = true };
-        true
-    } else {
-        false
-    }
-}
-pub fn drop_packet() {
-    unsafe{ WAS_POLLED = false };
-    unsafe{ PACKETS_DROPPED += 1 };
-}
-pub fn get_packets_dropped() -> u32 {
-    unsafe{ LAST_DROPPED = PACKETS_DROPPED };
-    unsafe{ PACKETS_DROPPED }
-}
-// NOTE: we assume that from the point of the length fetch the next operation MUST be a get_packet_data()
-// we want to avoid the case where the length is fetched and then update before the data is read out.
-// WAS_READ is the semaphore that guarantees this.
-pub fn get_packet_len() -> u16 {
-    unsafe{ WAS_READ = false };
-    unsafe{PACKET_PENDING.len() as u16}
-}
-pub fn get_packet_data() -> &'static[u8] {
-    unsafe{ WAS_POLLED = false };
-    unsafe{ LAST_DROPPED = PACKETS_DROPPED }; // update this counter because after getting the data, the dropped count doesn't matter anymore
-    // the WAS_READ semaphore indicates that the packet can be replaced with a new one
-    // it's safe to set it in this routine because it is assumed to be SYNCHRONOUS and SINGLE-THREADED
-    // so once the value is returned, it's guaranteed to be copied to the transmit FIFO before any updates can happen
-    unsafe{ WAS_READ = true };
-    unsafe{PACKET_PENDING}
-}
 
-pub fn copy_packet(dest: &mut [u8]) {
-    // placeholder
-    for (i, d) in dest.iter_mut().enumerate() {
-        *d = i as u8;
-    }
-}
-*/
-
-/// Possible link layer connection states
-#[derive(Copy, Clone, PartialEq)]
-pub enum State {
-    Unknown,
-    ResetHold,
-    Uninitialized,
-    Initializing,
-    Disconnected,
-    Connecting,
-    Connected,
-    WFXError,
-}
 /// Current link layer connection state
-static mut CURRENT_STATUS: State = State::Unknown;
+static mut CURRENT_STATUS: LinkState = LinkState::Unknown;
 
 /// Internet layer connection state
 static mut NET_STATE: net::NetState = net::NetState::new();
@@ -234,14 +174,14 @@ static mut PBUF: [u8; PBUF_SIZE] = [0; PBUF_SIZE];
 /// Return string tag describing status of WF200
 pub fn interface_status_tag() -> &'static str {
     match unsafe { CURRENT_STATUS } {
-        State::Unknown => "E1",
-        State::ResetHold => "off",
-        State::Uninitialized => "busy1",
-        State::Initializing => "busy2",
-        State::Disconnected => "down",
-        State::Connecting => "busy3",
-        State::Connected => "up",
-        State::WFXError => "E2",
+        LinkState::Unknown => "E1",
+        LinkState::ResetHold => "off",
+        LinkState::Uninitialized => "busy1",
+        LinkState::Initializing => "busy2",
+        LinkState::Disconnected => "down",
+        LinkState::Connecting => "busy3",
+        LinkState::Connected => "up",
+        LinkState::WFXError => "E2",
     }
 }
 
@@ -249,13 +189,13 @@ pub fn interface_status_tag() -> &'static str {
 pub fn com_ipv4_config() -> Ipv4Conf {
     Ipv4Conf {
         dhcp: match dhcp_get_state() {
-            dhcp::State::Halted => DhcpState::Halted,
-            dhcp::State::Init => DhcpState::Init,
-            dhcp::State::Selecting => DhcpState::Selecting,
-            dhcp::State::Requesting => DhcpState::Requesting,
-            dhcp::State::Bound => DhcpState::Bound,
-            dhcp::State::Renewing => DhcpState::Renewing,
-            dhcp::State::Rebinding => DhcpState::Rebinding,
+            com_rs::DhcpState::Halted => DhcpState::Halted,
+            com_rs::DhcpState::Init => DhcpState::Init,
+            com_rs::DhcpState::Selecting => DhcpState::Selecting,
+            com_rs::DhcpState::Requesting => DhcpState::Requesting,
+            com_rs::DhcpState::Bound => DhcpState::Bound,
+            com_rs::DhcpState::Renewing => DhcpState::Renewing,
+            com_rs::DhcpState::Rebinding => DhcpState::Rebinding,
         },
         mac: unsafe { NET_STATE.mac },
         addr: match unsafe { NET_STATE.dhcp.ip } {
@@ -340,7 +280,7 @@ pub fn get_best_ssid_scan_rssi() -> Option<u8> {
 /// https://docs.silabs.com/wifi/wf200/rtos/latest/group-f-u-l-l-m-a-c-d-r-i-v-e-r-a-p-i#ga38f335d89c3af730ea08e8d82e873d39
 ///
 pub fn get_rssi() -> Result<u32, u8> {
-    if unsafe { CURRENT_STATUS != State::Connected } {
+    if unsafe { CURRENT_STATUS != LinkState::Connected } {
         return Err(0x20);
     }
     let mut rcpi: u32 = 0;
@@ -385,7 +325,7 @@ pub fn arp_stop_offloading() {
 
 /// Return current state of DHCP state machine.
 /// This is intended as a way for event loop to monitor DHCP handshake progress and detect slowness.
-pub fn dhcp_get_state() -> dhcp::State {
+pub fn dhcp_get_state() -> com_rs::DhcpState {
     unsafe { NET_STATE.dhcp.get_state() }
 }
 
@@ -424,7 +364,7 @@ pub fn dhcp_handle_link_drop() {
 /// Send a DHCP request
 pub fn dhcp_do_next() -> Result<(), u8> {
     // Make sure the link is active before we try to use it
-    if unsafe { CURRENT_STATUS != State::Connected } {
+    if unsafe { CURRENT_STATUS != LinkState::Connected } {
         return Err(0x20);
     }
     // DANGER! DANGER! DANGER!
@@ -578,7 +518,7 @@ pub fn wf200_fw_major() -> u8 {
 
 pub fn wfx_init() -> sl_status_t {
     unsafe {
-        CURRENT_STATUS = State::Initializing;
+        CURRENT_STATUS = LinkState::Initializing;
         // use this to drive porting of the wfx library
         let status = sl_wfx_init(&mut WIFI_CONTEXT);
         // Copy the MAC address for use by net module so it can remain blissfully unaware of the
@@ -605,7 +545,7 @@ pub unsafe extern "C" fn sl_wfx_host_spi_cs_deassert() -> sl_status_t {
 
 #[export_name = "sl_wfx_host_deinit_bus"]
 pub unsafe extern "C" fn sl_wfx_host_deinit_bus() -> sl_status_t {
-    CURRENT_STATUS = State::Uninitialized;
+    CURRENT_STATUS = LinkState::Uninitialized;
     let mut wifi_csr = CSR::new(HW_WIFI_BASE as *mut u32);
     wifi_csr.wo(utra::wifi::CONTROL, 0);
     wifi_csr.wo(utra::wifi::WIFI, 0);
@@ -639,7 +579,7 @@ pub unsafe extern "C" fn sl_wfx_host_reset_chip() -> sl_status_t {
     delay_ms(10);
     wifi_csr.wfo(utra::wifi::WIFI_RESET, 0);
     delay_ms(10);
-    CURRENT_STATUS = State::Uninitialized;
+    CURRENT_STATUS = LinkState::Uninitialized;
     SSID_SCAN_IN_PROGRESS = false;
     SL_STATUS_OK
 }
@@ -650,7 +590,7 @@ pub unsafe extern "C" fn sl_wfx_host_hold_in_reset() -> sl_status_t {
     wifi_csr.wfo(utra::wifi::WIFI_RESET, 1);
     // Allow a little time for reset signal to take effect before returning
     delay_ms(1);
-    CURRENT_STATUS = State::ResetHold;
+    CURRENT_STATUS = LinkState::ResetHold;
     SSID_SCAN_IN_PROGRESS = false;
     SL_STATUS_OK
 }
@@ -1060,11 +1000,11 @@ pub unsafe extern "C" fn sl_wfx_host_get_pds_size(pds_size: *mut u16) -> sl_stat
 }
 
 fn sl_wfx_connect_callback(_mac: [u8; 6usize], status: u32) {
-    let mut new_status = State::Disconnected;
+    let mut new_status = LinkState::Disconnected;
     match status {
         sl_wfx_fmac_status_e_WFM_STATUS_SUCCESS => {
             logln!(LL::Debug, "ConnSuccess");
-            new_status = State::Connected;
+            new_status = LinkState::Connected;
             unsafe {
                 NET_STATE.filter_stats.reset();
                 WIFI_CONTEXT.state |= sl_wfx_state_t_SL_WFX_STA_INTERFACE_CONNECTED;
@@ -1101,7 +1041,7 @@ fn sl_wfx_connect_callback(_mac: [u8; 6usize], status: u32) {
 fn sl_wfx_disconnect_callback(_mac: [u8; 6usize], _reason: u16) {
     logln!(LL::Debug, "WfxDisconn");
     unsafe {
-        CURRENT_STATUS = State::Disconnected;
+        CURRENT_STATUS = LinkState::Disconnected;
         WIFI_CONTEXT.state &= !sl_wfx_state_t_SL_WFX_STA_INTERFACE_CONNECTED;
     }
     // TODO: handle broken IP link, DHCP state, etc.
@@ -1299,7 +1239,7 @@ pub unsafe extern "C" fn sl_wfx_host_post_event(
             let firmware_error: *const sl_wfx_error_ind_t =
                 event_payload as *const sl_wfx_error_ind_t;
             let error = core::ptr::addr_of!((*firmware_error).body.type_).read_unaligned();
-            CURRENT_STATUS = State::WFXError;
+            CURRENT_STATUS = LinkState::WFXError;
             // SL_WFX_HIF_BUS_ERROR means something got messed up on the SPI bus between the UP5K and the
             // WF200. The one instance I've seen of that happened because of using some weird pointer casting stuff on a
             // the control register argument to wf_receive_frame(). Using `let cr: u16 = 0; wfx_receive_frame(&mut cr);`
@@ -1322,7 +1262,7 @@ pub unsafe extern "C" fn sl_wfx_host_post_event(
         }
         sl_wfx_general_indications_ids_e_SL_WFX_STARTUP_IND_ID => {
             logln!(LL::Debug, "WfxStartup");
-            CURRENT_STATUS = State::Disconnected;
+            CURRENT_STATUS = LinkState::Disconnected;
         }
         sl_wfx_general_confirmations_ids_e_SL_WFX_CONFIGURATION_CNF_ID => {
             // this occurs during configuration, and is handled specially
@@ -1372,6 +1312,6 @@ pub unsafe extern "C" fn sl_wfx_host_post_event(
 }
 
 /// Return current WF200 power and connection status
-pub fn get_status() -> State {
+pub fn get_status() -> LinkState {
     unsafe { CURRENT_STATUS }
 }

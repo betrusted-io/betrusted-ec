@@ -244,7 +244,7 @@ fn handle_arp_frame(net_state: &NetState, data: &[u8]) -> FilterBin {
         return FilterBin::DropNoise;
     }
     // Determine whether an IP address is bound to our network interface (if not, this ARP is not for us)
-    if net_state.dhcp.get_state() != dhcp::State::Bound {
+    if net_state.dhcp.get_state() != com_rs::DhcpState::Bound {
         return FilterBin::DropNoise;
     }
     let my_ip4: u32 = match net_state.dhcp.ip {

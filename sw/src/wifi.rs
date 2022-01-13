@@ -84,11 +84,11 @@ pub fn dhcp_clock_state_machine() {
     let link = hal_wf200::get_status();
     let dhcp = hal_wf200::dhcp_get_state();
     match link {
-        hal_wf200::State::Connected => match hal_wf200::dhcp_do_next() {
+        com_rs::LinkState::Connected => match hal_wf200::dhcp_do_next() {
             Ok(_) => (),
             Err(e) => loghexln!(LL::Debug, "DhcpNextErr ", e),
         },
-        hal_wf200::State::Disconnected if dhcp == net::dhcp::State::Bound => {
+        com_rs::LinkState::Disconnected if dhcp == com_rs::DhcpState::Bound => {
             hal_wf200::dhcp_handle_link_drop();
         }
         _ => (),

@@ -259,6 +259,7 @@ name = "net"
 version = "0.1.0"
 dependencies = [
  "betrusted-hal",
+ "com_rs",
  "debug",
 ]
 
