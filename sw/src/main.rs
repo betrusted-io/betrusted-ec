@@ -848,6 +848,18 @@ fn main() -> ! {
                         }
                     }
                 }
+            } else if rx == ComState::WF200_DEBUG.verb {
+                let config = hal_wf200::wfx_config();
+                com_tx(config as u16);
+                com_tx((config >> 16) as u16);
+                com_tx(hal_wf200::wfx_control());
+                let alloc_fail = unsafe{hal_wf200::alloc_fail_count()};
+                com_tx(alloc_fail as u16);
+                com_tx((alloc_fail >> 16) as u16);
+                let alloc_oversize = unsafe{hal_wf200::alloc_oversize_count()};
+                com_tx(alloc_oversize as u16);
+                com_tx((alloc_oversize >> 16) as u16);
+                com_tx(unsafe{hal_wf200::alloc_free_count()} as u16);
             } else if rx == ComState::WLAN_GET_IPV4_CONF.verb {
                 logln!(LL::Debug, "CWIpConf");
                 let conf = wfx_rs::hal_wf200::com_ipv4_config().encode_u16();

@@ -60,6 +60,7 @@ pub use wfx_bindings::{
     SL_STATUS_IO_TIMEOUT, SL_STATUS_OK, SL_STATUS_WIFI_SLEEP_GRANTED, SL_STATUS_WIFI_WRONG_STATE,
     SL_WFX_CONT_NEXT_LEN_MASK, SL_WFX_EXCEPTION_DATA_SIZE_MAX,
     sl_wfx_reg_read_32, sl_wfx_register_address_t_SL_WFX_CONFIG_REG_ID,
+    sl_wfx_reg_read_16, sl_wfx_register_address_t_SL_WFX_CONTROL_REG_ID
 };
 
 // Configure Log Level (used in macro expansions)
@@ -524,6 +525,34 @@ pub fn wfx_init() -> sl_status_t {
     }
 }
 
+pub fn wfx_config() -> u32 {
+    let mut config: u32 = 0;
+    let config_ptr = &mut config as *mut u32;
+    unsafe{ sl_wfx_reg_read_32(
+        sl_wfx_register_address_t_SL_WFX_CONFIG_REG_ID,
+        config_ptr);}
+    config
+}
+
+pub fn wfx_control() -> u16 {
+    let mut control: u16 = 0;
+    let control_ptr = &mut control as *mut u16;
+    unsafe{ sl_wfx_reg_read_16(
+        sl_wfx_register_address_t_SL_WFX_CONTROL_REG_ID,
+        control_ptr
+    );}
+    control
+}
+
+// above is glue to Rust subsystem
+// //////////////////////////////////////////////////////////////////////////////////
+// //////////////////////////////////////////////////////////////////////////////////
+// //////////////////////////////////////////////////////////////////////////////////
+// //////////////////////////////////////////////////////////////////////////////////
+// //////////////////////////////////////////////////////////////////////////////////
+// //////////////////////////////////////////////////////////////////////////////////
+// below is glue to wfx host drivers
+
 #[export_name = "sl_wfx_host_spi_cs_assert"]
 pub unsafe extern "C" fn sl_wfx_host_spi_cs_assert() -> sl_status_t {
     let mut wifi_csr = CSR::new(HW_WIFI_BASE as *mut u32);
@@ -697,9 +726,22 @@ pub unsafe extern "C" fn sl_wfx_host_spi_transfer_no_cs_assert(
 // crappy alloc constants
 static mut WFX_RAM_ALLOC: usize = WFX_RAM_OFFSET;
 pub const WFX_MAX_PTRS: usize = 4;
-static mut WFX_PTR_COUNT: u8 = 0;
 static mut WFX_PTR_LIST: [usize; WFX_MAX_PTRS] = [0; WFX_MAX_PTRS];
 pub const WFX_ALLOC_MAXLEN: usize = WFX_RAM_LENGTH / WFX_MAX_PTRS;
+static mut WFX_OVERSIZE_COUNT: usize = 0;
+static mut WFX_ALLOC_FAILS: usize = 0;
+
+pub unsafe fn alloc_free_count() -> usize {
+    let mut count = 0;
+    for ptr in WFX_PTR_LIST {
+        if ptr == 0 {
+            count += 1;
+        }
+    }
+    count
+}
+pub unsafe fn alloc_oversize_count() -> usize { WFX_OVERSIZE_COUNT }
+pub unsafe fn alloc_fail_count() -> usize { WFX_ALLOC_FAILS }
 
 #[doc = " @brief Called when the driver wants to allocate memory"]
 #[doc = ""]
@@ -722,6 +764,7 @@ pub unsafe extern "C" fn sl_wfx_host_allocate_buffer(
             buffer_size,
             WFX_ALLOC_MAXLEN
         );
+        WFX_OVERSIZE_COUNT += 1;
         return SL_STATUS_ALLOCATION_FAILED;
     }
 
@@ -731,6 +774,7 @@ pub unsafe extern "C" fn sl_wfx_host_allocate_buffer(
         i += 1;
     }
     if i == WFX_MAX_PTRS {
+        WFX_ALLOC_FAILS += 1;
         return SL_STATUS_ALLOCATION_FAILED;
     }
     WFX_PTR_LIST[i] = WFX_RAM_ALLOC + i * WFX_ALLOC_MAXLEN;
@@ -769,7 +813,6 @@ pub unsafe extern "C" fn sl_wfx_host_free_buffer(
 #[export_name = "sl_wfx_host_init"]
 pub unsafe extern "C" fn sl_wfx_host_init() -> sl_status_t {
     WFX_RAM_ALLOC = WFX_RAM_OFFSET;
-    WFX_PTR_COUNT = 0;
     WFX_PTR_LIST = [0; WFX_MAX_PTRS];
     HOST_CONTEXT.sl_wfx_firmware_download_progress = 0;
     //    HOST_CONTEXT.waited_event_id = 0;  // this is apparently side-effected elsewhere
@@ -792,7 +835,6 @@ pub unsafe extern "C" fn sl_wfx_host_init() -> sl_status_t {
 #[export_name = "sl_wfx_host_deinit"]
 pub unsafe extern "C" fn sl_wfx_host_deinit() -> sl_status_t {
     WFX_RAM_ALLOC = WFX_RAM_OFFSET;
-    WFX_PTR_COUNT = 0;
     WFX_PTR_LIST = [0; WFX_MAX_PTRS];
     SL_STATUS_OK
 }

@@ -100,6 +100,8 @@ pub fn dhcp_clock_state_machine() {
 ///
 pub fn ap_leave() {
     let result: sl_status_t = unsafe { sl_wfx_send_disconnect_command() };
+    // reset the dhcp machine, since once we've left the AP we have no idea what the next state might be.
+    dhcp_init();
     match result {
         SL_STATUS_OK => logln!(LL::Debug, "leaveOk"),
         _ => logln!(LL::Debug, "leaveFail"),
