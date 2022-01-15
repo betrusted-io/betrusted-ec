@@ -445,9 +445,11 @@ pub fn wf200_send_pds(data: [u8; 256], length: u16) -> bool {
         return false;
     }
     let pds_data: *const c_types::c_char = (&data).as_ptr() as *const c_types::c_char;
-    if unsafe { sl_wfx_send_configuration(pds_data, length as u_int32_t) } == SL_STATUS_OK {
+    let result = unsafe { sl_wfx_send_configuration(pds_data, length as u_int32_t) };
+    if result == SL_STATUS_OK {
         true
     } else {
+        loghexln!(LL::Debug, "SendPdsErr ", result);
         false
     }
 }
@@ -775,6 +777,7 @@ pub unsafe extern "C" fn sl_wfx_host_allocate_buffer(
     }
     if i == WFX_MAX_PTRS {
         WFX_ALLOC_FAILS += 1;
+        logln!(LL::Debug, "AllocFailNoPtr");
         return SL_STATUS_ALLOCATION_FAILED;
     }
     WFX_PTR_LIST[i] = WFX_RAM_ALLOC + i * WFX_ALLOC_MAXLEN;
@@ -801,6 +804,7 @@ pub unsafe extern "C" fn sl_wfx_host_free_buffer(
         i = i + 1;
     }
     if i == WFX_MAX_PTRS {
+        logln!(LL::Debug, "FreeFail");
         return SL_STATUS_ALLOCATION_FAILED;
     }
     logln!(LL::Trace, "DeAlloc [{}]", i);
@@ -876,6 +880,10 @@ pub unsafe extern "C" fn sl_wfx_host_wait_for_confirmation(
             delay_ms(1);
         }
     }
+    logln!(LL::Debug, "hostWaitTimeout");
+    logln!(LL::Debug, "cur {}", get_time_ms());
+    logln!(LL::Debug, "sta {}", start_time);
+    logln!(LL::Debug, "out {}", timeout_ms);
     SL_STATUS_IO_TIMEOUT
 }
 
@@ -903,6 +911,9 @@ pub unsafe extern "C" fn sl_wfx_host_transmit_frame(
 ) -> sl_status_t {
     let ret: sl_status_t;
     ret = sl_wfx_data_write(frame, frame_len);
+    if ret != SL_STATUS_OK {
+        loghexln!(LL::Debug, "TxFrmErr ", ret);
+    }
     ret
 }
 
@@ -1213,6 +1224,7 @@ pub fn wfx_drain_event_queue(limit: usize) {
     for _ in 0..limit {
         result = wfx_handle_event();
         if result != SL_STATUS_OK {
+            loghexln!(LL::Debug, "DrainEventErr ", result);
             break;
         }
     }
@@ -1296,6 +1308,12 @@ pub unsafe extern "C" fn sl_wfx_host_post_event(
                 },
                 _ => loghexln!(LL::Debug, "", error),
             }
+            /*
+            let mut cr: u16 = 0;
+            let s = sl_wfx_receive_frame(&mut cr);
+            loghexln!(LL::Debug, "Kick s: ", s);
+            loghexln!(LL::Debug, "Kick cr: ", cr);
+            */
         }
         sl_wfx_general_indications_ids_e_SL_WFX_STARTUP_IND_ID => {
             logln!(LL::Debug, "WfxStartup");

@@ -64,7 +64,7 @@ pub fn ap_join_wpa2(ws: &WlanState) {
             logln!(LL::Debug, "joinOk");
             dhcp_init();
         }
-        _ => logln!(LL::Debug, "joinFail"),
+        _ => loghexln!(LL::Debug, "joinFail ", result),
     }
 }
 
@@ -104,12 +104,16 @@ pub fn ap_leave() {
     dhcp_init();
     match result {
         SL_STATUS_OK => logln!(LL::Debug, "leaveOk"),
-        _ => logln!(LL::Debug, "leaveFail"),
+        _ => loghexln!(LL::Debug, "leaveFail ", result),
     }
 }
 
 pub fn wf200_reset_momentary() {
-    let _ = unsafe { sl_wfx_host_reset_chip() };
+    let result = unsafe { sl_wfx_host_reset_chip() };
+    match result {
+        SL_STATUS_OK => (),
+        _ => loghexln!(LL::Debug, "resetMomFail ", result),
+    }
 }
 
 // TODO: Find a way to turn the WF200 off by using the API... maybe `sl_wfx_host_deinit()`?
@@ -121,9 +125,13 @@ pub fn wf200_reset_hold() {
 
 /// Initialize the WF200, returning true means success
 pub fn wf200_init() -> bool {
-    match wfx_init() {
+    let result = wfx_init();
+    match result {
         SL_STATUS_OK => true,
-        _ => false,
+        _ => {
+            loghexln!(LL::Debug, "initFail ", result);
+            false
+        },
     }
 }
 
