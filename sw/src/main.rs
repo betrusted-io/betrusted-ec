@@ -53,10 +53,10 @@ use spi::{spi_erase_region, spi_program_page, spi_standby};
 use wlan::WlanState;
 
 // work around a compiler bug in rustc-1.58: https://github.com/rust-lang/rust/issues/92897
-//#[no_mangle]
-//pub fn __atomic_load_4(arg: *const usize, _ordering: usize) -> usize {
-//    unsafe { *arg }
-//}
+#[no_mangle]
+pub fn __atomic_load_4(arg: *const usize, _ordering: usize) -> usize {
+    unsafe { *arg }
+}
 
 // Configure Log Level (used in macro expansions)
 const LOG_LEVEL: LL = LL::Debug;
