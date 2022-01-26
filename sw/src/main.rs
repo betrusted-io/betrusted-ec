@@ -780,7 +780,6 @@ fn main() -> ! {
                 wifi::start_scan(); // turn this off for FCC testing
             } else if rx == ComState::SSID_SCAN_OFF.verb {
                 logln!(LL::Debug, "CSssidScan0");
-                // TODO: Get rid of this when the ssid scan shellchat command is revised.
                 // This is a NOP because the WF200 scan ends on its own
             } else if rx == ComState::WLAN_ON.verb {
                 logln!(LL::Debug, "CWlanOn");
@@ -817,6 +816,17 @@ fn main() -> ! {
                 // try not to entirely break older versions of the firmware for now
                 for _ in 0..ComState::WLAN_STATUS.r_words {
                     com_tx(0);
+                }
+            } else if rx == ComState::WLAN_GET_RSSI.verb {
+                logln!(LL::Debug, "CWRssi");
+                let rssi_result: Result<u32, u8> = hal_wf200::get_rssi();
+                match rssi_result {
+                    Ok(rssi) => {
+                        com_tx((rssi & 0xff) as u16)
+                    }
+                    Err(e) => {
+                        com_tx((e as u16) << 8)
+                    }
                 }
             } else if rx == ComState::WLAN_BIN_STATUS.verb {
                 logln!(LL::Debug, "CWStatus");
