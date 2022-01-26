@@ -286,6 +286,9 @@ fn main() -> ! {
                     if wfx_rs::hal_wf200::poll_scan_updated() {
                         com_int_mgr.set_ssid_update();
                     }
+                    if wfx_rs::hal_wf200::poll_scan_finished() {
+                        com_int_mgr.set_ssid_finished();
+                    }
                     let connect_result = wfx_rs::hal_wf200::poll_connect_result();
                     if connect_result != ConnectResult::Pending {
                         com_int_mgr.set_connect_result(connect_result);

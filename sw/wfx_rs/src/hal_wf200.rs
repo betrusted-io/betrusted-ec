@@ -77,6 +77,7 @@ pub const WIFI_EVENT_WIRQ: u32 = 0x1;
 
 // SSID scan state variables
 static mut SSID_SCAN_UPDATE: bool = false;
+static mut SSID_SCAN_FINISHED: bool = false;
 pub const SSID_ARRAY_SIZE: usize = 8;
 // format: [dbm as u8] [len as u8] [ssid as storage in [u8; 32]]
 static mut SSID_ARRAY: [[u8; 34]; SSID_ARRAY_SIZE] = [[0; 34]; SSID_ARRAY_SIZE];
@@ -638,6 +639,7 @@ pub unsafe extern "C" fn sl_wfx_host_reset_chip() -> sl_status_t {
 
     // clear ssid scan state
     SSID_SCAN_UPDATE = false;
+    SSID_SCAN_FINISHED = false;
     // I think it's OK to keep these "stale" values around because the SSID environment is external to the driver
     //SSID_INDEX = 0;
     //SSID_BEST_RSSI = None;
@@ -676,6 +678,7 @@ pub unsafe extern "C" fn sl_wfx_host_hold_in_reset() -> sl_status_t {
     delay_ms(1);
     CURRENT_STATUS = LinkState::ResetHold;
     SSID_SCAN_UPDATE = false;
+    SSID_SCAN_FINISHED = false;
     SL_STATUS_OK
 }
 
@@ -1268,8 +1271,7 @@ pub fn wfx_start_scan() -> sl_status_t {
 fn sl_wfx_scan_complete_callback(_status: u32) {
     logln!(LL::Debug, "scan complete");
     unsafe {
-        // we also set this when we get incremental results
-        SSID_SCAN_UPDATE = true;
+        SSID_SCAN_FINISHED = true;
     }
 }
 
@@ -1277,6 +1279,13 @@ pub fn poll_scan_updated() -> bool {
     unsafe {
         let ret = SSID_SCAN_UPDATE;
         SSID_SCAN_UPDATE = false;
+        ret
+    }
+}
+pub fn poll_scan_finished() -> bool {
+    unsafe {
+        let ret = SSID_SCAN_FINISHED;
+        SSID_SCAN_FINISHED = false;
         ret
     }
 }

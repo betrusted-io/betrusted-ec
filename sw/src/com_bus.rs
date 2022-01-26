@@ -123,6 +123,12 @@ impl ComInterrupts {
     pub fn ack_ssid_update(&mut self) {
         self.state &= !com_rs::INT_WLAN_SSID_UPDATE;
     }
+    pub fn set_ssid_finished(&mut self) {
+        self.state |= com_rs::INT_WLAN_SSID_FINISHED;
+    }
+    pub fn ack_ssid_finished(&mut self) {
+        self.state &= !com_rs::INT_WLAN_SSID_FINISHED;
+    }
     pub fn set_battery_critical(&mut self) {
         self.state |= com_rs::INT_BATTERY_CRITICAL;
     }
