@@ -1361,6 +1361,7 @@ pub unsafe extern "C" fn sl_wfx_host_post_event(
                 event_payload as *const sl_wfx_error_ind_t;
             let error = core::ptr::addr_of!((*firmware_error).body.type_).read_unaligned();
             CURRENT_STATUS = LinkState::WFXError;
+            CONNECT_RESULT = ConnectResult::Error; // this will also trip an interrupt to inform the host that there's an error
             // SL_WFX_HIF_BUS_ERROR means something got messed up on the SPI bus between the UP5K and the
             // WF200. The one instance I've seen of that happened because of using some weird pointer casting stuff on a
             // the control register argument to wf_receive_frame(). Using `let cr: u16 = 0; wfx_receive_frame(&mut cr);`
