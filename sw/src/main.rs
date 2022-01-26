@@ -26,7 +26,7 @@ use betrusted_hal::hal_time::{
     get_time_ms, get_time_ticks, set_msleep_target_ticks, time_init, TimeMs,
 };
 use betrusted_hal::mem_locs::*;
-use com_rs::ComState;
+use com_rs::{ComState, ConnectResult};
 use core::panic::PanicInfo;
 use debug;
 use debug::{log, loghex, loghexln, logln, LL};
@@ -263,7 +263,6 @@ fn main() -> ! {
 
     // interrupt manager for COM interface
     let mut com_int_mgr = com_bus::ComInterrupts::new();
-    let mut was_scanning = false;
     let mut tx_errs: u32 = 0;
 
     //////////////////////// MAIN LOOP ------------------
@@ -274,19 +273,25 @@ fn main() -> ! {
             if use_wifi && wifi_ready {
                 wifi::handle_event();
                 // update interrupt vectors
-                let scanning = wifi::ssid_scan_in_progress();
-                if was_scanning && !scanning {
-                    // trigger interrupt when scan is done
-                    com_int_mgr.set_ssid_update();
-                }
-                was_scanning = scanning;
-
                 if com_net_bridge_enable {
                     if let Some(len) = wfx_rs::hal_wf200::poll_new_avail() {
                         com_int_mgr.set_rx_ready(len);
                     }
                     if wfx_rs::hal_wf200::poll_new_dropped() {
                         com_int_mgr.set_rx_error();
+                    }
+                    if wfx_rs::hal_wf200::poll_disconnect_pending() {
+                        com_int_mgr.set_disconnect();
+                    }
+                    if wfx_rs::hal_wf200::poll_scan_updated() {
+                        com_int_mgr.set_ssid_update();
+                    }
+                    let connect_result = wfx_rs::hal_wf200::poll_connect_result();
+                    if connect_result != ConnectResult::Pending {
+                        com_int_mgr.set_connect_result(connect_result);
+                        if connect_result == ConnectResult::Success {
+                            wifi::dhcp_init();
+                        }
                     }
                 }
 
@@ -440,12 +445,10 @@ fn main() -> ! {
             loghexln!(LL::Trace, "rx: ", rx);
 
             if rx == ComState::SSID_CHECK.verb {
-                logln!(LL::Debug, "CSsidChk");
-                // TODO: Get rid of this when the ssid scan shellchat command is revised.
-                match wifi::ssid_scan_in_progress() {
-                    true => com_tx(0),
-                    false => com_tx(1),
-                }
+                // this is provided only so that the interface doesn't crash on a legacy SoC firmware
+                // use the interrupt mechanism to receive asynchronous scan completion updates instead
+                logln!(LL::Debug, "CSsidChk *DEPRECATED*");
+                com_tx(0);
             } else if rx == ComState::SSID_FETCH.verb {
                 // just a catch in case a legacy SoC rev talks to us. could probably remove sometime around the year 2023
                 for _ in 0..ComState::SSID_FETCH.r_words {

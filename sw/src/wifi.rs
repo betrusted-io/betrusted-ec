@@ -8,7 +8,7 @@ use wfx_bindings::{
 use wfx_rs::hal_wf200;
 use wfx_rs::hal_wf200::{
     wf200_fw_build, wf200_fw_major, wf200_fw_minor, wf200_send_pds, wf200_ssid_get_list,
-    wfx_drain_event_queue, wfx_handle_event, wfx_init, wfx_ssid_scan_in_progress, wfx_start_scan,
+    wfx_drain_event_queue, wfx_handle_event, wfx_init, wfx_start_scan,
 };
 
 // Configure Log Level (used in macro expansions)
@@ -62,7 +62,6 @@ pub fn ap_join_wpa2(ws: &WlanState) {
     match result {
         SL_STATUS_OK => {
             logln!(LL::Debug, "joinOk");
-            dhcp_init();
         }
         _ => loghexln!(LL::Debug, "joinFail ", result),
     }
@@ -180,10 +179,6 @@ pub fn start_scan() {
     let limit = 32;
     wfx_drain_event_queue(limit);
     wfx_start_scan();
-}
-
-pub fn ssid_scan_in_progress() -> bool {
-    wfx_ssid_scan_in_progress()
 }
 
 pub fn ssid_get_list(mut ssid_list: &mut [[u8; 34]; SSID_ARRAY_SIZE]) {

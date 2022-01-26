@@ -5,6 +5,7 @@ use crate::betrusted_hal::mem_locs::*;
 use crate::wfx_bindings;
 use core::slice;
 use core::str;
+use com_rs::ConnectResult;
 use net::dhcp::{self, PacketNeeded};
 use utralib::generated::{utra, CSR, HW_WIFI_BASE};
 use com_rs::LinkState;
@@ -60,7 +61,8 @@ pub use wfx_bindings::{
     SL_STATUS_IO_TIMEOUT, SL_STATUS_OK, SL_STATUS_WIFI_SLEEP_GRANTED, SL_STATUS_WIFI_WRONG_STATE,
     SL_WFX_CONT_NEXT_LEN_MASK, SL_WFX_EXCEPTION_DATA_SIZE_MAX,
     sl_wfx_reg_read_32, sl_wfx_register_address_t_SL_WFX_CONFIG_REG_ID,
-    sl_wfx_reg_read_16, sl_wfx_register_address_t_SL_WFX_CONTROL_REG_ID
+    sl_wfx_reg_read_16, sl_wfx_register_address_t_SL_WFX_CONTROL_REG_ID,
+    sl_wfx_ext_auth_req_t,
 };
 
 // Configure Log Level (used in macro expansions)
@@ -74,7 +76,7 @@ const SL_WFX_HIF_BUS_ERROR: u32 = 0xf;
 pub const WIFI_EVENT_WIRQ: u32 = 0x1;
 
 // SSID scan state variables
-static mut SSID_SCAN_IN_PROGRESS: bool = false;
+static mut SSID_SCAN_UPDATE: bool = false;
 pub const SSID_ARRAY_SIZE: usize = 8;
 // format: [dbm as u8] [len as u8] [ssid as storage in [u8; 32]]
 static mut SSID_ARRAY: [[u8; 34]; SSID_ARRAY_SIZE] = [[0; 34]; SSID_ARRAY_SIZE];
@@ -141,9 +143,24 @@ pub fn dequeue_packet() {
 pub fn poll_new_avail() -> Option<u16> {
     unsafe { PACKET_BUF.poll_new_avail() }
 }
-
+pub fn poll_disconnect_pending() -> bool {
+    unsafe {
+        let ret = DISCONNECT_PENDING;
+        DISCONNECT_PENDING = false;
+        ret
+    }
+}
+pub fn poll_connect_result() -> ConnectResult {
+    unsafe {
+        let ret = CONNECT_RESULT;
+        CONNECT_RESULT = ConnectResult::Pending;
+        ret
+    }
+}
 /// Current link layer connection state
 static mut CURRENT_STATUS: LinkState = LinkState::Unknown;
+static mut DISCONNECT_PENDING: bool = false;
+static mut CONNECT_RESULT: ConnectResult = ConnectResult::Pending;
 
 /// Internet layer connection state
 static mut NET_STATE: net::NetState = net::NetState::new();
@@ -605,8 +622,49 @@ pub unsafe extern "C" fn sl_wfx_host_reset_chip() -> sl_status_t {
     delay_ms(10);
     wifi_csr.wfo(utra::wifi::WIFI_RESET, 0);
     delay_ms(10);
+
+    // TODO: marshall all these state variables into a single object so we don't lose track of them.
+
+    // clear "mallocs"
+    WFX_PTR_LIST = [0; WFX_MAX_PTRS];
+
+    // reset dhcp state and net state
+    dhcp_handle_link_drop();
     CURRENT_STATUS = LinkState::Uninitialized;
-    SSID_SCAN_IN_PROGRESS = false;
+    DISCONNECT_PENDING = false;
+    DROPPED_UPDATED = false;
+    NET_STATE = net::NetState::new();
+    CONNECT_RESULT = ConnectResult::Pending;
+
+    // clear ssid scan state
+    SSID_SCAN_UPDATE = false;
+    // I think it's OK to keep these "stale" values around because the SSID environment is external to the driver
+    //SSID_INDEX = 0;
+    //SSID_BEST_RSSI = None;
+    //SSID_ARRAY = [[0; 34]; SSID_ARRAY_SIZE];
+
+    // clear the packet buf
+    PACKET_BUF.init();
+
+    // reset FFI contexts
+    HOST_CONTEXT = host_context {
+        sl_wfx_firmware_download_progress: 0,
+        waited_event_id: 0,
+        posted_event_id: 0,
+    };
+    WIFI_CONTEXT = sl_wfx_context_t {
+        event_payload_buffer: [0; 512usize],
+        firmware_build: 0,
+        firmware_minor: 0,
+        firmware_major: 0,
+        data_frame_id: 0,
+        used_buffers: 0,
+        wfx_opn: [0; 14usize],
+        mac_addr_0: sl_wfx_mac_address_t { octet: [0; 6usize] },
+        mac_addr_1: sl_wfx_mac_address_t { octet: [0; 6usize] },
+        state: 0,
+    };
+
     SL_STATUS_OK
 }
 
@@ -617,7 +675,7 @@ pub unsafe extern "C" fn sl_wfx_host_hold_in_reset() -> sl_status_t {
     // Allow a little time for reset signal to take effect before returning
     delay_ms(1);
     CURRENT_STATUS = LinkState::ResetHold;
-    SSID_SCAN_IN_PROGRESS = false;
+    SSID_SCAN_UPDATE = false;
     SL_STATUS_OK
 }
 
@@ -1051,33 +1109,39 @@ fn sl_wfx_connect_callback(_mac: [u8; 6usize], status: u32) {
     let mut new_status = LinkState::Disconnected;
     match status {
         sl_wfx_fmac_status_e_WFM_STATUS_SUCCESS => {
+            unsafe{CONNECT_RESULT = ConnectResult::Success;}
             logln!(LL::Debug, "ConnSuccess");
             new_status = LinkState::Connected;
             unsafe {
                 NET_STATE.filter_stats.reset();
                 WIFI_CONTEXT.state |= sl_wfx_state_t_SL_WFX_STA_INTERFACE_CONNECTED;
-                // TODO: initiate DHCP flow and IP layer init
                 // TODO: configure power saving features
                 //sl_wfx_set_power_mode(sl_wfx_pm_mode_e_WFM_PM_MODE_PS, 0);
                 //sl_wfx_enable_device_power_save();
             }
         }
         sl_wfx_fmac_status_e_WFM_STATUS_NO_MATCHING_AP => {
+            unsafe{CONNECT_RESULT = ConnectResult::NoMatchingAp;}
             logln!(LL::Debug, "ConnNoMatchAp");
         }
         sl_wfx_fmac_status_e_WFM_STATUS_CONNECTION_ABORTED => {
+            unsafe{CONNECT_RESULT = ConnectResult::Aborted;}
             logln!(LL::Debug, "ConnAbort");
         }
         sl_wfx_fmac_status_e_WFM_STATUS_CONNECTION_TIMEOUT => {
+            unsafe{CONNECT_RESULT = ConnectResult::Timeout;}
             logln!(LL::Debug, "ConnTimeout");
         }
         sl_wfx_fmac_status_e_WFM_STATUS_CONNECTION_REJECTED_BY_AP => {
+            unsafe{CONNECT_RESULT = ConnectResult::Reject;}
             logln!(LL::Debug, "ConnReject");
         }
         sl_wfx_fmac_status_e_WFM_STATUS_CONNECTION_AUTH_FAILURE => {
+            unsafe{CONNECT_RESULT = ConnectResult::AuthFail;}
             logln!(LL::Debug, "ConnAuthFail");
         }
         _ => {
+            unsafe{CONNECT_RESULT = ConnectResult::Error;}
             loghexln!(LL::Debug, "ConnErr ", status);
         }
     }
@@ -1086,13 +1150,15 @@ fn sl_wfx_connect_callback(_mac: [u8; 6usize], status: u32) {
     }
 }
 
-fn sl_wfx_disconnect_callback(_mac: [u8; 6usize], _reason: u16) {
-    logln!(LL::Debug, "WfxDisconn");
+fn sl_wfx_disconnect_callback(_mac: [u8; 6usize], reason: u16) {
+    loghexln!(LL::Debug, "WfxDisconn ", reason);
     unsafe {
         CURRENT_STATUS = LinkState::Disconnected;
+        DISCONNECT_PENDING = true;
         WIFI_CONTEXT.state &= !sl_wfx_state_t_SL_WFX_STA_INTERFACE_CONNECTED;
     }
-    // TODO: handle broken IP link, DHCP state, etc.
+    dhcp_handle_link_drop();
+    unsafe{PACKET_BUF.init()} // reset the packet buffer to a known state
 }
 
 fn sl_wfx_host_received_frame_callback(rx_buffer: *const sl_wfx_received_ind_t) {
@@ -1142,13 +1208,14 @@ unsafe fn sl_wfx_scan_result_callback(scan_result: *const sl_wfx_scan_result_ind
         _ => "",
     };
     // Debug print the SSID result
-    let channel = core::ptr::addr_of!(sr.channel).read_unaligned();
     let dbm = 32768 - ((sr.rcpi - 220) / 2);
+    /*
+    let channel = core::ptr::addr_of!(sr.channel).read_unaligned();
     log!(LL::Debug, "ssid {:X} -{}", channel, dbm);
     for i in sr.mac.iter() {
         loghex!(LL::Debug, " ", *i);
     }
-    logln!(LL::Debug, " {}", ssid);
+    logln!(LL::Debug, " {}", ssid);*/
     // Update the scan result log
     if SSID_INDEX >= SSID_ARRAY_SIZE {
         SSID_INDEX = 0;
@@ -1174,6 +1241,7 @@ unsafe fn sl_wfx_scan_result_callback(scan_result: *const sl_wfx_scan_result_ind
     if SSID_INDEX >= SSID_ARRAY_SIZE {
         SSID_INDEX = 0;
     }
+    SSID_SCAN_UPDATE = true;
 }
 
 pub fn wfx_start_scan() -> sl_status_t {
@@ -1183,7 +1251,6 @@ pub fn wfx_start_scan() -> sl_status_t {
         for ssid in SSID_ARRAY.iter_mut() {
             ssid[0] = 0; // set the length field on each entry to 0 as a proxy for clearing the array
         }
-        SSID_SCAN_IN_PROGRESS = true;
         result = sl_wfx_send_scan_command(
             sl_wfx_scan_mode_e_WFM_SCAN_MODE_ACTIVE as u16,
             0 as *const u8,
@@ -1201,12 +1268,17 @@ pub fn wfx_start_scan() -> sl_status_t {
 fn sl_wfx_scan_complete_callback(_status: u32) {
     logln!(LL::Debug, "scan complete");
     unsafe {
-        SSID_SCAN_IN_PROGRESS = false;
+        // we also set this when we get incremental results
+        SSID_SCAN_UPDATE = true;
     }
 }
 
-pub fn wfx_ssid_scan_in_progress() -> bool {
-    unsafe { SSID_SCAN_IN_PROGRESS }
+pub fn poll_scan_updated() -> bool {
+    unsafe {
+        let ret = SSID_SCAN_UPDATE;
+        SSID_SCAN_UPDATE = false;
+        ret
+    }
 }
 
 pub fn wfx_handle_event() -> sl_status_t {
@@ -1330,7 +1402,16 @@ pub unsafe extern "C" fn sl_wfx_host_post_event(
         }
         sl_wfx_confirmations_ids_e_SL_WFX_CONNECT_CNF_ID => {
             logln!(LL::Debug, "WfxConnCnf");
-        }
+            let ext_auth: *const sl_wfx_ext_auth_req_t =
+                event_payload as *const sl_wfx_ext_auth_req_t;
+                loghexln!(LL::Debug, "ExtAuthType ", (*ext_auth).body.auth_data_type);
+                loghexln!(LL::Debug, "ExtAuthLen ", (*ext_auth).body.auth_data_length);
+                let data = (*ext_auth).body.auth_data.as_slice((*ext_auth).body.auth_data_length as usize);
+                for &d in data {
+                    loghex!(LL::Debug, "", d);
+                }
+                logln!(LL::Debug, "");
+            }
         sl_wfx_confirmations_ids_e_SL_WFX_DISCONNECT_CNF_ID => {
             logln!(LL::Debug, "WfxDisconCnf");
         }

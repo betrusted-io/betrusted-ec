@@ -1,4 +1,5 @@
 use betrusted_hal::hal_time::get_time_ms;
+use com_rs::ConnectResult;
 use utralib::generated::{utra, CSR, HW_COM_BASE};
 use volatile::Volatile;
 
@@ -69,7 +70,10 @@ impl ComInterrupts {
     }
     /// getter/setters from internal logic (wf200, etc.)
     pub fn set_rx_ready(&mut self, len: u16) {
-        self.rx_len_bytes = len;
+        // don't overwrite the connect result in case we got an Rx packet right after connecting
+        if (self.state & com_rs::INT_WLAN_CONNECT_EVENT) == 0 {
+            self.rx_len_bytes = len;
+        }
         if self.state & com_rs::INT_WLAN_RX_READY != 0 {
             // if we're getting a second packet before the prior one was serviced, fake an ack
             // so that the interrupt edge fires again
@@ -79,8 +83,33 @@ impl ComInterrupts {
         }
     }
     pub fn ack_rx_ready(&mut self) {
-        self.rx_len_bytes = 0;
+        // don't overwrite the connect result in case we had a delayed ack before we got the result read
+        if (self.state & com_rs::INT_WLAN_CONNECT_EVENT) == 0 {
+            self.rx_len_bytes = 0;
+        }
         self.state &= !com_rs::INT_WLAN_RX_READY;
+    }
+    pub fn set_disconnect(&mut self) {
+        if self.state & com_rs::INT_WLAN_DISCONNECT != 0 {
+            // fake an ack so that the interrupt edge fires again
+            self.retrigger = true;
+        } else {
+            self.state |= com_rs::INT_WLAN_DISCONNECT;
+        }
+    }
+    pub fn ack_disconnect(&mut self) {
+        self.state &= !com_rs::INT_WLAN_DISCONNECT;
+    }
+    pub fn set_connect_result(&mut self, result: ConnectResult) {
+        if self.state & com_rs::INT_WLAN_CONNECT_EVENT != 0 {
+            self.retrigger = true;
+        } else {
+            self.state |= com_rs::INT_WLAN_CONNECT_EVENT;
+        }
+        self.rx_len_bytes = result as u16;
+    }
+    pub fn ack_connect_result(&mut self) {
+        self.state &= !com_rs::INT_WLAN_CONNECT_EVENT;
     }
     pub fn set_ipconf_update(&mut self) {
         self.state |= com_rs::INT_WLAN_IPCONF_UPDATE;
