@@ -828,6 +828,10 @@ fn main() -> ! {
                         com_tx((e as u16) << 8)
                     }
                 }
+            } else if rx == ComState::WLAN_SYNC_STATE.verb {
+                logln!(LL::Debug, "CwSyncS");
+                com_tx(hal_wf200::interface_status() as u16);
+                com_tx(hal_wf200::dhcp_get_state() as u16);
             } else if rx == ComState::WLAN_BIN_STATUS.verb {
                 logln!(LL::Debug, "CWStatus");
                 // send the rssi
