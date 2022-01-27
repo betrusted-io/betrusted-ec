@@ -8,7 +8,7 @@ use wfx_bindings::{
 use wfx_rs::hal_wf200;
 use wfx_rs::hal_wf200::{
     wf200_fw_build, wf200_fw_major, wf200_fw_minor, wf200_send_pds, wf200_ssid_get_list,
-    wfx_drain_event_queue, wfx_handle_event, wfx_init, wfx_start_scan,
+    wfx_handle_event, wfx_init, wfx_start_scan,
 };
 
 // Configure Log Level (used in macro expansions)
@@ -176,8 +176,14 @@ pub fn start_scan() {
     // 2. Post of SL_WFX_SCAN_COMPLETE_IND_ID event marks end of scan. At that
     //    point, the scan is done and you can start another one if you want.
     //
-    let limit = 32;
-    wfx_drain_event_queue(limit);
+    // Update Jan 27 2022: emperically, from testing with the new connection manager, this
+    // doesn't seem necessary -- and I suspect that throwing away events is causing
+    // other elements of the network protocol to have troubles. However, leaving
+    // these two lines around "just in case".
+    //
+    // let limit = 32;
+    // wfx_rs::hal_wf200::wfx_drain_event_queue(limit);
+
     wfx_start_scan();
 }
 
