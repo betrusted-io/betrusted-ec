@@ -274,6 +274,9 @@ fn main() -> ! {
                 wifi::handle_event();
                 // update interrupt vectors
                 if com_net_bridge_enable {
+                    if wfx_rs::hal_wf200::poll_wfx_err_pending() {
+                        com_int_mgr.set_wfx_err();
+                    }
                     if let Some(len) = wfx_rs::hal_wf200::poll_new_avail() {
                         com_int_mgr.set_rx_ready(len);
                     }

@@ -111,6 +111,18 @@ impl ComInterrupts {
     pub fn ack_connect_result(&mut self) {
         self.state &= !com_rs::INT_WLAN_CONNECT_EVENT;
     }
+
+    pub fn set_wfx_err(&mut self) {
+        if self.state & com_rs::INT_WLAN_WFX_ERR != 0 {
+            self.retrigger = true; // this one is kind of urgent so re-ping if it happens again
+        } else {
+            self.state |= com_rs::INT_WLAN_WFX_ERR;
+        }
+    }
+    pub fn ack_wfx_err(&mut self) {
+        self.state &= !com_rs::INT_WLAN_WFX_ERR;
+    }
+
     pub fn set_ipconf_update(&mut self) {
         self.state |= com_rs::INT_WLAN_IPCONF_UPDATE;
     }

@@ -158,10 +158,18 @@ pub fn poll_connect_result() -> ConnectResult {
         ret
     }
 }
+pub fn poll_wfx_err_pending() -> bool {
+    unsafe {
+        let ret = WFX_ERR_PENDING;
+        WFX_ERR_PENDING = false;
+        ret
+    }
+}
 /// Current link layer connection state
 static mut CURRENT_STATUS: LinkState = LinkState::Unknown;
 static mut DISCONNECT_PENDING: bool = false;
 static mut CONNECT_RESULT: ConnectResult = ConnectResult::Pending;
+static mut WFX_ERR_PENDING: bool = false;
 
 /// Internet layer connection state
 static mut NET_STATE: net::NetState = net::NetState::new();
@@ -625,6 +633,7 @@ pub unsafe extern "C" fn sl_wfx_host_reset_chip() -> sl_status_t {
     delay_ms(10);
 
     // TODO: marshall all these state variables into a single object so we don't lose track of them.
+    WFX_ERR_PENDING = false;
 
     // clear "mallocs"
     WFX_PTR_LIST = [0; WFX_MAX_PTRS];
@@ -1390,6 +1399,7 @@ pub unsafe extern "C" fn sl_wfx_host_post_event(
                 },
                 _ => loghexln!(LL::Debug, "", error),
             }
+            WFX_ERR_PENDING = true;
             /*
             let mut cr: u16 = 0;
             let s = sl_wfx_receive_frame(&mut cr);
