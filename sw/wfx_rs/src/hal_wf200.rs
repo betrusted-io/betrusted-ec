@@ -487,6 +487,9 @@ pub fn wf200_ssid_get_list(ssid_list: &mut [[u8; 34]; SSID_ARRAY_SIZE]) {
                 *d = *s;
             }
         }
+        // clear the array so we don't end up in limit cycles if we happen to have exactly 6 or 7 APs in range
+        SSID_ARRAY = [[0; 34]; SSID_ARRAY_SIZE];
+        SSID_INDEX = 0;
     }
 }
 
