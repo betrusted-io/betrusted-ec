@@ -474,6 +474,18 @@ fn main() -> ! {
                 logln!(LL::Debug, "CLoop");
                 com_tx((rx & 0xFF) | ((com_sentinel as u16 & 0xFF) << 8));
                 com_sentinel += 1;
+            } else if rx == ComState::LINK_PING.verb {
+                logln!(LL::Debug, "CPing");
+                match com_rx(500) {
+                    Ok(ping) => {
+                        com_tx(!ping);
+                        com_tx(0x600d);
+                    },
+                    _ => {
+                        com_tx(0xEEEE);
+                        com_tx(0xFFFF);
+                    }
+                }
             } else if rx == ComState::GAS_GAUGE.verb {
                 logln!(LL::Trace, "CGg"); // This gets polled frequently
                 com_tx(pow.current as u16);
