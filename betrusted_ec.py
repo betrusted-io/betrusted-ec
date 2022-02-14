@@ -951,7 +951,7 @@ def main():
         pad_file(os.path.join(output_dir, 'gateware', 'betrusted_ec_multiboot.bin'), os.path.join(output_dir, 'gateware', 'betrusted_ec_multiboot_pad.bin'), 0x1a000)
 
     lxsocdoc.generate_docs(soc, "build/documentation", note_pulses=True)
-    lxsocdoc.generate_svd(soc, "build/software")
+    lxsocdoc.generate_svd(soc, "build/software", description="Betrusted EC")
 
 if __name__ == "__main__":
     from datetime import datetime
