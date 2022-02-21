@@ -725,6 +725,10 @@ pub unsafe extern "C" fn sl_wfx_host_unlock() -> sl_status_t {
     SL_STATUS_OK
 }
 
+static mut DEEP_DEBUG: bool = false;
+pub fn set_deep_debug(state: bool) {
+    unsafe{DEEP_DEBUG = state};
+}
 #[doc = " @brief Send data on the SPI bus"]
 #[doc = ""]
 #[doc = " @param type is the type of bus action (see ::sl_wfx_host_bus_transfer_type_t)"]
@@ -743,6 +747,10 @@ pub unsafe extern "C" fn sl_wfx_host_spi_transfer_no_cs_assert(
 ) -> sl_status_t {
     let mut wifi_csr = CSR::new(HW_WIFI_BASE as *mut u32);
 
+    let mut hdr_buf = [0u16; 16];
+    let mut hdr_index = 0;
+    let mut hdr_printed = false;
+    let mut suppress = false;
     {
         // we do "MTU" in case header_len is odd. should never be but...this is their API
         let mut header_len_mtu = header_length / 2;
@@ -751,6 +759,9 @@ pub unsafe extern "C" fn sl_wfx_host_spi_transfer_no_cs_assert(
         while header_len_mtu > 0 {
             //let word: u16 = ((header.add(header_pos).read() as u16) << 8) | (header.add(header_pos + 1).read() as u16);
             let word: u16 = headeru16.add(header_pos).read();
+            hdr_buf[hdr_index] = word;
+            hdr_index += 1;
+
             wifi_csr.wo(utra::wifi::TX, word as u32);
             header_len_mtu -= 1;
             header_pos += 1;
@@ -771,6 +782,23 @@ pub unsafe extern "C" fn sl_wfx_host_spi_transfer_no_cs_assert(
                 wifi_csr.wfo(utra::wifi::CONTROL_GO, 0);
 
                 let word: u16 = wifi_csr.rf(utra::wifi::RX_RX) as u16;
+                if DEEP_DEBUG {
+                    if !hdr_printed {
+                        hdr_printed = true;
+                        if hdr_buf[0] == 0x0190 && word == 0x3000 {
+                            suppress = true;
+                        } else {
+                            log!(LL::Debug, "HDR ");
+                            for &w in hdr_buf[..hdr_index].iter() {
+                                log!(LL::Debug, "{:04x}", w);
+                            }
+                            log!(LL::Debug, "\n\rREAD ");
+                            log!(LL::Debug, "{:04x} ", word);
+                        }
+                    } else {
+                        log!(LL::Debug, "{:04x} ", word);
+                    }
+                }
                 bufferu16.add(buffer_pos).write(word);
                 //buffer.add(buffer_pos).write((word >> 8) as u8);
                 //buffer.add(buffer_pos+1).write((word & 0xff) as u8);
@@ -778,6 +806,13 @@ pub unsafe extern "C" fn sl_wfx_host_spi_transfer_no_cs_assert(
                 buffer_pos += 1;
             }
         } else {
+            if DEEP_DEBUG {
+                log!(LL::Debug, "HDR ");
+                for &w in hdr_buf[..hdr_index].iter() {
+                    log!(LL::Debug, "{:04x}", w);
+                }
+                log!(LL::Debug, "\n\rWRITE ");
+            }
             // transmit the buffer
             let buffer_len_mtu: usize = buffer_length as usize / 2;
             let mut buffer_pos: usize = 0;
@@ -785,6 +820,9 @@ pub unsafe extern "C" fn sl_wfx_host_spi_transfer_no_cs_assert(
             while buffer_pos < buffer_len_mtu {
                 //let word: u16 = ((buffer.add(buffer_pos).read() as u16) << 8) | (buffer.add(buffer_pos+1).read() as u16);
                 let word: u16 = bufferu16.add(buffer_pos).read();
+                if DEEP_DEBUG {
+                    log!(LL::Debug, "{:04x} ", word);
+                }
                 wifi_csr.wo(utra::wifi::TX, word as u32);
                 //                buffer_len_mtu -= 1;
                 buffer_pos += 1;
@@ -793,6 +831,9 @@ pub unsafe extern "C" fn sl_wfx_host_spi_transfer_no_cs_assert(
                 while wifi_csr.rf(utra::wifi::STATUS_TIP) == 1 {}
                 wifi_csr.wfo(utra::wifi::CONTROL_GO, 0);
             }
+        }
+        if DEEP_DEBUG && !suppress {
+            logln!(LL::Debug, "");
         }
     }
     SL_STATUS_OK

@@ -254,7 +254,9 @@ fn main() -> ! {
     // Reset & Init WF200 before starting the main loop
     if use_wifi {
         logln!(LL::Info, "wifi...");
+        hal_wf200::set_deep_debug(false);
         wifi::wf200_reset_and_init(&mut use_wifi, &mut wifi_ready);
+        hal_wf200::set_deep_debug(true);
     } else {
         wifi_ready = false;
         wifi::wf200_reset_hold();
