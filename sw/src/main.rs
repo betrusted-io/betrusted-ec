@@ -216,6 +216,8 @@ fn main() -> ! {
     i2c.i2c_init(CONFIG_CLOCK_FREQUENCY);
     // this needs to be one of the first things called after I2C comes up
     hw.charger.chg_set_safety(&mut i2c);
+    loghexln!(LL::Debug, "gg devtype: ", betrusted_hal::api_gasgauge::gg_get_devtype(&mut i2c));
+    // put the gg out of hibernate so we have a higher resolution reporting
     gg_start(&mut i2c);
     hw.charger.chg_set_autoparams(&mut i2c);
     hw.charger.chg_start(&mut i2c);
@@ -256,7 +258,7 @@ fn main() -> ! {
         logln!(LL::Info, "wifi...");
         hal_wf200::set_deep_debug(false);
         wifi::wf200_reset_and_init(&mut use_wifi, &mut wifi_ready);
-        hal_wf200::set_deep_debug(true);
+        hal_wf200::set_deep_debug(false);
     } else {
         wifi_ready = false;
         wifi::wf200_reset_hold();

@@ -34,12 +34,19 @@ const GG_EXT_DCAP_LSB    :  u8 = 0x3C;  // design capacity LSB
 // control command codes
 const GG_CODE_CTLSTAT :  u16 = 0x0000;
 const GG_CODE_DEVTYPE :  u16 = 0x0001;
+const GG_CODE_FW_REV  :  u16 = 0x0002;
+const GG_CODE_DM_CODE :  u16 = 0x0004;
 const GG_CODE_UNSEAL  :  u16 = 0x8000;
 const GG_CODE_SEAL    :  u16 = 0x0020;
 const GG_CODE_CFGUPDATE :  u16 = 0x0013;
 const GG_CODE_RESET   :  u16 = 0x0042;
 const GG_CODE_SET_HIB :  u16 = 0x0011;
 const GG_CODE_CLR_HIB :  u16 = 0x0012;
+const GG_CODE_ALT_CHEM0: u16 = 0x0030;
+const GG_CODE_ALT_CHEM1: u16 = 0x0031;
+const GG_CODE_ALT_CHEM2: u16 = 0x0032;
+const GG_CODE_CHEM_ID:   u16 = 0x0008;
+const GG_CODE_EXIT_CFGUPDATE: u16 = 0x0043;
 
 const GG_UPDATE_INTERVAL_MS : u32 = 1000;
 const GG_TIMEOUT_MS: u32 = 2;
@@ -64,7 +71,7 @@ fn gg_get(i2c: &mut Hardi2c, cmd_code: u8) -> i16 {
 
     // don't do the sign conversion untl after the bytes are composited, sign extension of
     // of i8's would be inappropriate for this application
-    (rxbuf[0] as u16 | (rxbuf[1] as u16) << 8) as i16
+    (rxbuf[0] as u16 | ((rxbuf[1] as u16) << 8)) as i16
 }
 
 fn gg_get_byte(i2c: &mut Hardi2c, cmd_code: u8) -> u8 {
@@ -101,6 +108,49 @@ pub fn gg_device_type(i2c: &mut Hardi2c) -> i16 {
 pub fn gg_control_status(i2c: &mut Hardi2c) -> i16 {
     gg_set(i2c, GG_CMD_CNTL, GG_CODE_CTLSTAT);
     gg_get(i2c, GG_CMD_CNTL)
+}
+
+pub fn gg_set_chemistry(i2c: &mut Hardi2c) -> u16 {
+    if true {
+        // unseal the gasguage by writing the unseal command twice
+        gg_set(i2c, GG_CMD_CNTL, GG_CODE_UNSEAL);
+        gg_set(i2c, GG_CMD_CNTL, GG_CODE_UNSEAL);
+
+        // set configuraton update command
+        gg_set(i2c, GG_CMD_CNTL, GG_CODE_CFGUPDATE);
+        loop {
+            let flags : i16 = gg_get(i2c, GG_CMD_FLAG);
+            if (flags & 0x10) != 0 { break; }
+        }
+        gg_set(i2c, GG_CMD_CNTL, GG_CODE_ALT_CHEM1);
+        while gg_control_status(i2c) & 0x01 != 0 {
+            //logln!(LL::Debug, "CHEMCHNG in progress");
+        }
+        gg_set(i2c, GG_CMD_CNTL, GG_CODE_EXIT_CFGUPDATE);
+
+        // seal the gas gauge
+        gg_set(i2c, GG_CMD_CNTL, GG_CODE_SEAL);
+    }
+    gg_set(i2c, GG_CMD_CNTL, GG_CODE_CHEM_ID);
+    let chem_id = gg_get(i2c, GG_CMD_CNTL);
+    chem_id as u16
+}
+
+pub fn gg_get_devtype(i2c: &mut Hardi2c) -> u16 {
+    gg_set(i2c, GG_CMD_CNTL, GG_CODE_DEVTYPE);
+    gg_get(i2c, GG_CMD_CNTL) as u16
+}
+pub fn gg_get_status(i2c: &mut Hardi2c) -> u16 {
+    gg_set(i2c, GG_CMD_CNTL, GG_CODE_CTLSTAT);
+    gg_get(i2c, GG_CMD_CNTL) as u16
+}
+pub fn gg_get_dmcode(i2c: &mut Hardi2c) -> u16 {
+    gg_set(i2c, GG_CMD_CNTL, GG_CODE_DM_CODE);
+    gg_get(i2c, GG_CMD_CNTL) as u16
+}
+pub fn gg_get_fwrev(i2c: &mut Hardi2c) -> u16 {
+    gg_set(i2c, GG_CMD_CNTL, GG_CODE_FW_REV);
+    gg_get(i2c, GG_CMD_CNTL) as u16
 }
 
 #[doc = "Set the design capacity of the battery. Returns previously assigned capacity."]
