@@ -35,45 +35,19 @@ Alternatively:
 2. On the Raspberry Pi, run `config_up5k.sh` from the `betrusted-scripts` repo as explained below.
 
 ## Debugging Notes
-The UP5K is debugged principally via wishbone-tool running over a UART, using
-a Raspberry Pi with the custom debug HAT and cable. It's also assumed that
-you have installed and cloned the `betrusted-scripts` repo (https://github.com/betrusted-io/betrusted-scripts/)
-on the Raspberry Pi. The commands in this section are run on the Rasperry Pi
-thus configured.
-
-Note that the debugging interface is more stable when power is applied from
-the debug cable itself using the `vbus_on.sh` script (rather than being
-applied via USB or relying on the battery).
+Serial output from the EC can be viewed over the debugging cable via
+the Precursor debug HAT. See [instructions on installing the cable](https://github.com/betrusted-io/betrusted-wiki/wiki/Updating-Your-Device#installing-the-cable).
 
 The EC UART port is selected by running the `betrusted-scripts/uart_up5k.sh` script.
 
-`wishbone-tool` has some trouble reliably making connection with the wisbone
-bridge over UART if it is not started immediately after the configuration
-sequence. Thus it's recommended to invoke it using the following short
-script:
+You will need some terminal program to interact with the EC. One such program
+is `screen`, for example, on a Raspberry Pi 3B+ you could run
+`sudo screen /dev/ttyS0 115200` and access the EC UART after switching
+to the UART port.
 
-`./config_up5k.sh && sudo ./start-gdb-up5k.sh`
-
-The `start-gdb-up5k.sh` command does two things:
-
-1. Create a GDB server, which you can connect to on port 3333
-2. Tunnel UART to the console, so that `sprintln` calls on the UP5K can print out
-
-Note that if you do compile the EC kernel with debug printing enabled, you
-/must/ have the wishbone tunnel connected, otherwise the firmware will hang
-as the UART buffer fills up and it will block execution.
-
-Before attempting to use GDB for debugging, be sure to disable the
-watchdog timer, or else the EC will continuously reset itself before
-you're able to do anything over GDB. See the `Cargo.toml` for notes
-on this.
-
-To connect to the EC for GDB debugging, you must have a version of
-the riscv GDB toolchain installed. For example, from an Ubuntu host,
-you may be able to run `riscv64-unknown-elf-gdb`, and then use
-`file target/riscv32i-unknown-none-elf/release/sw` to load the
-firmware for debugging, and then `target remote <raspberry_pi_ip>:3333`
-to connect to the Raspberry Pi.
+Note that varying generations and releases of Raspberry
+Pi put the UART on either `ttyS0` or `AMA0`, and you may need to run
+`raspi-config` to enable serial ports first.
 
 ## WF200 firmware
 The EC image is intimately linked to the WF200 firmware image that is
