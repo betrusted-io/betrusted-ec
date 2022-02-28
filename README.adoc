@@ -42,7 +42,7 @@ The EC UART port is selected by running the `betrusted-scripts/uart_up5k.sh` scr
 
 You will need some terminal program to interact with the EC. One such program
 is `screen`, for example, on a Raspberry Pi 3B+ you could run
-`sudo screen /dev/ttyS0 115200` and access the EC UART after switching
+`sudo screen -fn /dev/ttyS0 115200` and access the EC UART after switching
 to the UART port.
 
 Note that varying generations and releases of Raspberry
