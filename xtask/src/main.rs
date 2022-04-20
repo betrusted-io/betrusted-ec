@@ -186,7 +186,7 @@ fn build_hw_image(debug: bool, svd: Option<String>) -> Result<(), DynError> {
     std::env::set_var("EC_SVD_FILE", path.canonicalize().unwrap());
 
     // pass the current git tag onto the build
-    let output = Command::new("git").args(&["describe", "HEAD"]).output().unwrap();
+    let output = Command::new("git").args(&["describe", "HEAD", "--long"]).output().unwrap();
     let git_rev = String::from_utf8(output.stdout).unwrap();
     println!("Passing GIT_REV to fimware build: {}", git_rev);
     std::env::set_var("GIT_REV", git_rev);
