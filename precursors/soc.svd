@@ -3,6 +3,7 @@
 <device schemaVersion="1.1" xmlns:xs="http://www.w3.org/2001/XMLSchema-instance" xs:noNamespaceSchemaLocation="CMSIS-SVD.xsd" >
     <vendor>litex</vendor>
     <name>SOC</name>
+    <description><![CDATA[Betrusted EC]]></description>
 
     <addressUnitBits>8</addressUnitBits>
     <width>32</width>
@@ -261,10 +262,10 @@ Notably, a watchdog reset will disable the watchdog.]]></description>
                 <register>
                     <name>GITREV</name>
                     <description><![CDATA[First 32-bits of the git revision.  This documentation was built from git rev
-``6102eb1f``, so this value is 1627581215, which should be enough to check out
+``ac8375bb``, so this value is 2894296507, which should be enough to check out
 the exact git version used to build this firmware.]]></description>
                     <addressOffset>0x0000</addressOffset>
-                    <resetValue>0x6102eb1f</resetValue>
+                    <resetValue>0xac8375bb</resetValue>
                     <size>32</size>
                     <fields>
                         <field>

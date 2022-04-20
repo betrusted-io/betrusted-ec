@@ -10,7 +10,7 @@ exclude = [
 ]
 
 [profile.release]
-opt-level = "z"
+opt-level = "s"
 codegen-units = 1  # more optimization
 lto = "fat"
 panic = "abort"
