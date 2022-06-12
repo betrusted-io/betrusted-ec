@@ -113,7 +113,7 @@ impl BtUsbCc {
         // fill in other parameter inits
         // we want to initially look like a UFP, advertising 500mA current
         let mut txwrbuf: [u8; 2] = [TUSB320LAI_09_CSR1 as u8,
-           (ConfigStatus1::DISABLE_UFP_ACCESSORY | ConfigStatus1::DRP_ADVERT_DUTYCYCLE_30PCT).bits()];
+           (ConfigStatus1::ENABLE_UFP_ACCESSORY | ConfigStatus1::DRP_ADVERT_DUTYCYCLE_30PCT).bits()];
         while i2c.i2c_controller(TUSB320LAI_ADDR, Some(&txwrbuf), None, TUSB320_TIMEOUT_MS) != 0 {}
 
         // set us up for UFP mode -- once we get host support, need to change to allow DRP mode!!
