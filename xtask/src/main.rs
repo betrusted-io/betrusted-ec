@@ -4,6 +4,7 @@ use std::{
     path::{Path, PathBuf},
     process::Command,
 };
+use xous_semver::SemVer;
 
 use const_format::formatcp;
 
@@ -320,22 +321,42 @@ fn create_image(
         }
     }
 
+    const SIG_VERSION: u32 = 1;
+    // write the disk copy
     let mut image = std::fs::File::create(PathBuf::from(&IMAGE_PATH))?;
     image.write(&gateware_bin)?;
     image.write(&loader)?;
     image.write(&kernel_bin)?;
 
+    let semver = SemVer::from_git()
+    .map_err(|_| std::io::Error::new(
+        std::io::ErrorKind::Other,
+        "couldn't read git semantic version")
+    )?;
+    let semver_bytes: [u8; 16] = semver.into();
+    image.write(&semver_bytes)?;
+    let ecfw_len = (
+        gateware_bin.len() + loader.len()
+        + kernel_bin.len() + semver_bytes.len()
+        + 2 * core::mem::size_of::<u32>()) as u32; // last word for the length + version
+    image.write(&SIG_VERSION.to_le_bytes())?;
+    image.write(&ecfw_len.to_le_bytes())?;
+
+    // compute the hash of the disk copy
     let mut ec_fw: Vec<u8> = Vec::new();
     // build the header
     ec_fw.write(&[0; 32])?; // pad some space for the hash
     ec_fw.write(&[0x70, 0x72, 0x65, 0x63])?; // signature 'prec' in BE
-    ec_fw.write(&(1 as u32).to_le_bytes())?;
-    ec_fw.write( &((gateware_bin.len() + loader.len() + kernel_bin.len()) as u32).to_le_bytes())?;
+    ec_fw.write(&SIG_VERSION.to_le_bytes())?;
+    ec_fw.write( &ecfw_len.to_le_bytes())?;
     ec_fw.resize(4096, 0xff); // extend the header to the next page
     // write the firmware
     ec_fw.write(&gateware_bin)?;
     ec_fw.write(&loader)?;
     ec_fw.write(&kernel_bin)?;
+    ec_fw.write(&semver_bytes)?;
+    ec_fw.write(&ecfw_len.to_be_bytes())?;
+
     // compute the hash
     use sha2::Digest;
     let mut hasher = sha2::Sha512Trunc256::new();
