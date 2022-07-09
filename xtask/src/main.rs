@@ -328,6 +328,19 @@ fn create_image(
     image.write(&loader)?;
     image.write(&kernel_bin)?;
 
+    // add hashes of gateware and loader+kernel
+    // use to help short-circuit updates if we're already up to date
+    let mut hasher = sha2::Sha512Trunc256::new();
+    hasher.update(&gateware_bin);
+    let gw_hash = hasher.finalize();
+    let mut hasher = sha2::Sha512Trunc256::new();
+    hasher.update(&loader);
+    hasher.update(&kernel_bin);
+    let fw_hash = hasher.finalize();
+    image.write(gw_hash.as_slice())?;
+    image.write(fw_hash.as_slice())?;
+
+    // extract and add semantic versions
     let semver = SemVer::from_git()
     .map_err(|_| std::io::Error::new(
         std::io::ErrorKind::Other,
@@ -336,8 +349,12 @@ fn create_image(
     let semver_bytes: [u8; 16] = semver.into();
     image.write(&semver_bytes)?;
     let ecfw_len = (
-        gateware_bin.len() + loader.len()
-        + kernel_bin.len() + semver_bytes.len()
+        gateware_bin.len()
+        + loader.len()
+        + kernel_bin.len()
+        + gw_hash.as_slice().len()
+        + fw_hash.as_slice().len()
+        + semver_bytes.len()
         + 2 * core::mem::size_of::<u32>()) as u32; // last word for the length + version
     image.write(&SIG_VERSION.to_le_bytes())?;
     image.write(&ecfw_len.to_le_bytes())?;
@@ -354,7 +371,10 @@ fn create_image(
     ec_fw.write(&gateware_bin)?;
     ec_fw.write(&loader)?;
     ec_fw.write(&kernel_bin)?;
+    ec_fw.write(&gw_hash.as_slice())?;
+    ec_fw.write(&fw_hash.as_slice())?;
     ec_fw.write(&semver_bytes)?;
+    ec_fw.write(&SIG_VERSION.to_le_bytes())?;
     ec_fw.write(&ecfw_len.to_be_bytes())?;
 
     // compute the hash
