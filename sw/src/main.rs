@@ -676,6 +676,37 @@ fn main() -> ! {
                     // logln!(LL::Debug, "Programming 256 bytes to 0x{:08x}", address);
                     spi_program_page(address, &mut page);
                 }
+            } else if rx == ComState::FLASH_VERIFY.verb {
+                // reads out 256 bytes of memory from the base address. The base address
+                // is forced to a word alignment.
+
+                // note: this is actually a command that can read "anywhere" in RAM
+                // and ROM (quite deliberately, it allows the SoC to instrospect the EC)
+                // the range checks are just to keep addreses from falling into any range
+                // that could crash the EC, they are not meant to be overly-restrictive.
+                let mut address: u32 = 0;
+                match com_rx(100) {
+                    Ok(result) => address = (result as u32) << 16,
+                    _ => (),
+                }
+                match com_rx(100) {
+                    Ok(result) => address |= (result as u32) & 0xFFFF,
+                    _ => (),
+                }
+                if address < 0x1000_0000
+                    || address >= 0x1002_0000 && address < 0x2000_0000
+                    || address >= 0x2100_0000 && address < 0xe000_0000
+                    || address >= 0xe000_8000 // the e000_0000 window are where the CSRs are
+                {
+                    address = 0x2000_0000; // set to start of FLASH if it's OOB.
+                }
+                address &= 0xFFFF_FFFC; // force alignment
+                let ptr: *const u32 = address as *const u32;
+                for i in 0..64 {
+                    let data = unsafe{ptr.add(i).read_volatile()};
+                    com_tx(data as u16); // LSB first
+                    com_tx((data >> 16) as u16);
+                }
             } else if rx == ComState::FLASH_LOCK.verb {
                 flash_update_lock = true;
                 wifi::wf200_irq_disable();
