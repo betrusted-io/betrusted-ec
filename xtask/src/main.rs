@@ -346,6 +346,13 @@ fn create_image(
         std::io::ErrorKind::Other,
         "couldn't read git semantic version")
     )?;
+    if semver.extra > 255 {
+        // we allow >255 for Xous SemVers, but, for the EC we restrict to 8 bits. This has
+        // historically been "enough", as the code base is quite small and relatively stable.
+        // the reason is the COM crate in Xous has some legacy code that packs an 8-bit extra
+        // field into a u32 for comparisons.
+        panic!("extra field on semver > 255; this breaks certain assumptions in the EC version handler");
+    }
     let semver_bytes: [u8; 16] = semver.into();
     image.write(&semver_bytes)?;
     let ecfw_len = (
