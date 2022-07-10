@@ -156,7 +156,7 @@ fn stack_check() {
 
 #[entry]
 fn main() -> ! {
-    logln!(LL::Info, "\r\n====UP5K==0F");
+    logln!(LL::Info, "\r\n====UP5K==10");
     let gitrev = core::env!("GIT_REV");
     let mut com_csr = CSR::new(HW_COM_BASE as *mut u32);
     let mut crg_csr = CSR::new(HW_CRG_BASE as *mut u32);
