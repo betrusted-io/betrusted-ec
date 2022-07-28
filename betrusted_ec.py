@@ -5,6 +5,8 @@
 # programs.
 LX_DEPENDENCIES = ["riscv", "icestorm", "yosys"]
 
+# this line just bumps a commitref to trigger the build system
+
 # Import lxbuildenv to integrate the deps/ directory
 import lxbuildenv
 import argparse
