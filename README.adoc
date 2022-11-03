@@ -12,7 +12,7 @@ Compiled documentation: https://ci.betrusted.io/betrusted-ec/doc/[latest registe
 ## Getting Started
 
 ### Building the CPU
-1. Ensure you have a toolchain installed, including a compiler, Python 3.5+, `nextpnr-ice40`, and `yosys`.  These can all be obtained by downloading the [Fomu toolchain](https://github.com/im-tomu/fomu-toolchain/releases/latest) and adding it to your `PATH`.
+1. Ensure you have a toolchain installed, including a compiler, Python 3.5+, `nextpnr-ice40`, and `yosys`.  These can all be obtained by downloading the [Fomu toolchain](https://github.com/im-tomu/fomu-toolchain/releases/tag/v1.5.6) and adding it to your `PATH`. Note that the latest release of the toolchain does not work because the synthesis adds extra logic, causing the design to not fit.
 1. Check out this repo with `git clone --recurse-submodules <repo>`. It will consume ~800MiB of disk space (sorry!).
 1. Run `./betrusted_ec.py --revision=pvt` (or `python3 ./betrusted_ec.py --revision=pvt`) to build the "PVT" version of the EC
 1. Run `cargo xtask copy-precursors` to copy your newly built CPU to the staging area for firmware images
