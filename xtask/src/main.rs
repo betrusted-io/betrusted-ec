@@ -31,8 +31,6 @@ fn try_main() -> Result<(), DynError> {
         Some("hw-image") => build_hw_image(false, env::args().nth(2))?,
         Some("docs") => make_docs()?,
         Some("push") => push_to_pi(env::args().nth(2), env::args().nth(3))?,
-        Some("stage-fw") => update_usb(true, false)?,
-        Some("stage-wf200") => update_usb(false, true)?,
         Some("copy-precursors") => copy_precursors()?,
         _ => print_help(),
     }
@@ -45,8 +43,6 @@ fn print_help() {
 hw-image [soc.svd]      builds an image for real hardware
 docs                    updates the documentation tree
 push  [ip] [id]         deploys files to burner Rpi. Example: push 192.168.1.2 ~/id_rsa. Assumes 'pi' as the user.
-stage-fw                stages the EC firmware and gateware for Xous to burn
-stage-wf200             stages the WF200 firmware for Xous to burn
 copy-precursors         copy precursors from a local build of the FPGA to the default location used by xtask
 "
     )
@@ -109,46 +105,6 @@ fn push_to_pi(target: Option<String>, id: Option<String>) -> Result<(), DynError
     let dest_str = DESTDIR.to_string() + "ec-csr.csv";
     let dest = Path::new(&dest_str);
     scp(&target_str.clone(), "pi", id.clone(), Path::new("precursors/csr.csv"), &dest);
-
-    Ok(())
-}
-
-fn update_usb(do_ec: bool, do_wf200: bool) -> Result<(), DynError> {
-    use std::process::Stdio;
-    use std::io::{BufRead, BufReader, Error, ErrorKind};
-
-    if do_ec {
-        println!("Staging EC objects");
-        let stdout = Command::new("python3")
-        .arg("tools/usb_update.py")
-        .arg("-e")
-        .arg("precursors/ec_fw.bin")
-        .stdout(Stdio::piped())
-        .spawn()?
-        .stdout
-        .ok_or_else(|| Error::new(ErrorKind::Other, "Could not capture output"))?;
-
-        let reader = BufReader::new(stdout);
-        reader.lines().for_each(|line|
-            println!("{}", line.unwrap())
-        );
-    }
-    if do_wf200 {
-        println!("Staging WF200 objects");
-        let stdout = Command::new("python3")
-        .arg("tools/usb_update.py")
-        .arg("-w")
-        .arg("precursors/wf200_fw.bin")
-        .stdout(Stdio::piped())
-        .spawn()?
-        .stdout
-        .ok_or_else(|| Error::new(ErrorKind::Other, "Could not capture output"))?;
-
-        let reader = BufReader::new(stdout);
-        reader.lines().for_each(|line|
-            println!("{}", line.unwrap())
-        );
-    }
 
     Ok(())
 }
