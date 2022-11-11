@@ -23,11 +23,14 @@ Compiled documentation: https://ci.betrusted.io/betrusted-ec/doc/[latest registe
 1. Run `cargo xtask hw-image` to build the burnable ROM image artifacts
 
 ### Updating the EC
-In case of any doubt the https://github.com/betrusted-io/betrusted-wiki/wiki/Updating-Your-Device[wiki] is actively maintained
-and should be consulted if the instructions below seem out of date.
+When using the USB method, you either must trigger the update by bumping the semantic version
+of the gateware and the firmware, or you need to rebuild `xous.img` with the custom argument
+`--feature=dbg-ecupdate` to unlock the `shellchat` `ecup` command which allows you to force an
+update, even if it is a downgrade. Once that is set up:
 
-1. Run `cargo xtask update` to copy the firmware artifacts to a Precursor that is attached via USB
-1. Run the EC updater command on the Precursor (`ecup`)
+1. Copy the resulting `ec_fw.bin` file to a location where you can run the https://github.com/betrusted-io/xous-core/blob/main/tools/usb_update.py[usb_update.py]
+2. Plug in the device to the host that can run the script
+3. Execute `usb_update.py -e path-to/ec_fw.bin`
 
 Alternatively:
 
