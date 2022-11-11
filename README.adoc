@@ -12,7 +12,7 @@ Compiled documentation: https://ci.betrusted.io/betrusted-ec/doc/[latest registe
 ## Getting Started
 
 ### Building the CPU
-1. Ensure you have a toolchain installed, including a compiler, Python 3.5+, `nextpnr-ice40`, and `yosys`.  These can all be obtained by downloading the [Fomu toolchain](https://github.com/im-tomu/fomu-toolchain/releases/latest) and adding it to your `PATH`.
+1. Ensure you have a toolchain installed, including a compiler, Python 3.5+, `nextpnr-ice40`, and `yosys`.  These can all be obtained by downloading the https://github.com/im-tomu/fomu-toolchain/releases/tag/v1.5.6[Fomu toolchain] and adding it to your `PATH`. Note that the latest release of the toolchain does not work because the synthesis adds extra logic, causing the design to not fit.
 1. Check out this repo with `git clone --recurse-submodules <repo>`. It will consume ~800MiB of disk space (sorry!).
 1. Run `./betrusted_ec.py --revision=pvt` (or `python3 ./betrusted_ec.py --revision=pvt`) to build the "PVT" version of the EC
 1. Run `cargo xtask copy-precursors` to copy your newly built CPU to the staging area for firmware images
@@ -23,7 +23,7 @@ Compiled documentation: https://ci.betrusted.io/betrusted-ec/doc/[latest registe
 1. Run `cargo xtask hw-image` to build the burnable ROM image artifacts
 
 ### Updating the EC
-In case of any doubt the [wiki](https://github.com/betrusted-io/betrusted-wiki/wiki/Updating-Your-Device) is actively maintained
+In case of any doubt the https://github.com/betrusted-io/betrusted-wiki/wiki/Updating-Your-Device[wiki] is actively maintained
 and should be consulted if the instructions below seem out of date.
 
 1. Run `cargo xtask update` to copy the firmware artifacts to a Precursor that is attached via USB
@@ -36,7 +36,7 @@ Alternatively:
 
 ## Debugging Notes
 Serial output from the EC can be viewed over the debugging cable via
-the Precursor debug HAT. See [instructions on installing the cable](https://github.com/betrusted-io/betrusted-wiki/wiki/Updating-Your-Device#installing-the-cable).
+the Precursor debug HAT. See https://github.com/betrusted-io/betrusted-wiki/wiki/Updating-Your-Device#installing-the-cable[instructions on installing the cable].
 
 The EC UART port is selected by running the `betrusted-scripts/uart_up5k.sh` script.
 
