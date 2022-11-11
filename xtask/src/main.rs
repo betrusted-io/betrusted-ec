@@ -40,10 +40,32 @@ fn try_main() -> Result<(), DynError> {
 fn print_help() {
     eprintln!(
         "Tasks:
-hw-image [soc.svd]      builds an image for real hardware
-docs                    updates the documentation tree
-push  [ip] [id]         deploys files to burner Rpi. Example: push 192.168.1.2 ~/id_rsa. Assumes 'pi' as the user.
+
 copy-precursors         copy precursors from a local build of the FPGA to the default location used by xtask
+hw-image                builds an image for real hardware. Relies on soc.svd artifacts staged by `copy-precursors`.
+docs                    updates the documentation tree
+push  [ip] [id]         deploy files to burner Rpi. Example: push 192.168.1.2 ~/id_rsa. Assumes 'pi' as the user.
+
+Note that for a full build including gateware, one should first run
+
+`./betrusted_ec.py --revision-pvt` to generate the gateware, and then
+
+`cargo xtask copy-precursors` to stage these artifacts.
+
+Then one may run
+
+`cargo xtask hw-image` to create a `bt-ec.bin` and/or `ec_fw.bin` file.
+
+`bt-ec.bin` may be uploaded via JTAG using betrusted-scripts/config_up5k.sh
+  - or -
+`ec_fw.bin` may be uploaded via USB using
+`update_usb.py -e path_to/ec_fw.bin` script in xous-core/tools.
+
+To force-apply the update within Xous, one will need a custom xous.img file that
+is built with the argument `--feature=dbg-ecupdate`, in order to unlock the
+command-line `ecup` commands. Otherwise, the update will only trigger if the semantic
+version of the built artifact is greater than the current artifact burned into the
+device.
 "
     )
 }
