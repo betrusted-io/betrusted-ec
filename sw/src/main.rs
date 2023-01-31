@@ -226,7 +226,7 @@ fn main() -> ! {
     // Initialize the IMU, note special handling for debug logging of init result
     let mut tap_check_phase: u32 = 0;
     match Imu::init(&mut i2c) {
-        Ok(who_am_i_reg) => loghexln!(LL::Debug, "ImuInitOk ", who_am_i_reg), // Should be 0x6A
+        Ok(who_am_i_reg) => loghexln!(LL::Debug, "ImuInitOk ", who_am_i_reg), // Should be 0x6A (LSM6DSL) or 0x69 (alt LSM6DS3)
         Err(n) => loghexln!(LL::Debug, "ImuInitErr ", n),
     }
     // make sure the backlight is off on boot
