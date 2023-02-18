@@ -145,6 +145,7 @@ class BetrustedPlatform(LatticePlatform):
 
             platform.add_period_constraint(clk12_raw, 1e9/12e6)  # this is fixed and comes from external crystal
 
+            lock = Signal()
             # POR reset logic- POR generated from sys clk, POR logic feeds sys clk
             # reset. Just need a pulse one cycle wide to get things working right.
             # ^^^ this line is a lie and full of sadness. I have found devices that do not reliably reset with
@@ -159,9 +160,8 @@ class BetrustedPlatform(LatticePlatform):
             reset_cascade5 = Signal(reset=1)
             reset_cascade6 = Signal(reset=1)
             reset_cascade7 = Signal(reset=1)
-            reset_initiator = Signal()
             self.sync.por += [
-                reset_cascade.eq(reset_initiator),
+                reset_cascade.eq(~lock),
                 reset_cascade2.eq(reset_cascade),
                 reset_cascade3.eq(reset_cascade2),
                 reset_cascade4.eq(reset_cascade3),
@@ -283,6 +283,7 @@ class BetrustedPlatform(LatticePlatform):
                 o_PLLOUTGLOBAL = clk_sys,   # from PLL
                 i_BYPASS = 0,
                 i_RESETB = 1,
+                o_LOCK = lock,
             )
             # global buffer for input SPI clock
             self.clock_domains.cd_sclk = ClockDomain()
