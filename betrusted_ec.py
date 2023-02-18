@@ -23,13 +23,14 @@ from migen.fhdl.structure import ClockSignal, ResetSignal, Replicate, Cat
 from litex.build.lattice.platform import LatticePlatform
 from litex.build.sim.platform import SimPlatform
 from litex.build.generic_platform import Pins, IOStandard, Misc, Subsignal
-from litex.soc.cores import up5kspram
+from litex.soc.cores.ram import Up5kSPRAM
 from litex.soc.integration.soc_core import SoCCore
 from litex.soc.integration.builder import Builder
 from litex.soc.interconnect import wishbone
 from litex.soc.interconnect.csr import *
 from litex.soc.cores.uart import UARTWishboneBridge
 from litex.soc.cores import uart
+from litex.soc.integration.soc import SoCRegion
 
 from gateware.ice40_hard_i2c import HardI2C
 from rtl.rtl_i2c import RtlI2C
@@ -653,7 +654,7 @@ class BaseSoC(SoCCore):
             rx_fifo_depth=16))
             self.add_csr("uart_phy")
             self.add_csr("uart")
-            self.add_interrupt("uart")
+            self.irq.add("uart")
         else:
             serialpads = platform.request("serial")
             dbguart_tx = Signal()
@@ -695,51 +696,55 @@ class BaseSoC(SoCCore):
                 rx_fifo_depth=16))
             self.add_csr("uart_phy")
             self.add_csr("uart")
-            self.add_interrupt("uart")
+            self.irq.add("uart")
 
         # RAM/ROM/reset cluster --------------------------------------------------------------------------
         spram_size = 128*1024
-        self.submodules.spram = up5kspram.Up5kSPRAM(size=spram_size)
-        self.register_mem("sram", self.mem_map["sram"], self.spram.bus, spram_size)
+        self.submodules.spram = Up5kSPRAM(size=spram_size)
+        spram_region =  SoCRegion(origin=self.mem_map["sram"], size=spram_size)
+        self.bus.add_slave("sram", self.spram.bus, spram_region)
 
         # Add a simple bit-banged SPI Flash module
         spi_pads = platform.request("spiflash")
         self.submodules.picorvspi = PicoRVSpi(platform, spi_pads)
-        self.register_mem("spiflash", self.mem_map["spiflash"],
-            self.picorvspi.bus, size=SPI_FLASH_SIZE)
+        spi_region =  SoCRegion(origin=self.mem_map["spiflash"], size=SPI_FLASH_SIZE)
+        self.bus.add_slave("spiflash", self.picorvspi.bus, spi_region)
         self.add_csr("picorvspi")
 
         # I2C --------------------------------------------------------------------------------------------
         if hard_i2c:
             self.submodules.i2c = HardI2C(platform, platform.request("i2c", 0))
-            self.add_wb_slave(self.mem_map["i2c"], self.i2c.bus, 16*4)
-            self.add_memory_region("i2c", self.mem_map["i2c"], 16*4, type='io')
+            i2c_region = SoCRegion(origin=self.mem_map["i2c"], size=16*4)
+            self.bus.add_slave("i2c", self.i2c.bus, i2c_region)
+            # self.add_memory_region("i2c", self.mem_map["i2c"], 16*4, type='io')
             self.add_csr("i2c")
-            self.add_interrupt("i2c")
+            self.irq.add("i2c")
         else:
             self.submodules.i2c = RtlI2C(platform, platform.request("i2c", 0))
             self.add_csr("i2c")
-            self.add_interrupt("i2c")
+            self.irq.add("i2c")
 
         # High-resolution tick timer ---------------------------------------------------------------------
         self.submodules.ticktimer = TickTimer(1000, clk_freq, bits=40)
         self.add_csr("ticktimer")
-        self.add_interrupt("ticktimer")
+        self.irq.add("ticktimer")
 
         # COM port (spi peripheral to Artix) ------------------------------------------------------------------
         self.submodules.com = SpiFifoPeripheral(platform.request("com"), pipeline_cipo=True)
-        self.add_wb_slave(self.mem_map["com"], self.com.bus, 4)
-        self.add_memory_region("com", self.mem_map["com"], 4, type='io')
+        com_region = SoCRegion(origin=self.mem_map["com"], size=4, cached=False)
+        self.bus.add_slave("com", self.com.bus, com_region)
+        # self.add_memory_region("com", self.mem_map["com"], 4, type='io')
         self.add_csr("com")
         self.comb += self.com.oe.eq(self.power.stats.fields.state)  # only drive to FPGA when it's powered up
 
         # SPI port to wifi (controller) ------------------------------------------------------------------
         self.submodules.wifi = ClockDomainsRenamer({'spi':'sys'})(SpiController(platform.request("wifi"), gpio_cs=True))  # control CS with GPIO per wf200 API spec
         self.add_csr("wifi")
-        self.add_interrupt("wifi")
+        self.irq.add("wifi")
 
 
         #### Platform config & build below ---------------------------------------------------------------
+        """
         # Override default LiteX's yosys/build templates
         assert hasattr(platform.toolchain, "yosys_template")
         assert hasattr(platform.toolchain, "build_template")
@@ -783,7 +788,7 @@ class BaseSoC(SoCCore):
                     self.wishbone = interface
             self.add_cpu(_WishboneBridge(self.platform.request("wishbone")))
             self.add_wb_master(self.cpu.wishbone)
-
+        """
 
     def copy_memory_file(self, src):
         import os
