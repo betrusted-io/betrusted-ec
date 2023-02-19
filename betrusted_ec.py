@@ -521,6 +521,8 @@ class TickTimer(Module, AutoCSR, AutoDoc):
 
         self.comb += alarm.eq(self.msleep_target.storage <= timer)
 
+        self.ev.finalize()
+
 
 # a pared-down version of GitInfo to use less gates
 class GitInfo(Module, AutoCSR, AutoDoc):
