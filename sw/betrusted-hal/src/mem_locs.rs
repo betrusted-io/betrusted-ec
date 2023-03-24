@@ -3,7 +3,8 @@
 pub const WFX_FIRMWARE_OFFSET: usize = 0x2000_0000 + 1024 * 1024 - 400 * 1024; // 0x2009_C000
 
 //pub const WFX_FIRMWARE_SIZE: usize = 290896; // version C0, as burned to ROM v3.3.2
-pub const WFX_FIRMWARE_SIZE: usize = 305232; // version C0, as burned to ROM v3.12.1. Also applicable for v3.12.3.
+//pub const WFX_FIRMWARE_SIZE: usize = 305232; // version C0, as burned to ROM v3.12.1. Also applicable for v3.12.3.
+pub const WFX_FIRMWARE_SIZE: usize = 310352; // version C0, v3.16.0
 
 // RAM alloc areas:
 // 0x1000_0000: base of RAM
