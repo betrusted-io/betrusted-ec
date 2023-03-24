@@ -246,7 +246,7 @@ fn create_image(
     loader_elf.pop();
     loader_elf.push("loader.elf");
     // assemble the loader into an ELF file
-    Command::new("riscv64-unknown-elf-as")
+    Command::new("riscv-none-elf-as")
     .arg("-fpic")
     .arg(loader_orig.into_os_string())
     .arg("-o")
@@ -259,7 +259,7 @@ fn create_image(
     let mut loader_elf = loader.clone();
     loader_elf.pop();
     loader_elf.push("loader.elf");
-    Command::new("riscv64-unknown-elf-objcopy")
+    Command::new("riscv-none-elf-objcopy")
     .arg("-O")
     .arg("binary")
     .arg(loader_elf.into_os_string())
@@ -273,7 +273,7 @@ fn create_image(
     std::fs::write(PathBuf::from(&loader_bin_path), loader)?;
 
     // objcopy the target sw into a binary format
-    Command::new("riscv64-unknown-elf-objcopy")
+    Command::new("riscv-none-elf-objcopy")
     .arg("-O").arg("binary")
     .arg(kernel)
     .arg(PathBuf::from(&kernel_bin_path))

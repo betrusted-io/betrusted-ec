@@ -4,7 +4,7 @@ use std::env::var;
 use std::env::set_var;
 
 fn main() {
-    set_var("CC", "riscv64-unknown-elf-gcc");  // set the compiler to what's installed on the system
+    set_var("CC", "riscv-none-elf-gcc");  // set the compiler to what's installed on the system
 
 	let mut base_config = cc::Build::new();
 
