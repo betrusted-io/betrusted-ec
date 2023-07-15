@@ -44,20 +44,40 @@ pub fn ap_join_wpa2(ws: &WlanState) {
             &""
         }
     };
-    let result: sl_status_t = unsafe {
-        sl_wfx_send_join_command(
-            ssid.as_ptr(),
-            ssid.len() as u32,
-            core::ptr::null(),
-            0 as u16,
-            sl_wfx_security_mode_e_WFM_SECURITY_MODE_WPA2_PSK,
-            prevent_roaming,
-            management_frame_protection,
-            pass.as_ptr(),
-            pass.len() as u16,
-            ie_data,
-            ie_data_length,
-        )
+    let result: sl_status_t = if pass.len() > 0 {
+        // password has non-zero length, try with WPA2
+        unsafe {
+            sl_wfx_send_join_command(
+                ssid.as_ptr(),
+                ssid.len() as u32,
+                core::ptr::null(),
+                0 as u16,
+                sl_wfx_security_mode_e_WFM_SECURITY_MODE_WPA2_PSK,
+                prevent_roaming,
+                management_frame_protection,
+                pass.as_ptr(),
+                pass.len() as u16,
+                ie_data,
+                ie_data_length,
+            )
+        }
+    } else {
+        // zero-length password, try with no password
+        unsafe {
+            sl_wfx_send_join_command(
+                ssid.as_ptr(),
+                ssid.len() as u32,
+                core::ptr::null(),
+                0 as u16,
+                wfx_bindings::sl_wfx_security_mode_e_WFM_SECURITY_MODE_OPEN,
+                prevent_roaming,
+                management_frame_protection,
+                pass.as_ptr(),
+                pass.len() as u16,
+                ie_data,
+                ie_data_length,
+            )
+        }
     };
     match result {
         SL_STATUS_OK => {
