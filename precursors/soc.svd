@@ -57,10 +57,10 @@ Notably, a watchdog reset will disable the watchdog.]]></description>
                 <register>
                     <name>GITREV</name>
                     <description><![CDATA[First 32-bits of the git revision.  This documentation was built from git rev
-``0e165e0d``, so this value is 236346893, which should be enough to check out
+``1f6db48a``, so this value is 527283338, which should be enough to check out
 the exact git version used to build this firmware.]]></description>
                     <addressOffset>0x0000</addressOffset>
-                    <resetValue>0xe165e0d</resetValue>
+                    <resetValue>0x1f6db48a</resetValue>
                     <size>32</size>
                     <fields>
                         <field>
