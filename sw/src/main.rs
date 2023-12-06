@@ -156,7 +156,7 @@ fn stack_check() {
 
 #[entry]
 fn main() -> ! {
-    logln!(LL::Info, "\r\n====UP5K==10");
+    logln!(LL::Info, "\r\n====UP5K==11");
     let gitrev = core::env!("GIT_REV");
     let mut com_csr = CSR::new(HW_COM_BASE as *mut u32);
     let mut crg_csr = CSR::new(HW_CRG_BASE as *mut u32);
@@ -427,20 +427,21 @@ fn main() -> ! {
                 );
             }
             ///////////////////////////// --------------------------------------
-        }
 
-        //////////////////////// COM HANDLER BLOCK ---------
-        if hw.power_csr.rf(utra::power::STATS_STATE) == 0 {
-            com_csr.wfo(utra::com::CONTROL_RESET, 1); // reset fifos
-            com_csr.wfo(utra::com::CONTROL_CLRERR, 1); // clear all error flags
-            soc_off_delay_timer = get_time_ms();
-            continue;
-        } else {
-            if get_time_ms() < soc_off_delay_timer + 100 {
-                // assert reset slightly after the SoC comes up, to throw away any power-on transition noise
-                com_csr.wfo(utra::com::CONTROL_RESET, 1);
-                com_csr.wfo(utra::com::CONTROL_CLRERR, 1);
+            //////////////////////// COM HANDLER BLOCK ---------
+            // Ignore power state transitions during flash update lock
+            if hw.power_csr.rf(utra::power::STATS_STATE) == 0 {
+                com_csr.wfo(utra::com::CONTROL_RESET, 1); // reset fifos
+                com_csr.wfo(utra::com::CONTROL_CLRERR, 1); // clear all error flags
+                soc_off_delay_timer = get_time_ms();
                 continue;
+            } else {
+                if get_time_ms() < soc_off_delay_timer + 100 {
+                    // assert reset slightly after the SoC comes up, to throw away any power-on transition noise
+                    com_csr.wfo(utra::com::CONTROL_RESET, 1);
+                    com_csr.wfo(utra::com::CONTROL_CLRERR, 1);
+                    continue;
+                }
             }
         }
         while com_csr.rf(utra::com::STATUS_RX_AVAIL) == 1 {
